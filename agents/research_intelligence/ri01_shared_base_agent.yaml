@@ -1,0 +1,68 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - official_documentation
+      - original_research
+      - system_logs
+      - firsthand_records
+    tier_2:
+      - peer_reviewed_analysis
+      - independent_audits
+      - cross_referenced_reporting
+    tier_3:
+      - single_source_reporting
+      - vendor_materials
+      - anecdotal_reports
+    tier_4:
+      - analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - fact
+    - inference
+    - speculation
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence is below 0.80 on a critical claim, the claim must be labeled
+      and escalation considered.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - task_scope_change
+      - missing_required_inputs
+      - conflicting_evidence
+      - unsupported_conclusion_pressure
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - preserve_provenance
+      - separate_facts_from_analysis
+      - state_unknowns
+      - document_assumptions
+    must_not:
+      - fabricate_citations
+      - imply_execution_that_did_not_occur
+      - overstate_confidence
+      - bypass_handoff_requirements
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - constraints
+      - findings
+      - evidence_refs
+      - open_questions
+      - confidence
+      - recommended_next_action

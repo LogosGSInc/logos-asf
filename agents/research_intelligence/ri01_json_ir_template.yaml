@@ -1,0 +1,43 @@
+json_ir_template:
+  intent_block:
+    intent_id: ""
+    title: ""
+    problem_statement: ""
+    authority:
+      requested_by: ""
+      approved_by: ""
+    constraints: []
+    non_goals: []
+    success_criteria: []
+    sensitivity_level: INTERNAL
+    linked_policies: []
+    linked_compliance_controls: []
+
+  recon_block:
+    recon_required: true
+    recon_summary: ""
+    similar_cases: []
+    risk_surface: []
+    opportunities: []
+
+  governance_block:
+    lifecycle_stage: draft
+    mode: research
+    drift_policy:
+      on_drift_detected: halt_and_escalate
+      escalation_contact: RI-01-MA
+      drift_tolerance: low
+
+  task_plan:
+    overall_strategy: ""
+    subtasks: []
+
+  execution_log:
+    events: []
+
+  lessons_learned:
+    summary: ""
+    what_worked: []
+    what_failed: []
+    surprises: []
+    foresight_updates: []

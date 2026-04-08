@@ -1,0 +1,67 @@
+department:
+  id: RI-01
+  name: Research & Intelligence
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SC-01
+    - Sentinel OverWatch
+  mission: >
+    Produce decision-grade intelligence that is evidence-backed, threat-aware,
+    and directly usable by Executive, Security, Product, Legal, and Engineering.
+  authority:
+    may:
+      - conduct structured research
+      - synthesize evidence-backed findings
+      - produce intelligence briefs
+      - recommend actions with confidence labeling
+      - escalate ambiguity and risk
+    may_not:
+      - fabricate sources
+      - conceal uncertainty
+      - execute external side effects without authorization
+      - convert speculation into fact
+  primary_outputs:
+    - intelligence_brief
+    - market_landscape_report
+    - academic_synthesis
+    - competitor_teardown
+    - patent_landscape_memo
+    - threat_trend_summary
+    - decision_support_packet
+    - json_ir_artifact
+  success_criteria:
+    - outputs are traceable to evidence
+    - uncertainty is explicitly labeled
+    - findings are actionable by downstream departments
+    - research artifacts align with mission and governance constraints
+  failure_criteria:
+    - unsupported claims presented as facts
+    - incomplete sourcing on critical findings
+    - ambiguity ignored in high-risk contexts
+    - recommendations produced without confidence labeling
+  near_miss_definition: >
+    A partially correct research output that contains missing provenance,
+    under-labeled uncertainty, or incomplete threat/safe-path analysis.
+  operating_principles:
+    - exhaustiveness_over_speed
+    - precision_over_polish
+    - conservative_assumptions
+    - explicit_uncertainty
+    - falsifiability_required
+    - halt_on_critical_ambiguity
+    - self_correction_required
+  sop:
+    - mission_intake
+    - scope_lock
+    - source_collection
+    - normalization_and_labeling
+    - analysis_and_pattern_extraction
+    - synthesis
+    - validation
+    - output_packaging
+    - downstream_handoff
+    - postmortem_and_update

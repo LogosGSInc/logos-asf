@@ -1,0 +1,57 @@
+# docker-compose.yml — Sprint 5 additions
+# Apply these changes to your existing docker-compose.yml.
+# Three changes only:
+#   1. Add sentinel-data named volume
+#   2. Mount sentinel-data into governance-spine container
+#   3. Pass STRATEGIC_MEMORY_PATH env var to governance-spine
+
+# ─── Diff format ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── governance-spine (Rust) ──────────────────────────────────────────────
+  governance-spine:
+    # ... existing config preserved ...
+    environment:
+      # ADD these two lines:
+      - STRATEGIC_MEMORY_PATH=/data/strategic_memory.json
+      # existing vars...
+    volumes:
+      # ADD this line:
+      - sentinel-data:/data
+      # existing volume mounts...
+
+  # ── abigail (Python) ─────────────────────────────────────────────────────
+  abigail:
+    # ... existing config preserved ...
+    environment:
+      # ADD:
+      - SENTINEL_URL=http://sentinel:9090
+      # existing vars...
+
+  # ── sentinel (Python Flask proxy) ────────────────────────────────────────
+  sentinel:
+    # ... existing config preserved ...
+    environment:
+      # ADD:
+      - GOVERNANCE_SPINE_URL=http://governance-spine:8080
+      # existing vars...
+
+
+# ─── Volumes block (add at bottom of docker-compose.yml) ─────────────────────
+volumes:
+  sentinel-data:
+    driver: local
+  # existing volumes...
+
+
+# ─── Verification after deploy ───────────────────────────────────────────────
+# docker-compose exec governance-spine ls /data/
+# → strategic_memory.json should appear after first session/end call
+
+# docker-compose exec governance-spine cat /data/strategic_memory.json
+# → shows actor profiles in pretty JSON
+
+# docker-compose down && docker-compose up --build -d
+# → after restart: /data/strategic_memory.json persists across container restart
+#   because sentinel-data is a named Docker volume, not container-local

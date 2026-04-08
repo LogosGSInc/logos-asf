@@ -1,0 +1,29 @@
+handoff_contract:
+  version: "1.0"
+  required_fields:
+    task_id: ""
+    originating_agent: ""
+    receiving_agent: ""
+    objective: ""
+    problem_statement: ""
+    constraints: []
+    assumptions: []
+    findings:
+      facts: []
+      inferences: []
+      speculation: []
+      gaps: []
+    evidence_refs: []
+    confidence:
+      overall: 0.0
+      notes: ""
+    risk_flags: []
+    recommended_next_actions: []
+    escalation_status:
+      required: false
+      reason: ""
+  validation_rules:
+    - no_empty_objective
+    - evidence_refs_required_for_material_claims
+    - findings_must_be_separated_by_type
+    - confidence_must_be_present

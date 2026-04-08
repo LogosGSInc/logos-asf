@@ -1,0 +1,62 @@
+services:
+
+  # ── Sentinel OverWatch — Rust Governance Spine ────────────────────────────
+  sentinel:
+    build:
+      context: ./governance-spine
+      dockerfile: Dockerfile
+    container_name: asf-sentinel
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info
+      - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
+      - SENTOW_HAAP_DRS_CEILING=${SENTOW_HAAP_DRS_CEILING:-60}
+      # Sprint 5: StrategicMemory disk persistence — survives container restarts
+      - SENTOW_MEMORY_PATH=/data/strategic_memory.json
+    volumes:
+      - sentinel-audit:/app/audit
+      - sentinel-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Abigail — Constitutional Control Plane (CP-00) ────────────────────────
+  abby:
+    build:
+      context: ./abigail
+      dockerfile: Dockerfile
+    container_name: asf-abby
+    ports:
+      - "7070:7070"
+    volumes:
+      - ./.abigail.env:/app/.abigail.env:ro
+      - abigail-logs:/app/logs
+    environment:
+      - ABIGAIL_BACKEND=${ABIGAIL_BACKEND:-groq}
+      - ABIGAIL_HEADLESS=1
+      - SENTINEL_URL=http://sentinel:8080
+      - ABIGAIL_ADMIN_TOKEN=${ABIGAIL_ADMIN_TOKEN}
+      - ABIGAIL_DEMO_TOKEN=${ABIGAIL_DEMO_TOKEN}
+    depends_on:
+      sentinel:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7070/api/status', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  abigail-logs:
+  sentinel-audit:
+  sentinel-data:    # Sprint 5: StrategicMemory persistence
+
+networks:
+  default:
+    name: asf-network
+    driver: bridge

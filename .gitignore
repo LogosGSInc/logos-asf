@@ -1,0 +1,26 @@
+# LOGOS ASF — gitignore
+# NEVER commit secrets
+
+# Env files with real keys
+.abigail.env
+
+# Audit logs (contain operational data)
+*.jsonl
+data/
+
+# Rust build artifacts
+governance-spine/target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,49 @@
+routing:
+  department: RI-01
+  intake_rules:
+    - if_request_contains:
+        - market
+        - pricing
+        - buyer
+        - demand
+        - category
+      assign:
+        primary: RI-01-SA-BARNABAS
+        secondary: RI-01-FA
+    - if_request_contains:
+        - paper
+        - research
+        - technical
+        - academic
+        - framework
+        - model_behavior
+      assign:
+        primary: RI-01-SA-TABITHA
+        secondary: RI-01-FA
+    - if_request_contains:
+        - competitor
+        - comparison
+        - alternative
+        - market_map
+        - positioning
+      assign:
+        primary: RI-01-SA-ELIHU
+        secondary: RI-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: RI-01-MA
+        secondary:
+          - RI-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: RI-01-MA
+    - if_conflicting_sources: true
+      escalate_to: RI-01-MA
+    - if_cross_department_dependency: true
+      notify:
+        - EX-01
+        - relevant_department_head
