@@ -1,6 +1,6 @@
 # LOGOS Agentic Software Firm (ASF)
 **Governed Agentic AI Platform — Local 1-Click Deploy**
-LOGOS Governance Systems Inc. | US Provisional Patent 63/953,447
+LOGOS Governance Systems Inc.
 
 > "By wisdom a house is built, and through understanding it is established." — Proverbs 24:3
 
@@ -125,5 +125,5 @@ make clean    # Stop + remove volumes (resets audit log)
 ---
 
 LOGOS Governance Systems Inc.
-Founder & CEO: David W. Smith | Dothan, AL
+Founder & CEO: David W. Smith | Cottonwood, Alabama
 US Provisional Patent 63/953,447
