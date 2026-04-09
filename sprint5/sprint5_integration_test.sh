@@ -22,7 +22,7 @@ curl -s -X POST "$SENTINEL/session/end" \
 
 echo ""
 echo "── TEST 3: Verify strategic_memory.json was written ──"
-docker-compose exec governance-spine cat /data/strategic_memory.json
+docker-compose exec sentinel cat /app/audit/strategic_memory.json
 
 echo ""
 echo "── TEST 4: session/start same actor (expect Tier 2 advice applied) ──"

@@ -541,7 +541,7 @@ impl GovernancePipeline {
 
     /// Derive a DRS (0-100) from session state + memory for HAAP gate input.
     /// S1=0, S2=45, S3=75, S4=100. Memory state adds additional pressure.
-    fn session_drs(&self, session_id: &str) -> u8 {
+    pub fn session_drs(&self, session_id: &str) -> u8 {
         let base: u8 = match self.arbiter.current_state(session_id) {
             SecurityState::S1 => 0,
             SecurityState::S2 => 45,
@@ -578,4 +578,22 @@ impl GovernancePipeline {
     pub fn haap(&self) -> &Arc<HaapGate> {
         &self.haap
     }
+
+    pub fn strategic_advice(&self, actor_id: &str) -> crate::pipeline::StrategicAdvice {
+        let advice = self.strategic_memory.read().advise_session_start(actor_id);
+        StrategicAdvice {
+            starting_state: format!("{:?}", advice.initial_state),
+            threshold_modifier: advice.threshold_modifier,
+            prior_escalations: self.strategic_memory.read()
+                .get_actor_profile(actor_id)
+                .map(|p| p.escalated_sessions)
+                .unwrap_or(0),
+        }
+    }
+}
+
+pub struct StrategicAdvice {
+    pub starting_state: String,
+    pub threshold_modifier: f32,
+    pub prior_escalations: u32,
 }

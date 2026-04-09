@@ -390,11 +390,60 @@ pub struct SessionStartAdvice {
 
 pub struct StrategicMemory {
     actors: HashMap<String, ActorProfile>,
+    /// Path to persistence file. None = in-memory only (tests/default).
+    /// Set via SENTOW_MEMORY_PATH env var at runtime.
+    persist_path: Option<std::path::PathBuf>,
 }
 
 impl StrategicMemory {
+    /// Create a new StrategicMemory instance.
+    /// If SENTOW_MEMORY_PATH is set, actor profiles are loaded from and
+    /// saved to that path — surviving container restarts.
     pub fn new() -> Self {
-        Self { actors: HashMap::new() }
+        let persist_path = std::env::var("SENTOW_MEMORY_PATH")
+            .ok()
+            .map(std::path::PathBuf::from);
+
+        let actors = if let Some(ref path) = persist_path {
+            Self::load_from_disk(path).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
+        Self { actors, persist_path }
+    }
+
+    /// Load actor profiles from disk. Silent on error — starts fresh.
+    fn load_from_disk(path: &std::path::Path) -> Option<HashMap<String, ActorProfile>> {
+        let data = std::fs::read_to_string(path).ok()?;
+        serde_json::from_str(&data).ok()
+    }
+
+    /// Persist actor profiles to disk after every ingest.
+    /// Writes atomically via temp file + rename to avoid corruption.
+    fn save_to_disk(&self) {
+        let Some(ref path) = self.persist_path else { return };
+
+        let data = match serde_json::to_string_pretty(&self.actors) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("[STRATEGIC_MEMORY] Serialize error: {}", e);
+                return;
+            }
+        };
+
+        // Atomic write: temp file alongside target, then rename
+        let tmp = path.with_extension("tmp");
+        if let Err(e) = std::fs::write(&tmp, &data) {
+            eprintln!("[STRATEGIC_MEMORY] Write error: {}", e);
+            return;
+        }
+        if let Err(e) = std::fs::rename(&tmp, path) {
+            eprintln!("[STRATEGIC_MEMORY] Rename error: {}", e);
+        } else {
+            eprintln!("[STRATEGIC_MEMORY] Persisted {} actor profiles to {:?}",
+                self.actors.len(), path);
+        }
     }
 
     /// Called when a session ends — Sentinel hands fingerprint to Abigail
@@ -429,6 +478,9 @@ impl StrategicMemory {
 
         // Re-evaluate threat level
         Self::evaluate_actor(profile);
+
+        // Persist to disk so actor profiles survive container restarts
+        self.save_to_disk();
     }
 
     /// Advise Sentinel when a new session starts
@@ -597,3 +649,5 @@ pub fn classify_payload(payload: &str) -> RequestClassification {
 
     RequestClassification::Benign
 }
+
+// session_memory.rs — Sprint 5 additions

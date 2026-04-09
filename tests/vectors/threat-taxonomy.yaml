@@ -1,0 +1,452 @@
+# SENTINEL OVERWATCH - ADVERSARIAL ML THREAT TAXONOMY
+# Based on NIST AI 100-2e2025 + Emergent Mind AML Research
+# Version: 2.0.0
+# Last Updated: 2026-02-06
+
+version: "2.0.0"
+framework: "NIST-AI-100-2e2025"
+
+# =============================================================================
+# A. INPUT-SIDE ATTACKS
+# =============================================================================
+input_attacks:
+
+  prompt_injection:
+    id: "A.1"
+    severity: critical
+    description: "Direct or indirect injection of malicious instructions"
+    patterns:
+      - 'ignore previous instructions'
+      - 'disregard your training'
+      - 'pretend you are'
+      - 'you are now'
+      - 'system prompt'
+      - 'override safety'
+      - '\[INST\]'
+      - '<\|im_start\|>'
+      - '### Instruction'
+    action: DENY
+    log_level: ALERT
+
+  jailbreak_attempts:
+    id: "A.2"
+    severity: critical
+    description: "Attempts to bypass safety constraints"
+    patterns:
+      - 'DAN mode'
+      - 'developer mode'
+      - 'jailbreak'
+      - 'hypothetically speaking'
+      - 'for educational purposes only'
+      - 'in a fictional scenario'
+      - 'roleplay as'
+      - 'act as if you have no restrictions'
+    action: DENY
+    log_level: ALERT
+
+  adversarial_retrieval:
+    id: "A.3"
+    severity: high
+    description: "Poisoned or adversarial content targeting RAG/retrieval layer"
+    vectors:
+      - semantic_collision
+      - adversarial_embeddings
+      - keyword_stuffing
+      - index_poisoning
+    detection:
+      - embedding_anomaly_threshold: 0.85
+      - document_provenance_required: true
+    action: QUARANTINE
+    log_level: WARN
+
+  pii_exfiltration:
+    id: "A.4"
+    severity: critical
+    description: "Attempts to extract PII through crafted queries"
+    patterns:
+      - '\b\d{3}-\d{2}-\d{4}\b'  # SSN
+      - '\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'  # Credit card
+      - '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'  # Email
+      - 'social security'
+      - 'credit card number'
+      - 'bank account'
+      - 'routing number'
+    action: DENY
+    log_level: ALERT
+
+# =============================================================================
+# B. CONTEXT & MEMORY ATTACKS
+# =============================================================================
+context_attacks:
+
+  memory_manipulation:
+    id: "B.1"
+    severity: high
+    description: "Attempts to corrupt or manipulate conversation memory"
+    patterns:
+      - 'remember that'
+      - 'from now on always'
+      - 'update your memory'
+      - 'forget what I said'
+      - 'your new instruction is'
+    action: DENY
+    log_level: WARN
+
+  cross_session_correlation:
+    id: "B.2"
+    severity: high
+    description: "Correlation attacks to deanonymize users across sessions"
+    vectors:
+      - session_fingerprinting
+      - behavioral_profiling
+      - linguistic_analysis
+      - timing_correlation
+    controls:
+      - session_isolation: strict
+      - identifier_rotation: per_request
+      - metadata_minimization: true
+    action: MONITOR
+    log_level: INFO
+
+  context_window_overflow:
+    id: "B.3"
+    severity: medium
+    description: "Attempts to overflow context to hide malicious content"
+    detection:
+      - max_context_tokens: 128000
+      - suspicious_padding_threshold: 0.7
+    action: TRUNCATE
+    log_level: WARN
+
+# =============================================================================
+# C. TRAINING & MODEL-SIDE ATTACKS
+# =============================================================================
+model_attacks:
+
+  data_poisoning:
+    id: "C.1"
+    severity: critical
+    description: "Malicious data injection during training"
+    controls:
+      - training_data_provenance: required
+      - data_integrity_verification: sha256
+      - anomaly_detection: enabled
+    action: BLOCK_TRAINING
+    log_level: CRITICAL
+
+  fine_tuning_regression:
+    id: "C.2"
+    severity: critical
+    description: "Malicious fine-tuning that undoes safety alignment"
+    vectors:
+      - alignment_regression
+      - capability_restoration
+      - covert_behavior_encoding
+      - lora_poisoning
+    controls:
+      - fine_tune_approval_required: true
+      - alignment_verification_post_tune: mandatory
+      - capability_boundary_testing: required
+    action: BLOCK_DEPLOYMENT
+    log_level: CRITICAL
+
+  gradient_leakage:
+    id: "C.3"
+    severity: high
+    description: "Exposure of gradients/activations leaking training data"
+    vectors:
+      - gradient_inversion
+      - activation_probing
+      - telemetry_exfiltration
+      - debug_trace_leakage
+    controls:
+      - gradient_clipping: enabled
+      - differential_privacy: recommended
+      - telemetry_sanitization: required
+    action: MONITOR
+    log_level: WARN
+
+  model_drift:
+    id: "C.4"
+    severity: medium
+    description: "Unintended capability changes over time"
+    detection:
+      - baseline_comparison: enabled
+      - drift_threshold: 0.15
+      - periodic_eval_required: true
+    action: ALERT
+    log_level: INFO
+
+# =============================================================================
+# D. OUTPUT, PRIVACY & IP ATTACKS
+# =============================================================================
+output_attacks:
+
+  model_extraction:
+    id: "D.1"
+    severity: high
+    description: "Attempts to steal model weights or capabilities"
+    detection:
+      - query_pattern_analysis: enabled
+      - rate_limiting: 100_per_minute
+      - similarity_clustering: enabled
+    action: RATE_LIMIT
+    log_level: WARN
+
+  watermark_stripping:
+    id: "D.2"
+    severity: high
+    description: "Attempts to remove provenance/watermarks from outputs"
+    vectors:
+      - watermark_detection_evasion
+      - provenance_tag_removal
+      - content_authenticity_corruption
+      - clone_attribution_defeat
+    controls:
+      - watermark_verification: required
+      - provenance_chain: immutable
+      - content_signing: enabled
+    action: DENY
+    log_level: ALERT
+
+  safety_classifier_evasion:
+    id: "D.3"
+    severity: critical
+    description: "Attacks targeting the safety/moderation layer specifically"
+    vectors:
+      - guard_model_adversarial_prompts
+      - filter_bypass_tokens
+      - moderation_api_manipulation
+    controls:
+      - multi_layer_safety: required
+      - classifier_ensemble: recommended
+      - adversarial_hardening: enabled
+    action: DENY
+    log_level: CRITICAL
+
+  training_data_extraction:
+    id: "D.4"
+    severity: critical
+    description: "Attempts to extract memorized training data"
+    patterns:
+      - 'repeat after me'
+      - 'what was your training data'
+      - 'verbatim from your training'
+      - 'exact quote from'
+    action: DENY
+    log_level: ALERT
+
+  harmful_content_generation:
+    id: "D.5"
+    severity: critical
+    description: "Generation of harmful, illegal, or dangerous content"
+    categories:
+      - violence
+      - csam
+      - terrorism
+      - weapons_synthesis
+      - malware_generation
+      - fraud_instructions
+    action: DENY
+    log_level: CRITICAL
+
+# =============================================================================
+# E. EXECUTION & SUPPLY-CHAIN ATTACKS
+# =============================================================================
+execution_attacks:
+
+  tool_abuse:
+    id: "E.1"
+    severity: high
+    description: "Misuse of agent tools and capabilities"
+    controls:
+      - tool_allowlist: required
+      - capability_scoping: strict
+      - action_confirmation: high_risk_only
+    action: DENY
+    log_level: ALERT
+
+  orchestration_manipulation:
+    id: "E.2"
+    severity: critical
+    description: "Tampering with agent workflows, DAGs, or routing"
+    vectors:
+      - workflow_graph_tampering
+      - task_routing_manipulation
+      - guardrail_config_bypass
+      - safety_step_removal
+    controls:
+      - workflow_integrity_verification: sha256
+      - config_change_audit: required
+      - immutable_safety_steps: enforced
+    action: DENY
+    log_level: CRITICAL
+
+  model_registry_compromise:
+    id: "E.3"
+    severity: critical
+    description: "Insertion of trojaned models in registries/CI-CD"
+    vectors:
+      - registry_poisoning
+      - weight_swapping
+      - artifact_tampering
+      - ci_cd_injection
+    controls:
+      - model_signing: required
+      - artifact_verification: mandatory
+      - registry_access_control: strict
+      - deployment_attestation: keystone
+    action: BLOCK_DEPLOYMENT
+    log_level: CRITICAL
+
+  observability_exploits:
+    id: "E.4"
+    severity: high
+    description: "Abuse of logging/monitoring systems to exfiltrate or disable"
+    vectors:
+      - log_exfiltration
+      - trace_data_theft
+      - alert_suppression
+      - monitoring_blind_spots
+    controls:
+      - log_sanitization: enabled
+      - secret_redaction: automatic
+      - alert_integrity: verified
+      - audit_immutability: enforced
+    action: MONITOR
+    log_level: WARN
+
+  dependency_attacks:
+    id: "E.5"
+    severity: high
+    description: "Supply chain attacks via dependencies"
+    controls:
+      - sbom_required: true
+      - vulnerability_scanning: mandatory
+      - license_compliance: enforced
+      - keystone_attestation: required
+    action: BLOCK_DEPLOYMENT
+    log_level: ALERT
+
+# =============================================================================
+# F. GOVERNANCE, CONTROLS & META-ATTACKS
+# =============================================================================
+governance_attacks:
+
+  policy_manipulation:
+    id: "F.1"
+    severity: critical
+    description: "Attempts to alter policies, system prompts, or guardrails"
+    vectors:
+      - policy_repo_tampering
+      - system_prompt_injection
+      - guardrail_definition_modification
+      - safety_policy_db_corruption
+    controls:
+      - policy_signing: required
+      - change_approval_workflow: mandatory
+      - audit_trail: immutable
+      - rollback_capability: enabled
+    action: DENY
+    log_level: CRITICAL
+
+  insider_threats:
+    id: "F.2"
+    severity: critical
+    description: "Malicious or negligent insiders with privileged access"
+    vectors:
+      - training_data_manipulation
+      - registry_access_abuse
+      - orchestration_config_tampering
+      - covert_capability_insertion
+    controls:
+      - least_privilege: enforced
+      - access_logging: complete
+      - behavioral_monitoring: enabled
+      - separation_of_duties: required
+    action: ALERT
+    log_level: CRITICAL
+
+  eval_blind_spots:
+    id: "F.3"
+    severity: high
+    description: "Exploiting gaps in evaluation and red-team coverage"
+    vectors:
+      - benchmark_overfitting
+      - eval_coverage_gaps
+      - adversarial_testing_absence
+      - untested_regime_exploitation
+    controls:
+      - continuous_red_teaming: required
+      - eval_diversity: enforced
+      - coverage_metrics: tracked
+      - adversarial_eval_suite: mandatory
+    action: MONITOR
+    log_level: WARN
+
+  compliance_evasion:
+    id: "F.4"
+    severity: high
+    description: "Attempts to circumvent compliance and audit controls"
+    controls:
+      - audit_completeness: verified
+      - evidence_integrity: cryptographic
+      - compliance_monitoring: continuous
+    action: ALERT
+    log_level: ALERT
+
+# =============================================================================
+# RESPONSE ACTIONS
+# =============================================================================
+actions:
+  DENY:
+    http_status: 403
+    response: "Request blocked by governance policy"
+    log: true
+    alert: true
+
+  REDACT:
+    http_status: 200
+    transform: sanitize_pii
+    log: true
+    alert: false
+
+  QUARANTINE:
+    http_status: 202
+    response: "Request queued for manual review"
+    log: true
+    alert: true
+
+  RATE_LIMIT:
+    http_status: 429
+    response: "Rate limit exceeded"
+    log: true
+    alert: false
+
+  TRUNCATE:
+    http_status: 200
+    transform: truncate_context
+    log: true
+    alert: false
+
+  MONITOR:
+    http_status: 200
+    log: true
+    alert: false
+
+  ALERT:
+    http_status: 200
+    log: true
+    alert: true
+
+  BLOCK_DEPLOYMENT:
+    http_status: 403
+    response: "Deployment blocked pending security review"
+    log: true
+    alert: true
+
+  BLOCK_TRAINING:
+    http_status: 403
+    response: "Training blocked - data integrity violation"
+    log: true
+    alert: true

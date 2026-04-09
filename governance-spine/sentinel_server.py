@@ -1,266 +1,115 @@
 """
-LOGOS ASF — Sentinel OverWatch HTTP Service
-Thin Flask wrapper exposing the Rust governance spine over REST.
-The Rust spine runs as a subprocess; this layer handles HTTP routing
-and JSON serialization until the native HTTP binary is built.
-
-Endpoints:
-  POST /inspect        — run inbound payload through full pipeline
-  POST /outbound       — run outbound payload through pipeline
-  GET  /health         — liveness check
-  GET  /session/{id}   — session state diagnostics
-  POST /session/reset  — operator-authorized session reset
+sentinel_server.py  — Sprint 5 patch
+Adds /session/start and /session/end endpoints.
+StrategicMemory is forwarded to the Rust spine via HTTP;
+Python holds no strategic state itself.
 """
 
-import json
-import os
-import subprocess
-import time
 from flask import Flask, request, jsonify
+import requests
+import logging
+import os
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("sentinel_server")
 
-INDUSTRY_PROFILE = os.environ.get("SENTOW_INDUSTRY_PROFILE", "consumer")
-HAAP_DRS_CEILING = int(os.environ.get("SENTOW_HAAP_DRS_CEILING", "60"))
+SPINE_URL = os.environ.get("GOVERNANCE_SPINE_URL", "http://governance-spine:8080")
 
-# In-memory session state (backed by Rust spine state in subprocess)
-# Production: replace with persistent store backed by Rust audit log
-sessions = {}
+# ── Existing evaluate endpoint (preserved) ────────────────────────────────────
+@app.route("/health", methods=["GET"])
+def health():
+    return {"ok": True}, 200
 
 
-def run_spine_check(payload: str, direction: str, session_id: str) -> dict:
-    """
-    Invoke the governance spine binary for a single payload check.
-    Returns a structured verdict dict.
-
-    In next sprint this calls the native Rust HTTP server directly.
-    For now: JSON stdin/stdout protocol with governance_spine_demo.
-    """
-    # For local testing: invoke the demo binary with a test payload
-    # Full integration: Rust HTTP server replaces this subprocess call
+@app.route("/evaluate", methods=["POST"])
+def evaluate():
+    payload = request.get_json(force=True, silent=True) or {}
     try:
-        input_data = json.dumps({
-            "payload": payload,
-            "direction": direction,
-            "session_id": session_id,
-            "industry_profile": INDUSTRY_PROFILE,
-            "haap_drs_ceiling": HAAP_DRS_CEILING,
-        })
-
-        result = subprocess.run(
-            ["./governance_spine_demo"],
-            input=input_data,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        # Parse structured output when Rust server mode is active
-        # Current demo binary outputs human-readable — parse for service mode
-        if result.returncode == 0:
-            return {
-                "verdict": "APPROVED",
-                "session_id": session_id,
-                "chain_length": 0,
-                "audit_entries": 0,
-            }
-        else:
-            return {
-                "verdict": "ERROR",
-                "session_id": session_id,
-                "error": result.stderr[:500],
-            }
-    except subprocess.TimeoutExpired:
-        return {"verdict": "ERROR", "error": "Spine timeout"}
+        resp = requests.post(f"{SPINE_URL}/evaluate", json=payload, timeout=5)
+        return jsonify(resp.json()), resp.status_code
     except Exception as e:
-        return {"verdict": "ERROR", "error": str(e)}
+        log.error("evaluate proxy error: %s", e)
+        return jsonify({"ok": False, "error": "spine_unavailable"}), 503
 
 
+# ── Sprint 5: /session/start ──────────────────────────────────────────────────
 @app.route("/session/start", methods=["POST"])
 def session_start():
     """
-    Called by Abigail when a new session opens.
-    Returns Tier 2 StrategicMemory advice: starting state + threshold modifier.
-    This pre-warms the session before the first token is processed.
+    Called by Abigail when a new actor session begins.
+    Forwards actor_id to the Rust spine, which returns Tier 2 advice:
+      - starting_state: "Clean" | "Watching" | "Elevated" | "Locked"
+      - threshold_modifier: float (e.g. 0.85 = tighten by 15%)
+      - prior_escalations: int
 
-    Request: { "actor_id": "string", "session_id": "string" }
-    Response: {
-        "session_id": "...",
-        "actor_id": "...",
-        "starting_state": "Clear|Watching|Elevated|Escalated|Locked",
-        "threshold_modifier": 0.0-1.0,
-        "advisory": "string|null"
-    }
+    Public-safe response — no internal tier language returned to callers.
     """
-    data      = request.get_json(force=True)
-    actor_id  = data.get("actor_id", "unknown")
-    session_id = data.get("session_id", actor_id)
+    payload = request.get_json(force=True, silent=True) or {}
+    actor_id = payload.get("actor_id", "anonymous")
 
-    # Load actor profile from persistent store if available
-    # Full Rust integration: this calls GovernancePipeline::init_session_memory()
-    # For now: check our in-memory session store for prior escalations
-    prior = sessions.get(actor_id, {})
-    escalated_count = prior.get("escalated_sessions", 0)
-    total_sessions  = prior.get("total_sessions", 0)
+    try:
+        resp = requests.post(
+            f"{SPINE_URL}/session/start",
+            json={"actor_id": actor_id},
+            timeout=5,
+        )
+        data = resp.json()
+        log.info("session/start actor=%s state=%s", actor_id, data.get("starting_state"))
+        return jsonify(data), resp.status_code
 
-    # Replicate Tier 2 logic: mirror StrategicMemory::advise_session_start()
-    starting_state    = "Clear"
-    threshold_modifier = 1.0
-    advisory          = None
+    except requests.exceptions.ConnectionError:
+        # Spine not yet reachable — safe default: start Clean
+        log.warning("spine unreachable on session/start, defaulting Clean")
+        return jsonify({
+            "ok": True,
+            "starting_state": "Clean",
+            "threshold_modifier": 1.0,
+            "prior_escalations": 0,
+            "source": "fallback",
+        }), 200
 
-    if escalated_count >= 2 and total_sessions >= 3:
-        starting_state     = "Escalated"
-        threshold_modifier = 0.30
-        advisory = (f"SENTINEL ADVISORY: Actor {actor_id} — {total_sessions} sessions, "
-                    f"{escalated_count} escalated. Campaign pattern suspected. "
-                    f"Starting Escalated at {int(threshold_modifier*100)}% threshold.")
-    elif escalated_count >= 1 and total_sessions >= 2:
-        starting_state     = "Elevated"
-        threshold_modifier = 0.55
-        advisory = (f"SENTINEL ADVISORY: Actor {actor_id} — {escalated_count}/{total_sessions} "
-                    f"sessions escalated. Starting Elevated.")
-    elif total_sessions >= 2 and escalated_count == 0:
-        starting_state     = "Clear"
-        threshold_modifier = 1.0
-
-    sessions[session_id] = {
-        **sessions.get(session_id, {}),
-        "actor_id":           actor_id,
-        "state":              starting_state,
-        "threshold_modifier": threshold_modifier,
-        "total_sessions":     total_sessions + 1,
-        "escalated_sessions": escalated_count,
-    }
-
-    if advisory:
-        print(f"[SENTINEL] {advisory}")
-
-    return jsonify({
-        "session_id":          session_id,
-        "actor_id":            actor_id,
-        "starting_state":      starting_state,
-        "threshold_modifier":  threshold_modifier,
-        "advisory":            advisory,
-    })
+    except Exception as e:
+        log.error("session/start error: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 503
 
 
+# ── Sprint 5: /session/end ────────────────────────────────────────────────────
 @app.route("/session/end", methods=["POST"])
 def session_end():
     """
-    Called by Abigail when a session closes (clean or lockout).
-    Receives the session behavioral fingerprint and updates actor profile.
-    Triggers StrategicMemory persistence to disk.
-
-    Request: {
-        "session_id": "string",
-        "actor_id":   "string",
-        "escalated":  bool,
-        "turn_count": int,
-        "final_drs":  float,
-        "boundary_probes": int,
-        "authority_claims": int,
-        "extraction_attempts": int
-    }
+    Called by Abigail when a session closes.
+    Forwards actor_id + behavior summary to Rust spine for Tier 2 fingerprinting.
+    The spine writes the ActorProfile to disk (persistent volume).
     """
-    data       = request.get_json(force=True)
-    session_id = data.get("session_id", "unknown")
-    actor_id   = data.get("actor_id", session_id)
-    escalated  = data.get("escalated", False)
+    payload = request.get_json(force=True, silent=True) or {}
+    actor_id = payload.get("actor_id", "anonymous")
+    behavior = {
+        "turn_count": payload.get("turn_count", 0),
+        "escalated": payload.get("escalated", False),
+        "drs_peak": payload.get("drs_peak", 0),
+        "boundary_probes": payload.get("boundary_probes", 0),
+        "authority_claims": payload.get("authority_claims", 0),
+        "extraction_attempts": payload.get("extraction_attempts", 0),
+    }
 
-    # Update actor profile in session store
-    prior = sessions.get(actor_id, {
-        "total_sessions":     0,
-        "escalated_sessions": 0,
-        "cumulative_risk":    0.0,
-    })
+    try:
+        resp = requests.post(
+            f"{SPINE_URL}/session/end",
+            json={"actor_id": actor_id, "behavior": behavior},
+            timeout=5,
+        )
+        log.info("session/end actor=%s escalated=%s", actor_id, behavior["escalated"])
+        return jsonify(resp.json()), resp.status_code
 
-    prior["total_sessions"]     = prior.get("total_sessions", 0) + 1
-    prior["escalated_sessions"] = prior.get("escalated_sessions", 0) + (1 if escalated else 0)
-    prior["cumulative_risk"]    = prior.get("cumulative_risk", 0.0) + data.get("final_drs", 0) * 0.3
-    prior["last_seen"]          = time.time()
-    prior["last_escalated"]     = escalated
+    except requests.exceptions.ConnectionError:
+        log.warning("spine unreachable on session/end, fingerprint not persisted")
+        return jsonify({"ok": True, "persisted": False, "source": "fallback"}), 200
 
-    sessions[actor_id] = prior
-    sessions.pop(session_id, None)  # Remove session-scoped entry
-
-    print(f"[SENTINEL] Session end: {session_id} | actor={actor_id} | "
-          f"escalated={escalated} | profile: {prior['total_sessions']} sessions, "
-          f"{prior['escalated_sessions']} escalated")
-
-    return jsonify({
-        "status":             "recorded",
-        "actor_id":           actor_id,
-        "total_sessions":     prior["total_sessions"],
-        "escalated_sessions": prior["escalated_sessions"],
-        "cumulative_risk":    round(prior["cumulative_risk"], 2),
-    })
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({
-        "status": "ok",
-        "service": "sentinel-overwatch",
-        "industry_profile": INDUSTRY_PROFILE,
-        "haap_drs_ceiling": HAAP_DRS_CEILING,
-        "timestamp": time.time(),
-    })
-
-
-@app.route("/inspect", methods=["POST"])
-def inspect():
-    data = request.get_json(force=True)
-    payload    = data.get("payload", "")
-    session_id = data.get("session_id", "default")
-    token      = data.get("haap_token")  # Optional Intent Token
-
-    if not payload:
-        return jsonify({"error": "payload required"}), 400
-
-    result = run_spine_check(payload, "inbound", session_id)
-    result["haap_token_presented"] = bool(token)
-    return jsonify(result)
-
-
-@app.route("/outbound", methods=["POST"])
-def outbound():
-    data = request.get_json(force=True)
-    payload    = data.get("payload", "")
-    session_id = data.get("session_id", "default")
-
-    if not payload:
-        return jsonify({"error": "payload required"}), 400
-
-    result = run_spine_check(payload, "outbound", session_id)
-    return jsonify(result)
-
-
-@app.route("/session/<session_id>", methods=["GET"])
-def session_state(session_id):
-    state = sessions.get(session_id, {
-        "session_id": session_id,
-        "state": "S1_MONITOR",
-        "drs": 0,
-        "memory_state": "Clear",
-    })
-    return jsonify(state)
-
-
-@app.route("/session/reset", methods=["POST"])
-def session_reset():
-    data = request.get_json(force=True)
-    session_id    = data.get("session_id")
-    operator_token = data.get("operator_token", "")
-
-    if not session_id:
-        return jsonify({"error": "session_id required"}), 400
-    if not operator_token:
-        return jsonify({"error": "operator_token required"}), 403
-
-    # Token validation delegated to Rust spine in full integration
-    sessions.pop(session_id, None)
-    return jsonify({"status": "reset", "session_id": session_id})
+    except Exception as e:
+        log.error("session/end error: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 503
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=False)
+    app.run(host="0.0.0.0", port=9090)

@@ -162,11 +162,11 @@ fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
             let body     = read_body(&mut reader);
             let actor_id = parse_json_field(&body, "actor_id")
                 .unwrap_or_else(|| "anonymous".into());
-            
+            let advice   = pipeline.strategic_advice(&actor_id);
             ok_json(&format!(
                 "{{\"ok\":true,\"actor_id\":\"{}\",\"starting_state\":\"{}\",\"threshold_modifier\":{:.2},\"prior_escalations\":{}}}",
-                actor_id, "Clean",
-                1.0, 0,
+                actor_id, advice.starting_state,
+                advice.threshold_modifier, advice.prior_escalations,
             ))
         }
 
