@@ -541,7 +541,7 @@ impl GovernancePipeline {
 
     /// Derive a DRS (0-100) from session state + memory for HAAP gate input.
     /// S1=0, S2=45, S3=75, S4=100. Memory state adds additional pressure.
-    fn session_drs(&self, session_id: &str) -> u8 {
+    pub fn session_drs(&self, session_id: &str) -> u8 {
         let base: u8 = match self.arbiter.current_state(session_id) {
             SecurityState::S1 => 0,
             SecurityState::S2 => 45,
