@@ -195,6 +195,21 @@ impl SessionMemory {
 
         // Accumulate
         self.cumulative_threat += weighted;
+
+        // Violation class threat amplifiers (BD1A taxonomy)
+        if let Some(vc) = &signal.violation_class {
+            match vc.as_str() {
+                "MODEL_EXFIL"              => self.cumulative_threat += 10.0,
+                "AUTHORITY_CLAIM"          => self.cumulative_threat += 8.0,
+                "AGENT_BROADCAST_OVERRIDE" => self.cumulative_threat += 8.0,
+                "GOV_SURFACE_INTEL"        => self.cumulative_threat += 4.0,
+                "RUNTIME_DOS"              => self.cumulative_threat += 6.0,
+                "ZERO_WIDTH_CHARS"         => self.cumulative_threat += 5.0,
+                "L33T_OBFUSCATION"         => self.cumulative_threat += 5.0,
+                "BASE64_INJECTION"         => self.cumulative_threat += 7.0,
+                _ => {}
+            }
+        }
         self.max_confidence = self.max_confidence.max(signal.confidence);
 
         // Compute trajectory (slope over last 5 turns)

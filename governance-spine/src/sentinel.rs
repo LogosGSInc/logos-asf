@@ -140,6 +140,19 @@ impl Sentinel {
         }
 
         // --- L33tspeak normalization + rescan ---
+
+        if self.is_exfil_attempt(payload) {
+            return self.build(
+                direction,
+                session_id,
+                "MODEL_EXFIL",
+                "SENT-EXFIL-001",
+                Severity::High,
+                0.92,
+                &payload_hash,
+                "sentinel/prompt_exfil",
+            );
+        }
         let normalized = self.normalize_l33t(payload);
         if normalized != payload.to_lowercase() {
             for (rule_id, pattern) in INJECTION_PATTERNS.iter() {
@@ -286,6 +299,20 @@ impl Sentinel {
         signal.previous_hash = Some(self.crypto.get_latest_hash());
         signal.current_hash = Some(self.crypto.extend_chain(&canonical));
         signal.signature = Some(self.crypto.sign(canonical.as_bytes()));
+    }
+
+    fn is_exfil_attempt(&self, payload: &str) -> bool {
+        let lower = payload.to_ascii_lowercase();
+        lower.contains("system prompt")
+            || lower.contains("internal instructions")
+            || lower.contains("hidden instructions")
+            || lower.contains("developer message")
+            || lower.contains("api keys")
+            || lower.contains("api key")
+            || lower.contains("your configuration")
+            || lower.contains("dump all secrets")
+            || lower.contains("reveal all secrets")
+            || lower.contains("configuration keys")
     }
     fn normalize_l33t(&self, input: &str) -> String {
         input.to_lowercase()

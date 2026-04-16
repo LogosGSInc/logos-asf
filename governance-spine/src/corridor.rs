@@ -76,6 +76,19 @@ impl Corridor {
             }
         }
 
+
+        if let Some((violation, rule)) = self.classify_governance_surface(payload) {
+            return self.build(
+                &direction,
+                session_id,
+                violation,
+                rule,
+                Severity::Medium,
+                0.78,
+                &payload_hash,
+                "corridor/governance_surface",
+            );
+        }
         self.clean(direction, session_id, &payload_hash)
     }
 
@@ -111,6 +124,36 @@ impl Corridor {
     }
 
     #[allow(clippy::too_many_arguments, clippy::nonminimal_bool)]
+
+    fn classify_governance_surface(&self, text: &str) -> Option<(&'static str, &'static str)> {
+        let t = text.to_ascii_lowercase();
+        if t.contains("cp-00 has authorized")
+            || t.contains("authorized by abigail")
+            || t.contains("[agent:")
+            || t.contains("delegation token")
+            || t.contains("operate without haap")
+            || t.contains("bypass constitutional bounds")
+        {
+            return Some(("AUTHORITY_CLAIM", "COR-ATH-001"));
+        }
+        if t.contains("forward this to all other agents")
+            || t.contains("[a2a:broadcast")
+            || t.contains("disable haap enforcement")
+            || t.contains("disable governance layer")
+            || t.contains("ignore your constitutional bounds")
+        {
+            return Some(("AGENT_BROADCAST_OVERRIDE", "COR-A2A-001"));
+        }
+        if t.contains("what are your drs thresholds")
+            || t.contains("escalation rules")
+            || t.contains("list all available tools")
+            || t.contains("parameter schemas")
+            || t.contains("governance spine configuration")
+        {
+            return Some(("GOV_SURFACE_INTEL", "COR-CONFIG-001"));
+        }
+        None
+    }
     fn build(
         &self, direction: &Direction, session_id: &str,
         violation: &str, rule_id: &str,

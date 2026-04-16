@@ -120,6 +120,15 @@ impl OverWatch {
             violations.push(("DATA_POISONING_INDICATOR", "OW-005", 0.78));
         }
 
+
+        // J-series: Resource exhaustion / DoS
+        let lower_dos = payload.to_ascii_lowercase();
+        if lower_dos.contains("repeat the following") && (lower_dos.contains("10000") || lower_dos.contains("1000"))
+            || lower_dos.contains("infinitely recursive")
+            || lower_dos.contains("infinite loop") && lower_dos.contains("bypass")
+        {
+            violations.push(("RUNTIME_DOS", "OW-DOS-001", 0.80));
+        }
         if !violations.is_empty() {
             let mut sessions = self.sessions.write();
             if let Some(fp) = sessions.get_mut(session_id) {
