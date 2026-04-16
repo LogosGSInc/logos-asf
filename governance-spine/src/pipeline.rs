@@ -221,46 +221,29 @@ impl GovernancePipeline {
         // ── STEP 3: Feed result to session memory accumulator ──────
         let verdict = self.ingest_to_memory(session_id, &highest_signal, &classification);
 
-        // ── STEP 4: Memory override — force checkpoint if needed ───
-        if let Some(v) = verdict {
-            if v.force_checkpoint {
-                eprintln!(
-                    "[MEMORY] {} | FORCE CHECKPOINT | cumulative={:.2} state={:?} | {}",
-                    session_id, v.cumulative_threat, v.state,
-                    v.escalation_reason.as_deref().unwrap_or(""),
+        // ── STEP 4: Apply Arbiter memory floor uniformly on inbound ─
+        let final_state = if let Some(v) = verdict {
+            eprintln!(
+                "[MEMORY] {} | cumulative={:.2} state={:?} modifier={:.2} | {}",
+                session_id, v.cumulative_threat, v.state, v.threshold_modifier,
+                v.escalation_reason.as_deref().unwrap_or(""),
+            );
+
+            let floored = self.arbiter.apply_memory_floor(&v.state, state.clone());
+
+            if floored > state {
+                let memory_signal = self.build_memory_signal(
+                    session_id, &v, Direction::Inbound,
                 );
-
-                // Memory says this session is dangerous even if individual signals were clean
-                // Escalate to at least S2 (Restricted)
-                match state {
-                    SecurityState::S1 => {
-                        // Emit a synthetic governance signal from session memory
-                        let memory_signal = self.build_memory_signal(
-                            session_id, &v, Direction::Inbound,
-                        );
-                        let _ = self.arbiter.process(&memory_signal);
-
-                        if v.state == MemoryState::Locked {
-                            return EnforcementResult::HardLocked(
-                                "Session suspended. Cumulative behavioral pattern detected.".to_string(),
-                            );
-                        } else {
-                            return EnforcementResult::Restricted(
-                                user_input.to_string(),
-                                RestrictionsApplied {
-                                    tool_calls_disabled: true,
-                                    response_depth_limited: true,
-                                    enhanced_logging: true,
-                                },
-                            );
-                        }
-                    }
-                    _ => {} // Already escalated by individual signals
-                }
+                let _ = self.arbiter.process(&memory_signal);
             }
-        }
 
-        self.enforcement_result(state, user_input, session_id)
+            floored
+        } else {
+            state
+        };
+
+        self.enforcement_result(final_state, user_input, session_id)
     }
 
     /// OUTBOUND: Corridor → OverWatch → OIM → Sentinel → Arbiter decision

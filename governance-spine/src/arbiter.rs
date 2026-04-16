@@ -1,6 +1,7 @@
 use crate::{
     governance_signal::{GovernanceSignal, Severity, SignalBuilder, SignalSource},
     crypto::{CryptoEngine, AuditEntry},
+    session_memory::MemoryState,
 };
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -117,6 +118,27 @@ impl Arbiter {
             crypto,
             session_states: Arc::new(RwLock::new(std::collections::HashMap::new())),
             audit_log: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    pub fn memory_floor(state: &MemoryState) -> Option<SecurityState> {
+        match state {
+            MemoryState::Clear => None,
+            MemoryState::Watching => None,
+            MemoryState::Elevated => Some(SecurityState::S2),
+            MemoryState::Escalated => Some(SecurityState::S3),
+            MemoryState::Locked => Some(SecurityState::S4),
+        }
+    }
+
+    pub fn apply_memory_floor(
+        &self,
+        memory_state: &MemoryState,
+        decided: SecurityState,
+    ) -> SecurityState {
+        match Self::memory_floor(memory_state) {
+            Some(floor) if decided < floor => floor,
+            _ => decided,
         }
     }
 
