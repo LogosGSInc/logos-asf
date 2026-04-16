@@ -19,6 +19,7 @@ pub enum CryptoError {
     EmptyChain,
 }
 
+#[derive(Debug)]
 pub struct CryptoEngine {
     signing_key: Arc<RwLock<SigningKey>>,
     verifying_key: Arc<VerifyingKey>,

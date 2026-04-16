@@ -16,7 +16,7 @@ OUTPUT_FILE  = "redteam_live_results.jsonl"
 SESSION_BASE = hashlib.sha256(str(time.time()).encode()).hexdigest()[:12]
 
 def fire(payload: str, session_id: str) -> dict:
-    body = json.dumps({"payload": payload, "session_id": session_id}).encode()
+    body = json.dumps({"payload": payload, "session_id": session_id}, ensure_ascii=False).encode("utf-8")
     req  = urllib.request.Request(
         SENTINEL_URL,
         data=body,
