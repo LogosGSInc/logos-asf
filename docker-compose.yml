@@ -25,7 +25,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Abigail — Constitutional Control Plane (CP-00) ────────────────────────
+  # ── Abigail — Constitutional Control Plane (CP-00) ──────────────────────── 
   abby:
     build:
       context: ./abigail
@@ -33,6 +33,8 @@ services:
     container_name: asf-abby
     ports:
       - "7070:7070"
+    env_file:
+      - ./.abigail.env
     volumes:
       - ./.abigail.env:/app/.abigail.env:ro
       - abigail-logs:/app/logs
@@ -40,6 +42,7 @@ services:
       - ABIGAIL_BACKEND=${ABIGAIL_BACKEND:-groq}
       - ABIGAIL_HEADLESS=1
       - SENTINEL_URL=http://sentinel:8080
+      - GROQ_API_KEY=${GROQ_API_KEY}
       - ABIGAIL_ADMIN_TOKEN=${ABIGAIL_ADMIN_TOKEN}
       - ABIGAIL_DEMO_TOKEN=${ABIGAIL_DEMO_TOKEN}
     depends_on:
@@ -50,15 +53,8 @@ services:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7070/api/status', timeout=5)"]
       interval: 30s
       timeout: 10s
-      retries: 3
-
+      retries: 3    
 volumes:
   sentinel-audit:
   sentinel-data:
   abigail-logs:
-
-networks:
-  default:
-    name: asf-network
-    driver: bridge
-
