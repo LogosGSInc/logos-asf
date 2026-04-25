@@ -11,6 +11,7 @@ use crate::{
         SessionMemory, StrategicMemory, MemoryConfig, MemoryVerdict,
         MemoryState, classify_payload,
     },
+    govmem::{GovMem, GovMemMode, MessageDirection},
     haap::{HaapGate, HaapConfig, HaapVerdict, AgencyLevel},
 };
 use parking_lot::RwLock;
@@ -64,6 +65,9 @@ pub struct GovernancePipeline {
     strategic_memory: Arc<RwLock<StrategicMemory>>,
     /// Memory accumulator configuration
     memory_config: MemoryConfig,
+
+    /// GovMem V2: RL-enhanced multi-turn detection
+    govmem: Arc<GovMem>,
 }
 
 impl GovernancePipeline {
@@ -96,6 +100,15 @@ impl GovernancePipeline {
             .map(Arc::new);
 
         Ok(Self {
+
+        // Initialize GovMem based on env var
+        let govmem_mode = std::env::var("GOVMEM_MODE")
+            .unwrap_or_else(|_| "v1".to_string());
+        let mode = match govmem_mode.to_lowercase().as_str() {
+            "v2" => GovMemMode::V2,
+            _ => GovMemMode::V1,
+        };
+        let govmem = Arc::new(GovMem::new(mode));
             sentinel,
             corridor,
             overwatch,
@@ -107,6 +120,7 @@ impl GovernancePipeline {
             session_memories: Arc::new(RwLock::new(HashMap::new())),
             strategic_memory: Arc::new(RwLock::new(StrategicMemory::new())),
             memory_config: MemoryConfig::default(),
+            govmem,
         })
     }
 
@@ -143,6 +157,17 @@ impl GovernancePipeline {
 
         // L1: Sentinel surface detection
         let s_signal = self.sentinel.inspect(user_input, Direction::Inbound, session_id);
+
+        // GovMem V2: Record turn and Sentinel signal
+        self.govmem.record_turn(
+            session_id,
+            user_input,
+            MessageDirection::UserToSystem,
+            s_signal.severity >= Severity::High,
+            None, // department_id
+            None, // agent_id
+        );
+        self.govmem.record_layer_signal(session_id, "sentinel", &s_signal);
         self.track_highest(&s_signal, &mut highest_signal);
         let state = self.arbiter.process_with_modifier(&s_signal, threshold_modifier);
         if let Some(result) = self.check_hard_block(&state, "L1-Sentinel", session_id) {
@@ -155,6 +180,7 @@ impl GovernancePipeline {
         let c_signal = self.corridor.evaluate(
             user_input, Direction::Inbound, session_id, evaluator_ref,
         );
+        self.govmem.record_layer_signal(session_id, "corridor_in", &c_signal);
         self.track_highest(&c_signal, &mut highest_signal);
         let state = self.arbiter.process_with_modifier(&c_signal, threshold_modifier);
         if let Some(result) = self.check_hard_block(&state, "L2-Corridor", session_id) {
@@ -166,6 +192,14 @@ impl GovernancePipeline {
         let ow_signal = {
             let overwatch = self.overwatch.read();
             overwatch.evaluate(user_input, Direction::Inbound, session_id)
+        )
+        self.govmem.record_layer_signal(session_id, "overwatch", &ow_signal);
+
+        // GovMem V2: Check drift (multi-turn detection)
+        if self.govmem.should_block(session_id, None) {
+            self.ingest_to_memory(session_id, &highest_signal, &classification);
+            return EnforcementResult::Quarantined("GOVMEM-DRIFT-DETECTED".to_string());
+        }
         };
         self.track_highest(&ow_signal, &mut highest_signal);
         let state = self.arbiter.process_with_modifier(&ow_signal, threshold_modifier);
@@ -255,6 +289,7 @@ impl GovernancePipeline {
         let c_signal = self.corridor.evaluate(
             model_output, Direction::Outbound, session_id, evaluator_ref,
         );
+        self.govmem.record_layer_signal(session_id, "corridor_in", &c_signal);
         let state = self.arbiter.process_with_modifier(&c_signal, threshold_modifier);
         if let Some(result) = self.check_hard_block(&state, "L2-Corridor-Out", session_id) {
             return result;

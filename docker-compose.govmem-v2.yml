@@ -1,0 +1,12 @@
+# GovMem V2 Deployment - RL-Enhanced Multi-Turn Detection
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.govmem-v2.yml up
+
+version: '3.8'
+
+services:
+  sentinel:
+    environment:
+      - GOVMEM_MODE=v2
+      - MPA_MODEL_PATH=/models/mpa_v2.onnx  # Future: RL model
+    volumes:
+      - ./models:/models:ro  # Future: Mount trained MPA model

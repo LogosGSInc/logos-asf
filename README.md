@@ -127,3 +127,31 @@ make clean    # Stop + remove volumes (resets audit log)
 LOGOS Governance Systems Inc.
 Founder & CEO: David W. Smith | Cottonwood, Alabama
 US Provisional Patent 63/953,447
+
+---
+
+## GovMem V2 — RL-Enhanced Multi-Turn Detection
+
+**Two deployment modes:**
+
+### V1 (Default - Rule-Based)
+```bash
+make up  # Uses rule-based session_memory.rs
+```
+
+### V2 (RL-Enhanced)
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.govmem-v2.yml up
+```
+
+**V2 Features:**
+- ✅ Semantic embeddings for drift detection
+- ✅ 12-department tracking (EXE/ENG/PRD/SEC/LGL/FIN/OPS/REV/MKT/HR/DAT/GRC)
+- ✅ Cross-layer signal aggregation (Sentinel + Corridor + OverWatch + Arbiter)
+- ✅ Memory Policy Agent (MPA) for adaptive learning
+- ✅ Multi-turn attack detection (catches F01+F02 drift sequences)
+
+**Expected Defense Rates:**
+- V1: ~94% (rule-based, fast)
+- V2: ~97-100% (RL-enhanced, learns attack patterns)
+

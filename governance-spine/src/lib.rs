@@ -21,3 +21,4 @@ pub use arbiter::{Arbiter, ArbiterConfig, SecurityState, IndustryProfile};
 pub use session_memory::{SessionMemory, StrategicMemory, MemoryConfig, MemoryVerdict, MemoryState};
 pub use haap::{HaapGate, HaapConfig, HaapVerdict, AgencyLevel, IntentToken, IntentTokenBuilder};
 pub use pipeline::{GovernancePipeline, EnforcementResult, RestrictionsApplied};
+pub mod govmem;
