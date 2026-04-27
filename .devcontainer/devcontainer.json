@@ -1,0 +1,46 @@
+{
+  "name": "LOGOS ASF — Sprint 5 Doctrine Mode",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+  "forwardPorts": [7070, 9090],
+  "portsAttributes": {
+    "7070": {
+      "label": "Abigail · Operator Console",
+      "onAutoForward": "notify"
+    },
+    "9090": {
+      "label": "Sentinel OverWatch",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "pip install --user flask groq anthropic httpx prompt_toolkit && echo '✓ Codespaces ready. Run: make up'",
+  "postStartCommand": "echo '\\n══════════════════════════════════════════\\n LOGOS ASF — Sprint 5 (Doctrine Mode)\\n══════════════════════════════════════════\\n\\n Bring up the stack:    make up\\n View the dashboard:    /dashboard\\n View the intake:       /intake\\n Stop the stack:        make down\\n'",
+  "remoteUser": "vscode",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/*.pyc": true
+        }
+      }
+    }
+  }
+}

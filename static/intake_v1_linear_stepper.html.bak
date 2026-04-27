@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASF Job Order Intake — Logos Governance Systems</title>
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&f[]=cabinet-grotesk@700,800,900&display=swap" rel="stylesheet">
+<style>
+/* ── TOKENS ── */
+:root{
+  --bg:#0d0d0b;--surface:#141412;--surface-2:#1a1a18;--surface-3:#202020;
+  --border:rgba(255,255,255,0.07);--border-hi:rgba(255,255,255,0.16);
+  --text:#e6e4de;--muted:#8c8a84;--faint:#4a4845;
+  --primary:#4f98a3;--primary-h:#3a8390;--primary-glow:rgba(79,152,163,0.14);
+  --gold:#e8af34;--gold-glow:rgba(232,175,52,0.12);
+  --success:#6daa45;--error:#dd6974;--warning:#fdab43;
+  --r-sm:6px;--r-md:10px;--r-lg:16px;--r-xl:22px;--r-pill:999px;
+  --font-d:"Cabinet Grotesk",sans-serif;
+  --font-b:"Satoshi",sans-serif;
+  --ease:180ms cubic-bezier(0.16,1,0.3,1);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
+body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text);background:var(--bg)}
+
+/* ── LAYOUT ── */
+.shell{max-width:820px;margin:0 auto;padding:2rem 1.25rem 6rem}
+
+/* ── BRAND ── */
+.brand{display:flex;align-items:center;gap:.75rem;margin-bottom:2rem}
+.brand svg{width:34px;height:34px;flex-shrink:0}
+.brand-name{font-family:var(--font-d);font-size:1.125rem;font-weight:900;letter-spacing:-.02em}
+.brand-name em{color:var(--primary);font-style:normal}
+
+/* ── HEADING ── */
+.pg-head{margin-bottom:2rem}
+.pg-head h1{font-family:var(--font-d);font-size:clamp(1.6rem,4vw,2.25rem);font-weight:900;letter-spacing:-.03em;line-height:1.1;margin-bottom:.4rem}
+.pg-head p{color:var(--muted);font-size:.9375rem;max-width:54ch}
+
+/* ── STEPPER ── */
+.stepper{display:flex;margin-bottom:2.25rem;border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+.step{flex:1;padding:.75rem .5rem;text-align:center;font-size:.72rem;font-weight:600;color:var(--faint);background:var(--surface);border-right:1px solid var(--border);cursor:default;transition:all var(--ease);line-height:1.3}
+.step:last-child{border-right:none}
+.step .sn{display:block;font-family:var(--font-d);font-size:1rem;font-weight:900;margin-bottom:.15rem}
+.step.active{color:var(--primary);background:var(--surface-3)}
+.step.done{color:var(--success)}
+.step.done::after{content:" ✓";font-size:.65rem}
+
+/* ── CARD ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:1.75rem;margin-bottom:1.25rem}
+.card-h{font-family:var(--font-d);font-size:1.05rem;font-weight:800;margin-bottom:.3rem}
+.card-sub{font-size:.8375rem;color:var(--muted);margin-bottom:1.375rem;max-width:58ch;line-height:1.5}
+
+/* ── TYPE CARDS (Step 1) ── */
+.type-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.875rem}
+.type-card{background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:1.375rem 1.125rem;cursor:pointer;transition:all var(--ease);text-align:left;position:relative}
+.type-card:hover{border-color:var(--primary);background:var(--surface-3)}
+.type-card.sel{border-color:var(--primary);background:var(--primary-glow);box-shadow:0 0 0 1px var(--primary) inset}
+.type-icon{font-size:1.875rem;margin-bottom:.6rem;display:block}
+.type-label{font-family:var(--font-d);font-size:.9375rem;font-weight:800;display:block;margin-bottom:.3rem}
+.type-desc{font-size:.775rem;color:var(--muted);line-height:1.45}
+.type-card.sel .type-desc{color:rgba(79,152,163,.9)}
+.sel-dot{position:absolute;top:.7rem;right:.7rem;width:18px;height:18px;border-radius:50%;background:var(--primary);display:none;align-items:center;justify-content:center}
+.sel-dot svg{width:10px;height:10px;stroke:#fff;stroke-width:3;fill:none}
+.type-card.sel .sel-dot{display:flex}
+
+/* ── AGENT FORK ── */
+.fork{margin-top:1.25rem;padding:1.25rem;background:var(--surface-3);border:1px solid var(--border-hi);border-radius:var(--r-lg);display:none}
+.fork.show{display:block}
+.fork-title{font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.875rem}
+.fork-opts{display:flex;flex-direction:column;gap:.625rem}
+.fork-opt{display:flex;align-items:flex-start;gap:.75rem;background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-md);padding:1rem;cursor:pointer;transition:all var(--ease)}
+.fork-opt:hover{border-color:var(--primary)}
+.fork-opt.sel{border-color:var(--primary);background:var(--primary-glow)}
+.fork-radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted);margin-top:3px;flex-shrink:0;transition:all var(--ease)}
+.fork-opt.sel .fork-radio{border-color:var(--primary);background:var(--primary)}
+.fork-opt-title{font-family:var(--font-d);font-size:.9rem;font-weight:800;margin-bottom:.2rem}
+.fork-opt-desc{font-size:.775rem;color:var(--muted);line-height:1.4}
+
+/* ── INFO ICON / TOOLTIP ── */
+.info-wrap{position:relative;display:inline-flex;align-items:center}
+.info-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font-size:.625rem;font-weight:700;cursor:pointer;margin-left:.35rem;transition:all var(--ease);flex-shrink:0;user-select:none;vertical-align:middle}
+.info-icon:hover,.info-icon.open{border-color:var(--primary);color:var(--primary);background:var(--primary-glow)}
+.tooltip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#262624;border:1px solid var(--border-hi);border-radius:var(--r-md);padding:.625rem .875rem;font-size:.775rem;line-height:1.5;color:var(--text);width:220px;z-index:100;pointer-events:none;opacity:0;transition:opacity var(--ease);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.tooltip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#262624}
+.info-icon:hover + .tooltip,.info-icon.open + .tooltip{opacity:1}
+
+/* ── FORM ELEMENTS ── */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+.form-row.full{grid-template-columns:1fr}
+.form-group{display:flex;flex-direction:column;gap:.375rem}
+.form-label{font-size:.8rem;font-weight:600;color:var(--muted);display:flex;align-items:center}
+.req{color:var(--error);margin-left:2px}
+.form-input,.form-select,.form-textarea{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.6875rem .875rem;font-family:var(--font-b);font-size:.9375rem;color:var(--text);transition:border-color var(--ease),box-shadow var(--ease);width:100%}
+.form-input::placeholder,.form-textarea::placeholder{color:var(--faint)}
+.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
+.form-textarea{resize:vertical;min-height:90px;line-height:1.55}
+.form-select option{background:var(--surface-2);color:var(--text)}
+
+/* ── RANGE SLIDER ── */
+.range-group{margin-bottom:1rem}
+.range-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.625rem}
+.range-label{font-size:.8rem;font-weight:600;color:var(--muted);display:flex;align-items:center}
+.range-val{font-family:var(--font-d);font-weight:800;font-size:.875rem;color:var(--primary)}
+.range-track{width:100%;position:relative}
+input[type=range]{width:100%;-webkit-appearance:none;height:4px;border-radius:2px;background:linear-gradient(to right,var(--primary) 0%,var(--primary) var(--p,0%),var(--surface-3) var(--p,0%));cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--primary);border:2.5px solid var(--bg);box-shadow:0 0 0 3px var(--primary-glow)}
+.range-marks{display:flex;justify-content:space-between;margin-top:.375rem}
+.range-mark{font-size:.65rem;color:var(--faint)}
+
+/* ── DELIVERY CARDS ── */
+.delivery-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.875rem;margin-bottom:1.25rem}
+.delivery-card{background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:1.25rem 1rem;cursor:pointer;transition:all var(--ease);display:flex;flex-direction:column}
+.delivery-card:hover{border-color:var(--primary)}
+.delivery-card.sel{border-color:var(--primary);background:var(--primary-glow)}
+.dc-title{font-family:var(--font-d);font-size:1rem;font-weight:900;margin-bottom:.25rem}
+.dc-sub{font-size:.72rem;color:var(--muted);margin-bottom:.875rem;line-height:1.4;flex:1}
+.dc-features{list-style:none;margin-bottom:.875rem}
+.dc-features li{font-size:.75rem;color:var(--muted);padding:.2rem 0;display:flex;align-items:flex-start;gap:.4rem;line-height:1.35}
+.dc-features li::before{content:"·";color:var(--primary);font-weight:900;margin-top:.05rem}
+.delivery-card.sel .dc-features li{color:var(--text)}
+.sentinel-badge{display:flex;align-items:center;gap:.4rem;background:rgba(79,152,163,.1);border:1px solid rgba(79,152,163,.3);border-radius:var(--r-sm);padding:.375rem .625rem;margin-top:auto;font-size:.7rem;font-weight:700;color:var(--primary)}
+.sentinel-dot{width:6px;height:6px;border-radius:50%;background:var(--primary);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── COMPLIANCE GRID ── */
+.compliance-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.625rem}
+.compliance-item{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.75rem;cursor:pointer;transition:all var(--ease);position:relative}
+.compliance-item:hover{border-color:var(--gold)}
+.compliance-item.on{border-color:var(--gold);background:var(--gold-glow)}
+.ci-name{font-size:.8125rem;font-weight:700;margin-bottom:.15rem;display:flex;align-items:center}
+.ci-desc{font-size:.7rem;color:var(--muted);line-height:1.35}
+.compliance-item.on .ci-desc{color:rgba(232,175,52,.8)}
+
+/* ── ALERT ── */
+.alert{border-radius:var(--r-md);padding:.875rem 1rem;font-size:.875rem;margin-bottom:1.25rem;border-left:3px solid;line-height:1.5}
+.alert-teal{background:rgba(79,152,163,.08);border-color:var(--primary);color:var(--primary)}
+.alert-gold{background:rgba(232,175,52,.08);border-color:var(--gold);color:var(--gold)}
+
+/* ── CERT BADGE ── */
+.cert-banner{display:flex;align-items:center;gap:1.125rem;background:linear-gradient(135deg,rgba(232,175,52,.07),rgba(79,152,163,.07));border:1px solid var(--gold);border-radius:var(--r-xl);padding:1.375rem 1.5rem;margin-bottom:1.375rem}
+.cert-icon{font-size:2.25rem;flex-shrink:0}
+.cert-title{font-family:var(--font-d);font-weight:900;font-size:1rem;color:var(--gold);letter-spacing:-.01em}
+.cert-sub{font-size:.8rem;color:var(--muted);margin-top:.2rem;line-height:1.45}
+
+/* ── SUMMARY ── */
+.summary-rows{display:grid;gap:0}
+.sr{display:flex;justify-content:space-between;align-items:flex-start;padding:.75rem 0;border-bottom:1px solid var(--border);font-size:.875rem;gap:1rem}
+.sr:last-child{border-bottom:none}
+.sr-k{color:var(--muted);font-weight:600;min-width:140px;flex-shrink:0}
+.sr-v{color:var(--text);text-align:right;flex:1}
+.tag-row{display:flex;flex-wrap:wrap;gap:.35rem;justify-content:flex-end}
+.tag{background:var(--primary-glow);border:1px solid rgba(79,152,163,.4);color:var(--primary);border-radius:var(--r-sm);padding:.2rem .5rem;font-size:.7rem;font-weight:600}
+
+/* ── HASH BOX ── */
+.hash-box{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:1rem 1.25rem;font-family:monospace;font-size:.8125rem;color:var(--primary);letter-spacing:.03em;margin-bottom:1rem;display:flex;flex-direction:column;gap:.3rem}
+.hash-label{font-size:.7rem;color:var(--muted);font-family:var(--font-b);letter-spacing:.06em;text-transform:uppercase}
+.hash-id{font-size:.9375rem;font-weight:700;color:var(--gold)}
+
+/* ── SUCCESS SCREEN ── */
+.success-wrap{text-align:center;padding:3rem 1rem}
+.success-icon{font-size:4rem;margin-bottom:1rem}
+.success-h{font-family:var(--font-d);font-size:1.75rem;font-weight:900;margin-bottom:.75rem}
+.success-p{color:var(--muted);max-width:42ch;margin:0 auto 2rem;font-size:.9375rem;line-height:1.6}
+.success-id{font-family:monospace;font-size:1.125rem;color:var(--gold);font-weight:700;background:var(--surface-2);display:inline-block;padding:.5rem 1.25rem;border-radius:var(--r-md);border:1px solid var(--gold);margin-bottom:1.5rem;letter-spacing:.04em}
+.success-flags{display:flex;flex-direction:column;gap:.625rem;max-width:380px;margin:0 auto}
+.flag{display:flex;align-items:center;gap:.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.75rem 1rem;font-size:.875rem;text-align:left}
+.flag-icon{font-size:1.25rem;flex-shrink:0}
+.flag-text{font-weight:600}
+.flag-sub{font-size:.75rem;color:var(--muted)}
+
+/* ── NAV ── */
+.nav-bar{display:flex;justify-content:space-between;align-items:center;margin-top:1.75rem;padding-top:1.375rem;border-top:1px solid var(--border)}
+.btn{padding:.75rem 1.75rem;border-radius:var(--r-md);font-family:var(--font-b);font-size:.9375rem;font-weight:700;cursor:pointer;transition:all var(--ease);border:none}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-h);transform:translateY(-1px);box-shadow:0 4px 16px var(--primary-glow)}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
+.btn-ghost:hover{color:var(--text);border-color:var(--border-hi)}
+.btn-submit{background:linear-gradient(135deg,var(--primary),#28707a);color:#fff;padding:.875rem 2.5rem;font-size:1rem}
+.btn-submit:hover{transform:translateY(-2px);box-shadow:0 8px 28px var(--primary-glow)}
+
+/* ── PAGE VISIBILITY ── */
+.page{display:none}.page.active{display:block}
+
+/* ── RESPONSIVE ── */
+@media(max-width:600px){
+  .type-grid,.delivery-grid{grid-template-columns:1fr}
+  .form-row{grid-template-columns:1fr}
+  .stepper .step{font-size:.65rem;padding:.6rem .35rem}
+  .step .sn{font-size:.875rem}
+  .compliance-grid{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- BRAND -->
+<div class="brand">
+  <svg viewBox="0 0 34 34" fill="none" aria-label="Logos Governance Systems">
+    <rect width="34" height="34" rx="8" fill="#141412"/>
+    <polygon points="17,3 30,10 30,24 17,31 4,24 4,10" fill="none" stroke="#4f98a3" stroke-width="1.5"/>
+    <polygon points="17,8 25,13 25,21 17,26 9,21 9,13" fill="none" stroke="#4f98a3" stroke-width=".8" opacity=".45"/>
+    <circle cx="17" cy="17" r="3" fill="#4f98a3"/>
+  </svg>
+  <div class="brand-name">LOGOS <em>ASF</em></div>
+</div>
+
+<div class="pg-head">
+  <h1>Job Order Intake</h1>
+  <p>Every deliverable we ship is governed, secured, and Sentinel-monitored from day one. Tell us exactly what you need.</p>
+</div>
+
+<!-- STEPPER -->
+<div class="stepper">
+  <div class="step active" id="stp1"><span class="sn">01</span>Type</div>
+  <div class="step" id="stp2"><span class="sn">02</span>Scope</div>
+  <div class="step" id="stp3"><span class="sn">03</span>Delivery</div>
+  <div class="step" id="stp4"><span class="sn">04</span>Timeline</div>
+  <div class="step" id="stp5"><span class="sn">05</span>Review</div>
+</div>
+
+<!-- ══════════════ PAGE 1 — TYPE ══════════════ -->
+<div class="page active" id="pg1">
+  <div class="card">
+    <div class="card-h">What are you building?</div>
+    <div class="card-sub">Pick the primary type. Everything downstream adapts to your choice.</div>
+
+    <div class="type-grid">
+      <button class="type-card" id="tc-app" onclick="selType('app')">
+        <span class="type-icon">📱</span>
+        <span class="type-label">App or Software</span>
+        <span class="type-desc">Web apps, mobile tools, dashboards, SaaS platforms, internal systems</span>
+        <span class="sel-dot"><svg viewBox="0 0 10 8"><polyline points="1,4 4,7 9,1"/></svg></span>
+      </button>
+      <button class="type-card" id="tc-ent" onclick="selType('ent')">
+        <span class="type-icon">🏢</span>
+        <span class="type-label">Enterprise Software</span>
+        <span class="type-desc">Multi-tenant systems, ERP/CRM integrations, compliance infrastructure</span>
+        <span class="sel-dot"><svg viewBox="0 0 10 8"><polyline points="1,4 4,7 9,1"/></svg></span>
+      </button>
+      <button class="type-card" id="tc-agt" onclick="selType('agt')">
+        <span class="type-icon">🤖</span>
+        <span class="type-label">Agent or Workflow</span>
+        <span class="type-desc">AI agents, automation pipelines, governed multi-agent orchestration</span>
+        <span class="sel-dot"><svg viewBox="0 0 10 8"><polyline points="1,4 4,7 9,1"/></svg></span>
+      </button>
+    </div>
+
+    <!-- AGENT FORK -->
+    <div class="fork" id="agent-fork">
+      <div class="fork-title">What kind of agent build?</div>
+      <div class="fork-opts">
+        <div class="fork-opt" id="fork-single" onclick="selFork('single')">
+          <div class="fork-radio"></div>
+          <div>
+            <div class="fork-opt-title">One Agent — a single AI worker for a specific job</div>
+            <div class="fork-opt-desc">Best for focused tasks: customer support, research, data processing, document generation. One agent with a constitution, SOP, and handoff contract.</div>
+          </div>
+        </div>
+        <div class="fork-opt" id="fork-team" onclick="selFork('team')">
+          <div class="fork-radio"></div>
+          <div>
+            <div class="fork-opt-title">A Team of Agents — multiple agents working as a firm</div>
+            <div class="fork-opt-desc">A management agent orchestrates specialist sub-agents. Built like a department: RI-01, EN-01, SC-01. Each agent gets its own constitution and the team shares a governance spine.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUBTYPE CHIPS (App / Ent) -->
+    <div id="app-chips" style="display:none;margin-top:1.25rem">
+      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.625rem">Platform</div>
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem" id="chips-app">
+        <div class="chip" onclick="toggleChip(this)">Web Browser</div>
+        <div class="chip" onclick="toggleChip(this)">iOS</div>
+        <div class="chip" onclick="toggleChip(this)">Android</div>
+        <div class="chip" onclick="toggleChip(this)">Desktop (Mac)</div>
+        <div class="chip" onclick="toggleChip(this)">Desktop (Windows)</div>
+        <div class="chip" onclick="toggleChip(this)">API / Backend Only</div>
+        <div class="chip" onclick="toggleChip(this)">Browser Extension</div>
+      </div>
+    </div>
+    <div id="ent-chips" style="display:none;margin-top:1.25rem">
+      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.625rem">System Type</div>
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+        <div class="chip" onclick="toggleChip(this)">ERP Integration</div>
+        <div class="chip" onclick="toggleChip(this)">CRM Platform</div>
+        <div class="chip" onclick="toggleChip(this)">Multi-Tenant SaaS</div>
+        <div class="chip" onclick="toggleChip(this)">Data Pipeline</div>
+        <div class="chip" onclick="toggleChip(this)">Compliance Platform</div>
+        <div class="chip" onclick="toggleChip(this)">Identity / Auth System</div>
+        <div class="chip" onclick="toggleChip(this)">Reporting / BI</div>
+      </div>
+    </div>
+  </div>
+  <div class="nav-bar"><div></div><button class="btn btn-primary" onclick="goTo(2)">Continue →</button></div>
+</div>
+
+<!-- ══════════════ PAGE 2 — SCOPE ══════════════ -->
+<div class="page" id="pg2">
+  <div class="card">
+    <div class="card-h">What does it need to do?</div>
+    <div class="card-sub">Your answers here become the constitutional foundation. Be specific — vagueness costs money.</div>
+
+    <div class="form-row full">
+      <div class="form-group">
+        <label class="form-label">Project name <span class="req">*</span></label>
+        <input class="form-input" id="f-name" type="text" placeholder="e.g. Customer Support Agent for Acme HVAC">
+      </div>
+    </div>
+    <div class="form-row full">
+      <div class="form-group">
+        <label class="form-label">What problem does this solve? <span class="req">*</span></label>
+        <textarea class="form-textarea" id="f-problem" placeholder="Describe the pain point. Who suffers from it, how often, and what it costs them."></textarea>
+      </div>
+    </div>
+    <div class="form-row full">
+      <div class="form-group">
+        <label class="form-label">What does success look like? <span class="req">*</span></label>
+        <textarea class="form-textarea" id="f-success" placeholder="If this works perfectly, what changes? What can someone do they couldn't before?"></textarea>
+      </div>
+    </div>
+    <div class="form-row full">
+      <div class="form-group">
+        <label class="form-label" style="gap:.35rem">
+          What must it never do?
+          <span class="req">*</span>
+          <span class="info-wrap">
+            <span class="info-icon" onclick="toggleTip(this)">ⓘ</span>
+            <span class="tooltip">These become Constitutional Bounds — hard rules the agent or system can never break, regardless of user instructions.</span>
+          </span>
+        </label>
+        <textarea class="form-textarea" id="f-nogo" placeholder="e.g. Must not store patient names. Must not send emails without approval. Must not modify production data directly."></textarea>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Industry / Sector</label>
+        <select class="form-select" id="f-sector">
+          <option value="">Select…</option>
+          <option>Healthcare</option>
+          <option>Legal</option>
+          <option>Finance / Banking</option>
+          <option>Insurance</option>
+          <option>Real Estate</option>
+          <option>Construction / Trades</option>
+          <option>Retail / E-Commerce</option>
+          <option>Manufacturing</option>
+          <option>Logistics / Supply Chain</option>
+          <option>Education</option>
+          <option>Government / Public Sector</option>
+          <option>Non-Profit</option>
+          <option>Technology / SaaS</option>
+          <option>Faith-Based / Ministry</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Existing tech stack (if any)</label>
+        <input class="form-input" id="f-stack" type="text" placeholder="e.g. Python, React, PostgreSQL, Salesforce">
+      </div>
+    </div>
+
+    <div class="range-group" style="margin-top:.5rem">
+      <div class="range-header">
+        <span class="range-label">Complexity</span>
+        <span class="range-val" id="complexity-val">Standard</span>
+      </div>
+      <input type="range" min="0" max="4" value="1" id="complexity-r" oninput="setRange(this,'complexity-val',['Simple — focused task, 1–2 weeks','Standard — multi-feature, 2–6 weeks','Moderate — integrated system, 1–3 months','Complex — full platform, 3–6 months','Enterprise — firm-level, 6+ months'])">
+      <div class="range-marks">
+        <span class="range-mark">Simple</span>
+        <span class="range-mark">Standard</span>
+        <span class="range-mark">Moderate</span>
+        <span class="range-mark">Complex</span>
+        <span class="range-mark">Enterprise</span>
+      </div>
+    </div>
+  </div>
+  <div class="nav-bar">
+    <button class="btn btn-ghost" onclick="goTo(1)">← Back</button>
+    <button class="btn btn-primary" onclick="goTo(3)">Continue →</button>
+  </div>
+</div>
+
+<!-- ══════════════ PAGE 3 — DELIVERY ══════════════ -->
+<div class="page" id="pg3">
+  <div class="alert alert-teal">
+    <strong>🛡️ Sentinel OverWatch</strong>
+    <span class="info-wrap">
+      <span class="info-icon" onclick="toggleTip(this)">ⓘ</span>
+      <span class="tooltip">Sentinel OverWatch is the LOGOS security layer. It monitors every agent or system for threats, behavioral drift, and unauthorized actions in real time.</span>
+    </span>
+    is active on every tier we deliver. It is not optional — it is part of every Governance Certificate.
+  </div>
+
+  <div class="card">
+    <div class="card-h">Delivery Scope</div>
+    <div class="card-sub">Choose the scope of your build. Sentinel OverWatch is active on all three.</div>
+    <div class="delivery-grid">
+      <!-- GOVERNED -->
+      <div class="delivery-card sel" id="dc-gov" onclick="selDelivery('gov')">
+        <div class="dc-title">Governed</div>
+        <div class="dc-sub">One deliverable — fully constitutional from day one</div>
+        <ul class="dc-features">
+          <li>Single agent or application</li>
+          <li>System prompt + SOP</li>
+          <li>
+            <span class="info-wrap" style="display:inline">Constitution
+              <span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span>
+              <span class="tooltip">Constitutional Bounds — rules the agent can never break, no matter what anyone asks.</span>
+            </span>
+          </li>
+          <li>
+            <span class="info-wrap" style="display:inline">Handoff Contract
+              <span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span>
+              <span class="tooltip">A typed agreement between agents — prevents miscommunication and data loss at transition points.</span>
+            </span>
+          </li>
+          <li>Audit trail</li>
+          <li>
+            <span class="info-wrap" style="display:inline">Governance Certificate
+              <span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span>
+              <span class="tooltip">Signed proof your agent was built to a documented governance standard.</span>
+            </span>
+          </li>
+        </ul>
+        <div class="sentinel-badge"><span class="sentinel-dot"></span> Sentinel OverWatch: ACTIVE</div>
+      </div>
+      <!-- FIRM -->
+      <div class="delivery-card" id="dc-firm" onclick="selDelivery('firm')">
+        <div class="dc-title">Firm</div>
+        <div class="dc-sub">A full department — manager + specialist sub-agents</div>
+        <ul class="dc-features">
+          <li>Management agent + sub-agents</li>
+          <li>Individual constitutions per agent</li>
+          <li>Shared governance spine</li>
+          <li>Routing + escalation rules</li>
+          <li>
+            <span class="info-wrap" style="display:inline">DRS scoring
+              <span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span>
+              <span class="tooltip">Dynamic Risk Score — real-time safety rating on every action the agent takes.</span>
+            </span>
+          </li>
+          <li>Full documentation package</li>
+        </ul>
+        <div class="sentinel-badge"><span class="sentinel-dot"></span> Sentinel OverWatch: ACTIVE</div>
+      </div>
+      <!-- ENTERPRISE -->
+      <div class="delivery-card" id="dc-ent" onclick="selDelivery('ent')">
+        <div class="dc-title">Enterprise</div>
+        <div class="dc-sub">All ASF departments — full constitutional infrastructure</div>
+        <ul class="dc-features">
+          <li>All departments (RI-01, EN-01, SC-01, EX-01)</li>
+          <li>Compliance certification</li>
+          <li>SLA + ongoing oversight</li>
+          <li>HAAP integration</li>
+          <li>Human escalation chain</li>
+          <li>Managed post-delivery</li>
+        </ul>
+        <div class="sentinel-badge"><span class="sentinel-dot"></span> Sentinel OverWatch: ACTIVE</div>
+      </div>
+    </div>
+
+    <!-- COMPLIANCE -->
+    <div class="card-h" style="margin-bottom:.3rem">Compliance Requirements</div>
+    <div class="card-sub" style="margin-bottom:1rem">Select every framework your environment must satisfy. We produce a compliance audit document for each one selected.</div>
+    <div class="compliance-grid">
+      <div class="compliance-item" onclick="toggleCI(this)">
+        <div class="ci-name">HIPAA <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Required if your agent handles patient or medical information.</span></span></div>
+        <div class="ci-desc">Healthcare data privacy</div>
+      </div>
+      <div class="compliance-item" onclick="toggleCI(this)">
+        <div class="ci-name">SOC 2 <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Required for SaaS products serving business customers who need security assurance.</span></span></div>
+        <div class="ci-desc">Service org controls</div>
+      </div>
+      <div class="compliance-item" onclick="toggleCI(this)">
+        <div class="ci-name">GDPR <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Required if you serve users located in Europe or the UK.</span></span></div>
+        <div class="ci-desc">EU data protection</div>
+      </div>
+      <div class="compliance-item" onclick="toggleCI(this)">
+        <div class="ci-name">PCI-DSS <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Required if your agent handles payments or payment card data.</span></span></div>
+        <div class="ci-desc">Payment card data</div>
+      </div>
+      <div class="compliance-item" onclick="toggleCI(this)">
+        <div class="ci-name">NIST AI RMF <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Federal AI risk management standard — required for government work or regulated industries.</span></span></div>
+        <div class="ci-desc">AI risk framework</div>
+      </div>
+      <div class="compliance-item" onclick="toggleCI(this)">
+        <div class="ci-name">FedRAMP <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Cloud security standard required for US federal agency deployments.</span></span></div>
+        <div class="ci-desc">Federal cloud security</div>
+      </div>
+      <div class="compliance-item" onclick="toggleCI(this)">
+        <div class="ci-name">CCPA</div>
+        <div class="ci-desc">California consumer privacy</div>
+      </div>
+      <div class="compliance-item" onclick="toggleCI(this)">
+        <div class="ci-name">FERPA</div>
+        <div class="ci-desc">Education records</div>
+      </div>
+      <div class="compliance-item on" onclick="toggleCI(this)">
+        <div class="ci-name">LOGOS Baseline <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">The Logos constitutional governance baseline is always included. It cannot be removed — it is what makes the Governance Certificate valid.</span></span></div>
+        <div class="ci-desc">Always included</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-bar">
+    <button class="btn btn-ghost" onclick="goTo(2)">← Back</button>
+    <button class="btn btn-primary" onclick="goTo(4)">Continue →</button>
+  </div>
+</div>
+
+<!-- ══════════════ PAGE 4 — TIMELINE ══════════════ -->
+<div class="page" id="pg4">
+  <div class="card">
+    <div class="card-h">Timeline & Budget</div>
+    <div class="card-sub">Realistic scoping at intake prevents timeline surprises and change orders.</div>
+
+    <div class="range-group">
+      <div class="range-header">
+        <span class="range-label">Target Timeline</span>
+        <span class="range-val" id="timeline-val">30 days</span>
+      </div>
+      <input type="range" min="0" max="4" value="2" id="timeline-r" oninput="setRange(this,'timeline-val',['ASAP — expedite if possible','2 weeks','30 days','60 days','Flexible — no hard deadline'])">
+      <div class="range-marks">
+        <span class="range-mark">ASAP</span>
+        <span class="range-mark">2 wks</span>
+        <span class="range-mark">30 days</span>
+        <span class="range-mark">60 days</span>
+        <span class="range-mark">Flexible</span>
+      </div>
+    </div>
+
+    <div class="range-group" style="margin-top:1.25rem">
+      <div class="range-header">
+        <span class="range-label">Budget Range</span>
+        <span class="range-val" id="budget-val">$1,000 – $5,000</span>
+      </div>
+      <input type="range" min="0" max="6" value="1" id="budget-r" oninput="setRange(this,'budget-val',['Under $1,000','$1,000 – $5,000','$5,000 – $15,000','$15,000 – $50,000','$50,000 – $150,000','$150,000 – $500,000','$500,000+'])">
+      <div class="range-marks">
+        <span class="range-mark">&lt;$1k</span>
+        <span class="range-mark">$5k</span>
+        <span class="range-mark">$15k</span>
+        <span class="range-mark">$50k</span>
+        <span class="range-mark">$150k</span>
+        <span class="range-mark">$500k</span>
+        <span class="range-mark">$500k+</span>
+      </div>
+    </div>
+
+    <div class="form-row" style="margin-top:1.25rem">
+      <div class="form-group">
+        <label class="form-label">Engagement Model</label>
+        <select class="form-select" id="f-model">
+          <option>One-time delivery</option>
+          <option>Managed monthly</option>
+          <option>Licensing</option>
+          <option>Pilot first, then expand</option>
+          <option>Open to recommendation</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Post-Delivery Support</label>
+        <select class="form-select" id="f-support">
+          <option>None needed</option>
+          <option>30-day bug warranty</option>
+          <option>Monthly maintenance</option>
+          <option>Sentinel OverWatch (ongoing)</option>
+          <option>Full managed service</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">Contact & Authorization</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Full Name <span class="req">*</span></label>
+        <input class="form-input" id="f-contact" type="text" placeholder="Your name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Organization</label>
+        <input class="form-input" id="f-org" type="text" placeholder="Company or individual">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Email <span class="req">*</span></label>
+        <input class="form-input" id="f-email" type="email" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Preferred Contact</label>
+        <select class="form-select" id="f-contact-method">
+          <option>Email</option>
+          <option>Phone call</option>
+          <option>Text / SMS</option>
+          <option>Video call</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row full">
+      <div class="form-group">
+        <label class="form-label">Anything else we should know?</label>
+        <textarea class="form-textarea" style="min-height:75px" id="f-notes" placeholder="Existing vendor relationships, must-avoid technologies, constraints we haven't asked about…"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-bar">
+    <button class="btn btn-ghost" onclick="goTo(3)">← Back</button>
+    <button class="btn btn-primary" onclick="buildReview();goTo(5)">Review Order →</button>
+  </div>
+</div>
+
+<!-- ══════════════ PAGE 5 — REVIEW ══════════════ -->
+<div class="page" id="pg5">
+  <div class="cert-banner">
+    <div class="cert-icon">🏛️</div>
+    <div>
+      <div class="cert-title">LOGOS GOVERNANCE CERTIFICATE — PENDING</div>
+      <div class="cert-sub">Issued upon project acceptance. Certifies constitutional compliance, Sentinel OverWatch integration, and governed delivery standards. This certificate is your chain of custody from intent to deployment.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">Scope Summary</div>
+    <div class="card-sub">Review carefully. This becomes the binding scope reference for your project and the basis of the Governance Certificate.</div>
+    <div class="summary-rows" id="review-rows"></div>
+  </div>
+
+  <div class="hash-box" id="hash-display">
+    <span class="hash-label">Scope Hash (SHA-256 intent fingerprint)</span>
+    <span class="hash-label">Job Order ID</span>
+    <span class="hash-id" id="job-id">Generating…</span>
+  </div>
+
+  <div class="alert alert-gold">📋 Once submitted, an ASF intake specialist (Abigail) will review your order within 24 hours and issue a formal Statement of Work.</div>
+
+  <div class="nav-bar">
+    <button class="btn btn-ghost" onclick="goTo(4)">← Back</button>
+    <button class="btn btn-primary btn-submit" onclick="submitOrder()">Submit Job Order →</button>
+  </div>
+</div>
+
+<!-- ══════════════ SUCCESS ══════════════ -->
+<div class="page" id="pg-ok">
+  <div class="success-wrap">
+    <div class="success-icon">✅</div>
+    <h2 class="success-h">Job Order Received</h2>
+    <p class="success-p">Your order has been submitted to the Logos ASF intake queue. Abigail will review and respond within 24 hours.</p>
+    <div class="success-id" id="confirm-id">LOGOS-XXXXXXXX-XXXXXXXX</div>
+    <div class="success-flags">
+      <div class="flag">
+        <div class="flag-icon">🏛️</div>
+        <div>
+          <div class="flag-text">Governance Certificate</div>
+          <div class="flag-sub">PENDING — issued at scope lock</div>
+        </div>
+      </div>
+      <div class="flag">
+        <div class="flag-icon">🛡️</div>
+        <div>
+          <div class="flag-text">Sentinel OverWatch</div>
+          <div class="flag-sub">ACTIVE on delivery</div>
+        </div>
+      </div>
+      <div class="flag">
+        <div class="flag-icon">📋</div>
+        <div>
+          <div class="flag-text">Abigail Review</div>
+          <div class="flag-sub">Within 24 hours</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /shell -->
+
+<!-- CHIP STYLE (inline for dynamic chips) -->
+<style>
+.chip{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:.35rem .7rem;font-size:.7875rem;cursor:pointer;transition:all var(--ease);color:var(--muted)}
+.chip:hover{border-color:var(--primary);color:var(--text)}
+.chip.on{background:var(--primary-glow);border-color:var(--primary);color:var(--primary);font-weight:600}
+</style>
+
+<script>
+// ── STATE ──
+const S = {
+  type: null,
+  fork: null,
+  delivery: 'gov',
+  page: 1
+};
+
+// ── TYPE SELECTION ──
+function selType(t) {
+  S.type = t;
+  ['app','ent','agt'].forEach(k => {
+    document.getElementById('tc-' + k).classList.toggle('sel', k === t);
+  });
+  document.getElementById('agent-fork').classList.toggle('show', t === 'agt');
+  document.getElementById('app-chips').style.display = t === 'app' ? 'block' : 'none';
+  document.getElementById('ent-chips').style.display = t === 'ent' ? 'block' : 'none';
+}
+
+// ── FORK ──
+function selFork(f) {
+  S.fork = f;
+  ['single','team'].forEach(k => {
+    document.getElementById('fork-' + k).classList.toggle('sel', k === f);
+  });
+}
+
+// ── DELIVERY ──
+function selDelivery(d) {
+  S.delivery = d;
+  ['gov','firm','ent'].forEach(k => {
+    document.getElementById('dc-' + k).classList.toggle('sel', k === d);
+  });
+}
+
+// ── CHIPS ──
+function toggleChip(el) { el.classList.toggle('on'); }
+function toggleCI(el) { el.classList.toggle('on'); }
+
+// ── RANGE ──
+function setRange(el, outId, labels) {
+  const v = parseInt(el.value);
+  const pct = (v / (parseInt(el.max))) * 100;
+  el.style.setProperty('--p', pct + '%');
+  document.getElementById(outId).textContent = labels[v];
+}
+
+// ── TOOLTIP ──
+function toggleTip(icon) {
+  const wasOpen = icon.classList.contains('open');
+  document.querySelectorAll('.info-icon.open').forEach(i => i.classList.remove('open'));
+  if (!wasOpen) icon.classList.add('open');
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.classList.contains('info-icon')) {
+    document.querySelectorAll('.info-icon.open').forEach(i => i.classList.remove('open'));
+  }
+});
+
+// ── NAVIGATION ──
+function goTo(n) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(n === 'ok' ? 'pg-ok' : 'pg' + n).classList.add('active');
+  document.querySelectorAll('.step').forEach((s, i) => {
+    s.classList.remove('active', 'done');
+    if (typeof n === 'number') {
+      if (i + 1 < n) s.classList.add('done');
+      if (i + 1 === n) s.classList.add('active');
+    } else {
+      s.classList.add('done');
+    }
+  });
+  S.page = n;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── SIMPLE HASH (FNV-like, no crypto API needed in sandbox) ──
+function simpleHash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(16).toUpperCase().padStart(8, '0');
+}
+
+function genJobId(data) {
+  const now = new Date();
+  const ts = now.getFullYear().toString() +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    String(now.getDate()).padStart(2, '0');
+  const hash = simpleHash(JSON.stringify(data));
+  return `LOGOS-${ts}-${hash}`;
+}
+
+// ── COLLECT STATE ──
+function collectState() {
+  const typeMap = { app: 'App / Software', ent: 'Enterprise Software', agt: 'Agent / Workflow' };
+  const delivMap = { gov: 'Governed', firm: 'Firm', ent: 'Enterprise' };
+  const compls = Array.from(document.querySelectorAll('.compliance-item.on')).map(el =>
+    el.querySelector('.ci-name').textContent.replace(/ⓘ/g, '').trim()
+  );
+
+  return {
+    type: S.type ? typeMap[S.type] : 'Not selected',
+    fork: S.type === 'agt' ? (S.fork === 'single' ? 'Single Agent' : S.fork === 'team' ? 'Agent Team' : 'Not selected') : null,
+    name: document.getElementById('f-name').value || '',
+    problem: document.getElementById('f-problem').value || '',
+    success: document.getElementById('f-success').value || '',
+    nogo: document.getElementById('f-nogo').value || '',
+    sector: document.getElementById('f-sector').value || '',
+    stack: document.getElementById('f-stack').value || '',
+    complexity: document.getElementById('complexity-val').textContent,
+    delivery: delivMap[S.delivery],
+    compliance: compls,
+    timeline: document.getElementById('timeline-val').textContent,
+    budget: document.getElementById('budget-val').textContent,
+    engmodel: document.getElementById('f-model').value,
+    support: document.getElementById('f-support').value,
+    contact: document.getElementById('f-contact').value || '',
+    email: document.getElementById('f-email').value || '',
+    org: document.getElementById('f-org').value || '',
+    contactMethod: document.getElementById('f-contact-method').value,
+    notes: document.getElementById('f-notes').value || ''
+  };
+}
+
+// ── BUILD REVIEW ──
+function buildReview() {
+  const d = collectState();
+  const id = genJobId(d);
+  document.getElementById('job-id').textContent = id;
+  window._jobId = id;
+
+  const rows = [
+    ['Order Type', d.type],
+    ...(d.fork ? [['Agent Structure', d.fork]] : []),
+    ['Project Name', d.name || '—'],
+    ['Industry', d.sector || '—'],
+    ['Complexity', d.complexity],
+    ['Delivery Scope', d.delivery],
+    ['Compliance', d.compliance.length ? d.compliance : ['Logos Baseline']],
+    ['Timeline', d.timeline],
+    ['Budget', d.budget],
+    ['Engagement', d.engmodel],
+    ['Post-Delivery', d.support],
+    ['Contact', [d.contact, d.email, d.org].filter(Boolean).join(' · ') || '—'],
+  ];
+
+  document.getElementById('review-rows').innerHTML = rows.map(([k, v]) => {
+    const val = Array.isArray(v)
+      ? '<div class="tag-row">' + v.map(x => `<span class="tag">${x}</span>`).join('') + '</div>'
+      : `<span>${v}</span>`;
+    return `<div class="sr"><span class="sr-k">${k}</span><span class="sr-v">${val}</span></div>`;
+  }).join('');
+}
+
+// ── SUBMIT ──
+function submitOrder() {
+  const jobId = window._jobId || 'LOGOS-' + Date.now();
+  document.getElementById('confirm-id').textContent = jobId;
+
+  // Collect all form data for API submission
+  const payload = {
+    job_order_id: jobId,
+    scope_hash: window._scopeHash || '',
+    order_type: window._sel?.type || '',
+    agent_fork: window._sel?.fork || '',
+    delivery_tier: window._sel?.delivery || '',
+    sector: document.getElementById('f-sector')?.value || '',
+    compliance: Array.from(document.querySelectorAll('.comp-chip.sel'))
+                     .map(el => el.dataset.val || el.textContent.trim()),
+    constraints: document.getElementById('f-constraints')?.value || '',
+    problem: document.getElementById('f-problem')?.value || '',
+    success: document.getElementById('f-success')?.value || '',
+    name: document.getElementById('f-name')?.value || '',
+    email: document.getElementById('f-email')?.value || '',
+  };
+
+  // POST to Abigail's intake endpoint — non-blocking, show success immediately
+  fetch('/api/intake', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(r => r.json()).then(data => {
+    if (!data.ok) console.warn('Intake API error:', data.error);
+  }).catch(e => console.warn('Intake API unreachable:', e));
+
+  goTo('ok');
+}
+
+// ── INIT RANGES ──
+document.addEventListener('DOMContentLoaded', () => {
+  setRange(document.getElementById('complexity-r'), 'complexity-val',
+    ['Simple — focused task, 1–2 weeks','Standard — multi-feature, 2–6 weeks','Moderate — integrated system, 1–3 months','Complex — full platform, 3–6 months','Enterprise — firm-level, 6+ months']);
+  setRange(document.getElementById('timeline-r'), 'timeline-val',
+    ['ASAP — expedite if possible','2 weeks','30 days','60 days','Flexible — no hard deadline']);
+  setRange(document.getElementById('budget-r'), 'budget-val',
+    ['Under $1,000','$1,000 – $5,000','$5,000 – $15,000','$15,000 – $50,000','$50,000 – $150,000','$150,000 – $500,000','$500,000+']);
+});
+</script>
+</body>
+</html>

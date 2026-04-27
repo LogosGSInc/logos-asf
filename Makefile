@@ -2,7 +2,7 @@
 # US Provisional Patent 63/953,447
 # Usage: make up | make down | make logs | make redteam | make status
 
-.PHONY: up down logs status redteam test clean
+.PHONY: up down logs status redteam test clean windows-help
 
 ## ── 1-click launch ──────────────────────────────────────────────────────────
 up:
@@ -115,3 +115,12 @@ audit:
 clean:
 	docker compose down -v
 	docker system prune -f
+
+## ── Windows ─────────────────────────────────────────────────────────────────
+windows-help:
+	@echo ""
+	@echo "Windows one-click deploy:"
+	@echo "  PowerShell:  pwsh -ExecutionPolicy Bypass -File start.ps1"
+	@echo "  CMD:         start.bat"
+	@echo "  Or just double-click start.bat from File Explorer."
+	@echo ""

@@ -19,7 +19,20 @@ SPINE_URL = os.environ.get("GOVERNANCE_SPINE_URL", "http://governance-spine:8080
 # ── Existing evaluate endpoint (preserved) ────────────────────────────────────
 @app.route("/health", methods=["GET"])
 def health():
-    return {"ok": True}, 200
+    """Enriched health response — forwards chain_length/audit_entries from Rust spine when available."""
+    payload = {"ok": True, "service": "sentinel-overwatch"}
+    try:
+        resp = requests.get(f"{SPINE_URL}/health", timeout=2)
+        if resp.ok:
+            spine_data = resp.json()
+            payload["chain_length"] = spine_data.get("chain_length", 0)
+            payload["audit_entries"] = spine_data.get("audit_entries", 0)
+            payload["spine"] = "online"
+        else:
+            payload["spine"] = "degraded"
+    except Exception:
+        payload["spine"] = "unreachable"
+    return jsonify(payload), 200
 
 
 @app.route("/evaluate", methods=["POST"])
