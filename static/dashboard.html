@@ -56,7 +56,7 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 .metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:.875rem;margin-bottom:1.5rem}
 .metric{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:1rem 1.125rem;transition:border-color var(--ease)}
 .metric:hover{border-color:var(--border-hi)}
-.metric .label{font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.4rem}
+.metric .label{font-size:.7rem;color:var(--muted);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.4rem;display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
 .metric .value{font-family:var(--font-d);font-size:1.625rem;font-weight:900;letter-spacing:-.02em;color:var(--text)}
 .metric .sub{font-size:.7rem;color:var(--faint);margin-top:.3rem;line-height:1.4}
 
@@ -109,8 +109,10 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 .mini{flex:1;padding:.5rem .65rem;border-radius:var(--r-sm);font-family:var(--font-b);font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--surface-3);color:var(--muted);transition:all var(--ease)}
 .mini:hover:not(:disabled){border-color:var(--primary);color:var(--primary)}
 .mini:disabled{opacity:.5;cursor:not-allowed}
-.mini.kill:hover:not(:disabled){border-color:var(--error);color:var(--error)}
-.mini.restart:hover:not(:disabled){border-color:var(--gold);color:var(--gold)}
+.mini.isolate:hover:not(:disabled){border-color:var(--warning);color:var(--warning)}
+.mini.reinstate:hover:not(:disabled){border-color:var(--gold);color:var(--gold)}
+.mini.review{cursor:pointer;opacity:1;border-color:rgba(79,152,163,.35);color:var(--primary)}
+.mini.review:hover{background:var(--primary-glow);border-color:var(--primary)}
 
 /* ── HEALTH LIST ── */
 .health-list{display:flex;flex-direction:column;gap:.625rem}
@@ -122,6 +124,8 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 .jobs-table th,.agent-table th{text-align:left;padding:.625rem .75rem;background:var(--surface-2);border-bottom:1px solid var(--border-hi);color:var(--muted);font-weight:700;font-size:.7rem;letter-spacing:.06em;text-transform:uppercase}
 .jobs-table td,.agent-table td{padding:.625rem .75rem;border-bottom:1px solid var(--border);color:var(--text)}
 .jobs-table tr:hover,.agent-table tr:hover{background:var(--surface-2)}
+.agent-table tbody tr{cursor:pointer;transition:background var(--ease)}
+.agent-table tbody tr:hover{background:var(--primary-glow) !important}
 
 /* ── CHAT PANEL ── */
 .chat-panel{display:grid;grid-template-rows:auto 1fr auto;height:calc(100vh - 340px);min-height:500px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);overflow:hidden}
@@ -194,6 +198,38 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 .btn-clear{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:var(--r-md);padding:.75rem 1.25rem;font-family:var(--font-b);font-size:.8125rem;font-weight:700;cursor:pointer;transition:all var(--ease)}
 .btn-clear:hover{color:var(--text);border-color:var(--border-hi)}
 
+/* ── TRUTH BADGES ── */
+.tbadge{display:inline-flex;align-items:center;gap:.25rem;font-size:.575rem;font-weight:800;padding:.12rem .4rem;border-radius:var(--r-pill);letter-spacing:.07em;text-transform:uppercase;vertical-align:middle;white-space:nowrap;flex-shrink:0}
+.tbadge.live{background:rgba(109,170,69,.18);color:var(--success);border:1px solid rgba(109,170,69,.4)}
+.tbadge.scaffold{background:rgba(253,171,67,.12);color:var(--warning);border:1px solid rgba(253,171,67,.35)}
+.tbadge.shim{background:rgba(95,158,196,.12);color:var(--info);border:1px solid rgba(95,158,196,.35)}
+.tbadge.not-impl{background:rgba(74,72,69,.25);color:var(--faint);border:1px solid rgba(74,72,69,.5)}
+.tbadge.audit-logged{background:rgba(79,152,163,.14);color:var(--primary);border:1px solid rgba(79,152,163,.35)}
+
+/* ── DRAWER OVERLAY ── */
+.drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;align-items:flex-start;justify-content:flex-end}
+.drawer-backdrop.show{display:flex}
+.drawer{width:min(520px,100vw);height:100vh;background:var(--surface);border-left:1px solid var(--border-hi);overflow-y:auto;display:flex;flex-direction:column;animation:slideIn 180ms cubic-bezier(0.16,1,0.3,1)}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);background:var(--surface-2);flex-shrink:0;position:sticky;top:0;z-index:1}
+.drawer-title{font-family:var(--font-d);font-size:1rem;font-weight:900;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.drawer-close{background:transparent;border:1px solid var(--border);border-radius:var(--r-md);color:var(--muted);width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;transition:all var(--ease);flex-shrink:0}
+.drawer-close:hover{border-color:var(--error);color:var(--error)}
+.drawer-body{flex:1;padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:1rem}
+.drawer-section{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.875rem 1rem}
+.drawer-section h4{font-family:var(--font-d);font-size:.875rem;font-weight:800;margin-bottom:.6rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.drawer-row{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;padding:.4rem 0;border-bottom:1px solid var(--border);font-size:.8125rem}
+.drawer-row:last-child{border-bottom:none;padding-bottom:0}
+.drawer-row .dk{color:var(--muted);flex-shrink:0;font-size:.75rem;width:130px;padding-top:.05rem}
+.drawer-row .dv{color:var(--text);font-size:.8125rem;text-align:right;flex:1;line-height:1.4}
+.drawer-next{background:rgba(232,175,52,.06);border:1px solid rgba(232,175,52,.25);border-radius:var(--r-sm);padding:.625rem .875rem;font-size:.75rem;color:var(--muted);line-height:1.5}
+.drawer-next strong{color:var(--gold)}
+.drawer-note{font-size:.75rem;color:var(--muted);line-height:1.5;padding:.5rem 0}
+
+/* ── CONSOLE FOOTER ── */
+.console-footer{margin-top:2.5rem;padding:.875rem 1.25rem;border-top:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);font-size:.7rem;color:var(--faint);line-height:1.7;display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .75rem}
+.console-footer strong{color:var(--muted)}
+
 /* ── RESPONSIVE ── */
 @media(max-width:1100px){
   .metrics{grid-template-columns:repeat(3,1fr)}
@@ -206,6 +242,7 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
   .department-grid{grid-template-columns:1fr}
   .shell{padding:1rem 1rem 3rem}
   .chat-panel{height:calc(100vh - 300px)}
+  .drawer{width:100vw}
 }
 </style>
 </head>
@@ -247,6 +284,27 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 <div id="tab-agents" class="tab"></div>
 <div id="tab-governance" class="tab"></div>
 
+<!-- ── FOOTER ── -->
+<footer class="console-footer">
+  <strong>LOGOS ASF Operator Console</strong>
+  <span>—</span>
+  <span>Live Abigail/Sentinel control plane with scaffolded department telemetry.</span>
+  <span>Controls marked <strong>SHIM</strong> affect governance state, not live worker processes.</span>
+  <span>Metrics labeled <strong>SCAFFOLD</strong> are computed estimates, not live telemetry.</span>
+  <span>Abigail turns, Sentinel chain, audit tail, kill switch, and e-brake are <strong>LIVE</strong>.</span>
+</footer>
+
+</div><!-- /shell -->
+
+<!-- ── REVIEW DRAWER ── -->
+<div id="drawerBackdrop" class="drawer-backdrop" onclick="closeDrawerBackdrop(event)">
+  <div id="drawer" class="drawer" onclick="event.stopPropagation()">
+    <div class="drawer-head">
+      <span id="drawerTitle" class="drawer-title"></span>
+      <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    </div>
+    <div id="drawerBody" class="drawer-body"></div>
+  </div>
 </div>
 
 <script>
@@ -262,18 +320,30 @@ const ENDPOINTS = {
 
 /* ── 12-DEPARTMENT DOCTRINE STACK ── */
 const doctrine = [
-  { code:"EXE", name:"Executive / Command", lead:"EXE-01 (Chief Executive Agent)", sensitivity:"Critical", role:"Command", status:"green" },
-  { code:"ENG", name:"Engineering", lead:"ENG-01 (Chief Engineering Agent)", sensitivity:"Critical", role:"Build", status:"green" },
-  { code:"PRD", name:"Product", lead:"PRD-01 (Chief Product Agent)", sensitivity:"High", role:"Specification", status:"green" },
-  { code:"SEC", name:"Security", lead:"SEC-01 (Chief Security Agent)", sensitivity:"Critical", role:"Defense", status:"green" },
-  { code:"LGL", name:"Legal", lead:"LGL-01 (Chief Legal Agent)", sensitivity:"Critical", role:"Review", status:"yellow" },
-  { code:"FIN", name:"Finance", lead:"FIN-01 (Chief Financial Agent)", sensitivity:"Critical", role:"Financial Ground Truth", status:"green" },
-  { code:"OPS", name:"Operations", lead:"OPS-01 (Chief Operations Agent)", sensitivity:"High", role:"Runtime Reliability", status:"green" },
-  { code:"REV", name:"Revenue / Sales", lead:"REV-01 (Chief Revenue Agent)", sensitivity:"High", role:"Pilot-to-License", status:"green" },
-  { code:"MKT", name:"Marketing", lead:"MKT-01 (Marketing Director Agent)", sensitivity:"High", role:"External Narrative", status:"green" },
-  { code:"HR",  name:"People / HR", lead:"HR-01 (Chief People Agent)", sensitivity:"High", role:"People + Agent Workforce", status:"green" },
-  { code:"DAT", name:"Data", lead:"DAT-01 (Chief Data Agent)", sensitivity:"High", role:"Analytics + Pipelines", status:"green" },
-  { code:"GRC", name:"Governance, Risk & Compliance", lead:"GRC-01 (Chief GRC Agent)", sensitivity:"Critical", role:"Policy + Risk", status:"green" }
+  { code:"EXE", name:"Executive / Command", lead:"EXE-01 (Chief Executive Agent)", sensitivity:"Critical", role:"Command", status:"green",
+    nextWiring:"Connect EXE to a real execution-plan registry and task orchestration bus." },
+  { code:"ENG", name:"Engineering", lead:"ENG-01 (Chief Engineering Agent)", sensitivity:"Critical", role:"Build", status:"green",
+    nextWiring:"Wire ENG to the real engineering job queue and PR/CI pipeline events." },
+  { code:"PRD", name:"Product", lead:"PRD-01 (Chief Product Agent)", sensitivity:"High", role:"Specification", status:"green",
+    nextWiring:"Link PRD to intake submissions and product requirement documents store." },
+  { code:"SEC", name:"Security", lead:"SEC-01 (Chief Security Agent)", sensitivity:"Critical", role:"Defense", status:"green",
+    nextWiring:"Connect SEC to threat-model events and security-scan pipeline output." },
+  { code:"LGL", name:"Legal", lead:"LGL-01 (Chief Legal Agent)", sensitivity:"Critical", role:"Review", status:"yellow",
+    nextWiring:"Wire LGL to compliance trigger events from intake and a legal review queue." },
+  { code:"FIN", name:"Finance", lead:"FIN-01 (Chief Financial Agent)", sensitivity:"Critical", role:"Financial Ground Truth", status:"green",
+    nextWiring:"Connect FIN to real pricing, invoicing, and cost-tracking data sources." },
+  { code:"OPS", name:"Operations", lead:"OPS-01 (Chief Operations Agent)", sensitivity:"High", role:"Runtime Reliability", status:"green",
+    nextWiring:"Wire OPS to Docker health checks, deployment events, and runbook automation." },
+  { code:"REV", name:"Revenue / Sales", lead:"REV-01 (Chief Revenue Agent)", sensitivity:"High", role:"Pilot-to-License", status:"green",
+    nextWiring:"Connect REV to CRM events and pilot-offer lifecycle tracking." },
+  { code:"MKT", name:"Marketing", lead:"MKT-01 (Marketing Director Agent)", sensitivity:"High", role:"External Narrative", status:"green",
+    nextWiring:"Link MKT to real campaign analytics and published content approval flows." },
+  { code:"HR",  name:"People / HR", lead:"HR-01 (Chief People Agent)", sensitivity:"High", role:"People + Agent Workforce", status:"green",
+    nextWiring:"Wire HR to operator onboarding flows and agent provisioning state." },
+  { code:"DAT", name:"Data", lead:"DAT-01 (Chief Data Agent)", sensitivity:"High", role:"Analytics + Pipelines", status:"green",
+    nextWiring:"Connect DAT to real telemetry pipelines and BI/analytics event streams." },
+  { code:"GRC", name:"Governance, Risk & Compliance", lead:"GRC-01 (Chief GRC Agent)", sensitivity:"Critical", role:"Policy + Risk", status:"green",
+    nextWiring:"Wire GRC to audit chain exports, policy engine, and risk-event bus." }
 ];
 
 function buildDepartmentState() {
@@ -324,6 +394,9 @@ const navItems = [
 function badge(status, label) {
   return `<span class="status ${status}"><span class="dot ${status}"></span>${label}</span>`;
 }
+function tbadge(kind, label) {
+  return `<span class="tbadge ${kind}">${label}</span>`;
+}
 function pctBar(value) {
   const v = Math.max(0, Math.min(100, value));
   return `<div class="bar"><div class="fill" style="width:${v}%"></div></div>`;
@@ -331,12 +404,7 @@ function pctBar(value) {
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 }
-/* Governance-safe markdown bubble renderer.
-   Escapes everything first, then promotes ONLY:
-     - ```...``` fenced blocks → <pre><code>
-     - `...`     inline        → <code>
-     - newlines               → preserved via white-space:pre-wrap (CSS)
-   No other HTML promotion. No XSS surface. */
+/* Governance-safe markdown bubble renderer. */
 function renderBubble(text) {
   let s = escapeHtml(text);
   s = s.replace(/```([a-zA-Z0-9]*)\n?([\s\S]*?)```/g, (_, lang, body) =>
@@ -349,8 +417,6 @@ function formatTs(iso) {
   try { return new Date(iso).toISOString().replace("T"," ").slice(5, 19) + "Z"; }
   catch { return iso; }
 }
-/* Render one audit row. Click to expand full JSON.
-   Shows '⤵ more' indicator when data is truncated. */
 function renderAuditRow(e, idx, maxLen) {
   const fullJson = JSON.stringify(e.data || {}, null, 2);
   const oneLine = JSON.stringify(e.data || {});
@@ -399,14 +465,8 @@ async function postJSON(url, payload) {
   return res.json();
 }
 
-/* ── LIVE REFRESH ──
-   Hot path: hits 3 endpoints, updates state, then ONLY re-renders
-   pieces that should change on poll (metrics + active tab's live bits).
-   Critically: does NOT re-render the chat tab if the user is interacting.
-   That would destroy the textarea, kill focus, and erase mid-typed messages.
-*/
+/* ── LIVE REFRESH ── */
 async function refreshLive() {
-  const refreshStart = Date.now();
   let abigail = null, sentinel = null, audit = [];
   try { abigail = await getJSON(`${ENDPOINTS.abigailBase}/api/status`); }
   catch (e) { abigail = { error: String(e) }; }
@@ -425,7 +485,6 @@ async function refreshLive() {
   updateRefreshStatus();
 }
 
-/* Refresh only the parts that should update on poll. Active-tab-aware. */
 function refreshSelective() {
   renderMetrics();
   const activeTab = document.querySelector(".tab.active")?.id?.replace("tab-","") || "overview";
@@ -433,8 +492,6 @@ function refreshSelective() {
   if (activeTab === "departments") renderDepartments();
   if (activeTab === "agents")      renderAgents();
   if (activeTab === "governance")  renderGovernance();
-  /* Chat: NEVER re-render the stream/composer while user may be typing.
-     Only update the header pills (backend / KS / CRSV). */
   if (activeTab === "chat") refreshChatHeader();
 }
 
@@ -503,9 +560,6 @@ function renderMetrics() {
   const totalAgents = state.departments.reduce((n, d) => n + d.agents.length, 0);
   const tokenUsage = state.departments.reduce((n, d) => n + d.tokenUsage, 0);
   const abigailTurns = state.abigail?.turns ?? 0;
-  /* Sentinel chain_length is the cryptographic audit chain length —
-     a real governance number. When Sentinel hasn't enriched /health yet,
-     show the size of the recent-events tail with an honest label. */
   const sentinelChain = state.sentinel?.chain_length ?? state.sentinel?.audit_entries ?? null;
   const eventsValue = sentinelChain != null ? sentinelChain : `${state.audit.length} recent`;
   const eventsLabel = sentinelChain != null ? "Audit Chain Length" : "Recent Events";
@@ -514,16 +568,16 @@ function renderMetrics() {
     : "From Abigail audit tail (Sentinel chain not yet enriched)";
 
   const cells = [
-    ["Firm Health", `${firmHealth}%`, "Runtime posture · spine + control plane"],
-    ["Active Jobs", activeJobs, "Tracked job orders in play"],
-    ["Agent Count", totalAgents, "Lead + primary + sub-agents"],
-    ["Token Usage", tokenUsage.toLocaleString(), "Department facilitation load"],
-    ["Abigail Turns", abigailTurns, "Live session interaction count"],
-    [eventsLabel, eventsValue, eventsSub]
+    { label:"Firm Health",    value:`${firmHealth}%`, sub:"Runtime posture · spine + control plane",  kind:"live" },
+    { label:"Active Jobs",    value:activeJobs,        sub:"Tracked job orders (static list — scaffold)", kind:"scaffold" },
+    { label:"Agent Count",    value:totalAgents,       sub:"Lead + primary + sub-agents (scaffold)",    kind:"scaffold" },
+    { label:"Token Usage",    value:tokenUsage.toLocaleString(), sub:"Estimated facilitation load (scaffold)", kind:"scaffold" },
+    { label:"Abigail Turns",  value:abigailTurns,      sub:"Live session interaction count",             kind:"live" },
+    { label:eventsLabel,      value:eventsValue,        sub:eventsSub,                                   kind:"live" }
   ];
-  metrics.innerHTML = cells.map(([label, value, sub]) => `
+  metrics.innerHTML = cells.map(({ label, value, sub, kind }) => `
     <div class="metric">
-      <div class="label">${label}</div>
+      <div class="label">${label} ${tbadge(kind, kind === "live" ? "LIVE" : "SCAFFOLD")}</div>
       <div class="value">${value}</div>
       <div class="sub">${sub}</div>
     </div>
@@ -543,8 +597,8 @@ function renderOverview() {
       <div class="card panel">
         <div class="row">
           <div>
-            <h3>Department Command Grid</h3>
-            <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem">Live command view for the 12-department doctrine stack.</div>
+            <h3>Department Command Grid ${tbadge("scaffold","SCAFFOLD")}</h3>
+            <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem">Completion, alignment, and token data are <strong style="color:var(--warning)">scaffolded estimates</strong> — not live telemetry. Click Review on any card for details.</div>
           </div>
           ${badge(unhealthy ? "yellow" : "green", unhealthy ? `${unhealthy} need review` : "All nominal")}
         </div>
@@ -559,21 +613,20 @@ function renderOverview() {
                 ${badge(d.status, d.status === "green" ? "Aligned" : "Review")}
               </div>
               <div class="section">
-                <div class="row" style="font-size:.75rem"><span class="tiny">Job completion</span><strong style="font-size:.8125rem">${d.completion}%</strong></div>
+                <div class="row" style="font-size:.75rem"><span class="tiny">Job completion ${tbadge("scaffold","SCAFFOLD")}</span><strong style="font-size:.8125rem">${d.completion}%</strong></div>
                 ${pctBar(d.completion)}
               </div>
               <div class="section">
-                <div class="row" style="font-size:.75rem"><span class="tiny">Agent alignment</span><strong style="font-size:.8125rem">${d.alignment}%</strong></div>
+                <div class="row" style="font-size:.75rem"><span class="tiny">Agent alignment ${tbadge("scaffold","SCAFFOLD")}</span><strong style="font-size:.8125rem">${d.alignment}%</strong></div>
                 ${pctBar(d.alignment)}
               </div>
               <div class="kpis">
-                <div class="kpi"><span class="tiny">Jobs</span><strong>${d.activeJobs}</strong></div>
-                <div class="kpi"><span class="tiny">Tokens</span><strong>${(d.tokenUsage/1000).toFixed(1)}K</strong></div>
+                <div class="kpi"><span class="tiny">Jobs ${tbadge("scaffold","SC")}</span><strong>${d.activeJobs}</strong></div>
+                <div class="kpi"><span class="tiny">Tokens ${tbadge("scaffold","SC")}</span><strong>${(d.tokenUsage/1000).toFixed(1)}K</strong></div>
                 <div class="kpi"><span class="tiny">Model</span><strong style="font-size:.7rem">${d.model.replace("Groq · ","")}</strong></div>
               </div>
               <div class="dept-actions">
-                <button class="mini kill" disabled title="Backend route stub — Sprint 6">Kill</button>
-                <button class="mini restart" disabled title="Backend route stub — Sprint 6">Restart</button>
+                <button class="mini review" onclick="openDeptDrawer('${d.code}')">Review ${d.code}</button>
               </div>
             </div>
           `).join("")}
@@ -583,14 +636,14 @@ function renderOverview() {
       <div class="grid">
         <div class="card panel">
           <div class="row">
-            <h3>Live Service Health</h3>
+            <h3>Live Service Health ${tbadge("live","LIVE")}</h3>
             ${badge(sentinelGood && abigailGood ? "green" : "yellow", sentinelGood && abigailGood ? "Live" : "Partial")}
           </div>
           <div class="health-list section">
             <div class="health-item">
               <div>
                 <strong>Abigail CP-00</strong>
-                <div class="tiny">/api/status · /api/chat</div>
+                <div class="tiny">/api/status · /api/chat ${tbadge("live","LIVE")}</div>
               </div>
               ${abigailGood
                 ? badge("green", `${state.abigail.backend} · turns ${state.abigail.turns}`)
@@ -599,14 +652,14 @@ function renderOverview() {
             <div class="health-item">
               <div>
                 <strong>Sentinel OverWatch</strong>
-                <div class="tiny">/api/sentinel-health (proxied)</div>
+                <div class="tiny">/api/sentinel-health (proxied) ${tbadge("live","LIVE")}</div>
               </div>
               ${sentinelGood ? badge("green", state.sentinel.service || "Healthy") : badge("red", "Unavailable")}
             </div>
             <div class="health-item">
               <div>
                 <strong>Kill Switch</strong>
-                <div class="tiny">Global emergency halt</div>
+                <div class="tiny">Global emergency halt ${tbadge("live","LIVE")} ${tbadge("audit-logged","AUDIT-LOGGED")}</div>
               </div>
               ${state.abigail?.kill_switch ? badge("red", "ACTIVE") : badge("green", "Armed")}
             </div>
@@ -614,7 +667,8 @@ function renderOverview() {
         </div>
 
         <div class="card panel">
-          <h3>Live Job Register</h3>
+          <h3>Live Job Register ${tbadge("scaffold","SCAFFOLD")}</h3>
+          <div style="font-size:.75rem;color:var(--warning);margin-bottom:.75rem;line-height:1.4">These jobs are a static list — not sourced from a live job queue.</div>
           <table class="jobs-table">
             <thead><tr><th>ID</th><th>Title</th><th>Dept</th><th>Status</th><th>Progress</th></tr></thead>
             <tbody>
@@ -633,7 +687,7 @@ function renderOverview() {
 
         <div class="card panel">
           <div class="row">
-            <h3>Recent Governance Events</h3>
+            <h3>Recent Governance Events ${tbadge("live","LIVE")} ${tbadge("audit-logged","AUDIT-LOGGED")}</h3>
             <span class="tiny" style="color:var(--faint)">Click any row to expand</span>
           </div>
           <div class="audit-tail" id="auditTailOverview">
@@ -658,7 +712,7 @@ function renderChat() {
     <div class="chat-panel">
       <div class="chat-header">
         <div class="chat-title">
-          <strong>Abigail CP-00 · Operator Channel</strong>
+          <strong>Abigail CP-00 · Operator Channel ${tbadge("live","LIVE")} ${tbadge("audit-logged","AUDIT-LOGGED")}</strong>
           <small>Same governance pipeline as the public surface · audit-logged · HAAP-gated</small>
         </div>
         <div class="chat-pills">
@@ -752,7 +806,6 @@ async function handleSend() {
   input.value = "";
   input.style.height = "auto";
 
-  /* slash commands resolved client-side first */
   if (text.startsWith("/")) {
     await handleSlash(text);
     return;
@@ -842,7 +895,12 @@ function renderDepartments() {
       <div class="row">
         <div>
           <h3>Department Operating Surface</h3>
-          <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem">Lead, alignment, completion, token load, model family, and localized controls per department.</div>
+          <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem">
+            Lead and role data are canonical. Completion, alignment, and token load are
+            ${tbadge("scaffold","SCAFFOLD")} — computed estimates, not live telemetry.
+            Isolation controls are ${tbadge("shim","SHIM")} — governance-state flags only, no process control today.
+            Click <strong>Review</strong> on any card for a detailed breakdown.
+          </div>
         </div>
       </div>
       <div class="department-grid">
@@ -857,21 +915,28 @@ function renderDepartments() {
               ${badge(d.status, d.sensitivity)}
             </div>
             <div class="section">
-              <div class="row" style="font-size:.75rem"><span class="tiny">Completion</span><span style="font-size:.8125rem">${d.completion}%</span></div>
+              <div class="row" style="font-size:.75rem">
+                <span class="tiny">Completion ${tbadge("scaffold","SC")}</span>
+                <span style="font-size:.8125rem">${d.completion}%</span>
+              </div>
               ${pctBar(d.completion)}
             </div>
             <div class="section">
-              <div class="row" style="font-size:.75rem"><span class="tiny">Alignment</span><span style="font-size:.8125rem">${d.alignment}%</span></div>
+              <div class="row" style="font-size:.75rem">
+                <span class="tiny">Alignment ${tbadge("scaffold","SC")}</span>
+                <span style="font-size:.8125rem">${d.alignment}%</span>
+              </div>
               ${pctBar(d.alignment)}
             </div>
             <div class="kpis">
               <div class="kpi"><span class="tiny">Role</span><strong style="font-size:.7rem">${d.role}</strong></div>
-              <div class="kpi"><span class="tiny">Jobs</span><strong>${d.activeJobs}</strong></div>
-              <div class="kpi"><span class="tiny">Tokens</span><strong>${(d.tokenUsage/1000).toFixed(1)}K</strong></div>
+              <div class="kpi"><span class="tiny">Jobs ${tbadge("scaffold","SC")}</span><strong>${d.activeJobs}</strong></div>
+              <div class="kpi"><span class="tiny">Tokens ${tbadge("scaffold","SC")}</span><strong>${(d.tokenUsage/1000).toFixed(1)}K</strong></div>
             </div>
             <div class="dept-actions">
-              <button class="mini kill" disabled title="Sprint 6 backend">Kill ${d.code}</button>
-              <button class="mini restart" disabled title="Sprint 6 backend">Restart ${d.code}</button>
+              <button class="mini isolate" disabled title="Governance-state shim — sets isolation flag only, does not stop worker processes. Backend wiring planned for Sprint 6.">Isolate ${d.code}</button>
+              <button class="mini reinstate" disabled title="Governance-state shim — clears isolation flag only. Backend wiring planned for Sprint 6.">Reinstate ${d.code}</button>
+              <button class="mini review" onclick="openDeptDrawer('${d.code}')">Review</button>
             </div>
           </div>
         `).join("")}
@@ -888,7 +953,11 @@ function renderAgents() {
   el.innerHTML = `
     <div class="card panel">
       <h3>Agent Chain Visibility</h3>
-      <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem;margin-bottom:1rem">Lead, primary, and sub-agent view across all 12 departments. Telemetry columns expand as runtime reporting comes online.</div>
+      <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem;margin-bottom:1rem">
+        Agent names and class hierarchy are canonical. Completion, alignment, and token columns are
+        ${tbadge("scaffold","SCAFFOLD")} — static estimates, not live telemetry.
+        Click any row to open a review drawer.
+      </div>
       <table class="agent-table">
         <thead>
           <tr>
@@ -896,15 +965,15 @@ function renderAgents() {
             <th>Agent</th>
             <th>Class</th>
             <th>Status</th>
-            <th>Completion</th>
-            <th>Alignment</th>
-            <th>Tokens</th>
+            <th>Completion ${tbadge("scaffold","SC")}</th>
+            <th>Alignment ${tbadge("scaffold","SC")}</th>
+            <th>Tokens ${tbadge("scaffold","SC")}</th>
             <th>Model</th>
           </tr>
         </thead>
         <tbody>
           ${agents.map(a => `
-            <tr>
+            <tr onclick="openAgentDrawer('${escapeHtml(a.id)}')" title="Click to review ${escapeHtml(a.name)}">
               <td style="font-weight:700;color:var(--gold)">${a.dept}</td>
               <td>${a.name}</td>
               <td><span class="status blue">${a.class}</span></td>
@@ -932,28 +1001,41 @@ function renderGovernance() {
         <h3>Governance Controls</h3>
         <div class="health-list section">
           <div class="health-item">
-            <div><strong>Global Kill Switch</strong><div class="tiny">Firm-wide emergency halt</div></div>
+            <div>
+              <strong>Global Kill Switch ${tbadge("live","LIVE")} ${tbadge("audit-logged","AUDIT-LOGGED")}</strong>
+              <div class="tiny">Firm-wide emergency halt · wired to /api/ebrake</div>
+            </div>
             ${ks ? badge("red","ACTIVE") : badge("green","Armed")}
           </div>
           <div class="health-item">
-            <div><strong>Department Isolation</strong><div class="tiny">Stop one department without stopping firm</div></div>
+            <div>
+              <strong>Department Isolation ${tbadge("shim","SHIM")}</strong>
+              <div class="tiny">Sets governance-state flag only — does not stop worker processes. Backend wiring: Sprint 6.</div>
+            </div>
             ${badge("blue","UI Ready · Sprint 6")}
           </div>
           <div class="health-item">
-            <div><strong>Escalation Target</strong><div class="tiny">Over-bound tasks route upward</div></div>
+            <div>
+              <strong>Escalation Target ${tbadge("live","LIVE")}</strong>
+              <div class="tiny">Over-bound tasks route upward</div>
+            </div>
             <div style="font-family:var(--font-m);font-size:.75rem;color:var(--gold)">abigail.cp00</div>
           </div>
           <div class="health-item">
-            <div><strong>Authority Model</strong><div class="tiny">Constitutional · downward only</div></div>
+            <div>
+              <strong>Authority Model ${tbadge("live","LIVE")}</strong>
+              <div class="tiny">Constitutional · downward only</div>
+            </div>
             ${badge("blue","Constitutional")}
           </div>
         </div>
 
         <div class="ebrake-box">
-          <div class="ebrake-title">⚠ Emergency Brake</div>
+          <div class="ebrake-title">⚠ Emergency Brake ${tbadge("live","LIVE")} ${tbadge("audit-logged","AUDIT-LOGGED")}</div>
           <div class="ebrake-desc">
             Activates the kill switch immediately. All in-flight execution halts. New requests are blocked at HAAP Layer 0.
             Audit event <code>KILL_SWITCH_ACTIVATED</code> is written. Clearing requires a named principal.
+            <strong>This is a live action — it affects the running Abigail process immediately.</strong>
           </div>
           <div class="ebrake-actions">
             ${ks
@@ -965,7 +1047,7 @@ function renderGovernance() {
       </div>
 
       <div class="card panel">
-        <h3>Live Runtime Summary</h3>
+        <h3>Live Runtime Summary ${tbadge("live","LIVE")}</h3>
         <div class="health-list section">
           <div class="health-item"><div><strong>Sentinel Audit Entries</strong></div><div style="font-family:var(--font-m);color:var(--gold)">${state.sentinel?.audit_entries ?? "—"}</div></div>
           <div class="health-item"><div><strong>Sentinel Chain Length</strong></div><div style="font-family:var(--font-m);color:var(--gold)">${state.sentinel?.chain_length ?? "—"}</div></div>
@@ -977,7 +1059,7 @@ function renderGovernance() {
 
         <div class="section">
           <div class="row">
-            <h3 style="font-size:.9375rem;margin-bottom:0">Audit Tail (last 25)</h3>
+            <h3 style="font-size:.9375rem;margin-bottom:0">Audit Tail (last 25) ${tbadge("live","LIVE")} ${tbadge("audit-logged","AUDIT-LOGGED")}</h3>
             <span class="tiny" style="color:var(--faint)">Click row to expand</span>
           </div>
           <div class="audit-tail" style="margin-top:.5rem">
@@ -1016,6 +1098,168 @@ function wireGovernance() {
       } catch (e) { alert(`Error: ${e}`); }
     };
   }
+}
+
+/* ── REVIEW DRAWERS ── */
+function openDeptDrawer(code) {
+  const d = state.departments.find(x => x.code === code);
+  if (!d) return;
+
+  const recentAudit = state.audit.slice(0, 5);
+  const auditHtml = recentAudit.length > 0
+    ? recentAudit.map(e => `<div style="font-family:var(--font-m);font-size:.7rem;padding:.25rem 0;border-bottom:1px solid var(--border);color:var(--muted)"><span style="color:var(--faint)">${formatTs(e.ts)}</span> <span style="color:var(--primary)">${escapeHtml(e.event_type)}</span></div>`).join("")
+    : `<div style="font-size:.75rem;color:var(--faint);font-style:italic">No audit events yet.</div>`;
+
+  document.getElementById("drawerTitle").innerHTML =
+    `${escapeHtml(d.code)} · ${escapeHtml(d.name)} ${tbadge(d.status === "green" ? "live" : "scaffold", d.status === "green" ? "ALIGNED" : "REVIEW")}`;
+
+  document.getElementById("drawerBody").innerHTML = `
+    <div class="drawer-section">
+      <h4>Identity</h4>
+      <div class="drawer-row"><span class="dk">Code</span><span class="dv">${escapeHtml(d.code)}</span></div>
+      <div class="drawer-row"><span class="dk">Full name</span><span class="dv">${escapeHtml(d.name)}</span></div>
+      <div class="drawer-row"><span class="dk">Lead agent</span><span class="dv">${escapeHtml(d.lead)}</span></div>
+      <div class="drawer-row"><span class="dk">Role</span><span class="dv">${escapeHtml(d.role)}</span></div>
+      <div class="drawer-row"><span class="dk">Sensitivity</span><span class="dv">${escapeHtml(d.sensitivity)}</span></div>
+    </div>
+
+    <div class="drawer-section">
+      <h4>Data Status Map</h4>
+      <div class="drawer-row">
+        <span class="dk">Audit tail</span>
+        <span class="dv">${tbadge("live","LIVE")} — sourced from /api/audit-tail (real, persisted)</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Runtime health</span>
+        <span class="dv">${tbadge("live","LIVE")} — sourced from /api/status (Abigail) and /api/sentinel-health</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Completion (${d.completion}%)</span>
+        <span class="dv">${tbadge("scaffold","SCAFFOLD")} — computed estimate, not sourced from a real job registry</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Alignment (${d.alignment}%)</span>
+        <span class="dv">${tbadge("scaffold","SCAFFOLD")} — derived from index formula, not live agent telemetry</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Token usage (${(d.tokenUsage/1000).toFixed(1)}K)</span>
+        <span class="dv">${tbadge("scaffold","SCAFFOLD")} — estimated allocation, not metered from LLM calls</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Active jobs (${d.activeJobs})</span>
+        <span class="dv">${tbadge("scaffold","SCAFFOLD")} — derived count, not live job queue</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Isolation control</span>
+        <span class="dv">${tbadge("shim","SHIM")} — sets governance flag only; does not stop worker processes</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Worker kill/restart</span>
+        <span class="dv">${tbadge("not-impl","NOT IMPLEMENTED")} — planned Sprint 6</span>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <h4>Available Actions</h4>
+      <div class="drawer-row">
+        <span class="dk">Isolate ${d.code}</span>
+        <span class="dv">${tbadge("shim","SHIM")} — will set dept isolation flag in governance state. No process control until Sprint 6.</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Global Kill Switch</span>
+        <span class="dv">${tbadge("live","LIVE")} ${tbadge("audit-logged","AUDIT-LOGGED")} — halts all departments, wired to /api/ebrake</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Chat with Abigail</span>
+        <span class="dv">${tbadge("live","LIVE")} — use the Chat tab to direct Abigail to act on behalf of ${escapeHtml(d.code)}</span>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <h4>Recent Audit Events ${tbadge("live","LIVE")}</h4>
+      <div class="drawer-note">Showing last 5 events from /api/audit-tail (all departments).</div>
+      ${auditHtml}
+    </div>
+
+    <div class="drawer-next">
+      <strong>Next wiring:</strong> ${escapeHtml(d.nextWiring)}
+    </div>
+  `;
+
+  document.getElementById("drawerBackdrop").classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+
+function openAgentDrawer(agentId) {
+  const allAgents = state.departments.flatMap(d => d.agents.map(a => ({...a, dept:d.code, deptName:d.name, nextWiring:d.nextWiring})));
+  const a = allAgents.find(x => x.id === agentId);
+  if (!a) return;
+
+  document.getElementById("drawerTitle").innerHTML =
+    `${escapeHtml(a.id)} · ${escapeHtml(a.class)} ${tbadge(a.status === "green" ? "live" : "scaffold", a.status === "green" ? "OK" : "REVIEW")}`;
+
+  document.getElementById("drawerBody").innerHTML = `
+    <div class="drawer-section">
+      <h4>Identity</h4>
+      <div class="drawer-row"><span class="dk">Agent ID</span><span class="dv">${escapeHtml(a.id)}</span></div>
+      <div class="drawer-row"><span class="dk">Name</span><span class="dv">${escapeHtml(a.name)}</span></div>
+      <div class="drawer-row"><span class="dk">Class</span><span class="dv">${escapeHtml(a.class)}</span></div>
+      <div class="drawer-row"><span class="dk">Department</span><span class="dv">${escapeHtml(a.dept)} · ${escapeHtml(a.deptName)}</span></div>
+      <div class="drawer-row"><span class="dk">Model</span><span class="dv">${escapeHtml(a.model)}</span></div>
+    </div>
+
+    <div class="drawer-section">
+      <h4>Data Status Map</h4>
+      <div class="drawer-row">
+        <span class="dk">Status (${a.status})</span>
+        <span class="dv">${tbadge("scaffold","SCAFFOLD")} — derived from department status, not live agent heartbeat</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Completion (${a.completion}%)</span>
+        <span class="dv">${tbadge("scaffold","SCAFFOLD")} — computed estimate, not from live job tracking</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Alignment (${a.alignment}%)</span>
+        <span class="dv">${tbadge("scaffold","SCAFFOLD")} — derived formula, not live governance telemetry</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Token usage (${a.tokenUsage.toLocaleString()})</span>
+        <span class="dv">${tbadge("scaffold","SCAFFOLD")} — estimated allocation, not metered from LLM calls</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Live interaction</span>
+        <span class="dv">${tbadge("live","LIVE")} — use the Chat tab to engage Abigail in this agent's department role</span>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <h4>Available Actions</h4>
+      <div class="drawer-row">
+        <span class="dk">Agent kill/restart</span>
+        <span class="dv">${tbadge("not-impl","NOT IMPLEMENTED")} — individual agent process control planned Sprint 6</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Global Kill Switch</span>
+        <span class="dv">${tbadge("live","LIVE")} — use Governance tab e-brake to halt all execution</span>
+      </div>
+    </div>
+
+    <div class="drawer-next">
+      <strong>Next wiring for ${escapeHtml(a.dept)}:</strong> ${escapeHtml(a.nextWiring)}
+    </div>
+  `;
+
+  document.getElementById("drawerBackdrop").classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+
+function closeDrawer() {
+  document.getElementById("drawerBackdrop").classList.remove("show");
+  document.body.style.overflow = "";
+}
+
+function closeDrawerBackdrop(event) {
+  if (event.target === document.getElementById("drawerBackdrop")) closeDrawer();
 }
 
 /* ── RENDER ALL ── */

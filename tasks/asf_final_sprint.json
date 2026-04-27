@@ -1,0 +1,206 @@
+{
+  "meta": {
+    "project": "LOGOS ASF Operator Console & Intake",
+    "owner": "LOGOS Governance Systems Inc.",
+    "branch_strategy": {
+      "starting_point": "backup/asf-live-console-<STAMP>",
+      "rule": "Do NOT work directly on main. All work happens on a branch off the backup checkpoint."
+    },
+    "runtime_constraints": {
+      "preserve_state": true,
+      "forbidden_commands": [
+        "docker compose down -v"
+      ],
+      "allowed_shutdown": [
+        "docker compose down --remove-orphans"
+      ]
+    },
+    "success_criteria": [
+      "Truthful UX about what is LIVE vs SCAFFOLD/SHIM/NOT_IMPLEMENTED.",
+      "ASF/Abigail/Sentinel still boot cleanly and behave as before.",
+      "No secrets or tokens added to git history.",
+      "12-department test matrix passes without Abigail claiming fake backend capabilities."
+    ]
+  },
+
+  "current_checkpoint": {
+    "runtime": [
+      "Abigail container starts and serves on localhost:7070.",
+      "Sentinel container is healthy on localhost:9091.",
+      "/api/status responds.",
+      "/dashboard serves the real ASF Operator Console.",
+      "/intake serves the real ASF Intake Intent Compiler.",
+      "/api/intake accepts valid job_order_id + scope_hash payloads and writes audit.",
+      "/api/audit-tail returns audit entries.",
+      "Audit persistence survives restart and normal down/up when named volumes remain."
+    ],
+    "known_gaps": [
+      "Dashboard department metrics are scaffolded (derived from buildDepartmentState, not live telemetry).",
+      "Agent table is scaffolded/static.",
+      "Department Kill/Restart controls are disabled stubs marked for Sprint 6 (no true process control).",
+      "Governance tab describes Department Isolation as 'UI Ready Sprint 6' only.",
+      "Intake has many technical fields with no plain-language definitions for non-technical operators."
+    ],
+    "safety_notes": [
+      "Admin/demo tokens have been visible in terminal previously. Treat them as non-production and rotate before any public demo.",
+      "Do NOT hard-code secrets into any tracked files."
+    ]
+  },
+
+  "files_to_focus": {
+    "frontend_html": [
+      "static/dashboard.html",
+      "static/intake.html",
+      "abigail/static/dashboard.html",
+      "abigail/static/intake.html"
+    ],
+    "runtime_config": [
+      "docker-compose.yml",
+      "docker-compose.override.yml"
+    ],
+    "abigail_runtime": [
+      "abigail/Dockerfile",
+      "abigail/entrypoint.sh",
+      "abigail/abigail_hardened_enhanced.py"
+    ],
+    "git_hygiene": [
+      ".gitignore"
+    ]
+  },
+
+  "guardrails": {
+    "secrets": {
+      "ensure_gitignore_includes": [
+        ".abigail.env",
+        "abigail/.abigail.env",
+        "*.env.local",
+        "*.secret",
+        "*.secrets",
+        "*.bak.*",
+        ".abigail_audit.jsonl",
+        ".abigail_history"
+      ],
+      "search_for_accidental_leaks": [
+        "GROQ_API_KEY=",
+        "ANTHROPIC_API_KEY=",
+        "ABIGAIL_ADMIN_TOKEN=",
+        "ABIGAIL_DEMO_TOKEN=",
+        "gsk_"
+      ]
+    },
+    "runtime": {
+      "must_remain_true_after_changes": [
+        "docker compose up still brings up Abigail and Sentinel cleanly.",
+        "Dashboard and intake still load and function.",
+        "/api/status, /api/intake, /api/audit-tail still work as before.",
+        "Audit entries persist across restart/down-up (without -v)."
+      ]
+    }
+  },
+
+  "goals": [
+    {
+      "id": "UX_TRUTH_LABELS",
+      "title": "Truth badges + footer disclaimer in dashboard",
+      "intent": "Make the console brutally honest about what is LIVE vs SCAFFOLD/SHIM/NOT_IMPLEMENTED/AUDIT-LOGGED.",
+      "files": [
+        "static/dashboard.html",
+        "abigail/static/dashboard.html"
+      ],
+      "requirements": [
+        "Visually label all major surfaces and key metrics with status badges: LIVE, SCAFFOLD, SHIM, NOT IMPLEMENTED, AUDIT-LOGGED.",
+        "Specifically call out that department completion/alignment/token usage/active jobs are scaffolded and NOT live telemetry.",
+        "Explicitly label the Audit Tail and Kill Switch as LIVE and AUDIT-LOGGED where appropriate.",
+        "Add a single footer line clarifying the mixed state.",
+        "Do NOT alter any existing live endpoint wiring (status, sentinel-health, audit-tail, chat, e-brake)."
+      ],
+      "acceptance": [
+        "An operator can glance once at the dashboard and immediately tell which elements are live vs scaffolded vs shim vs not implemented.",
+        "No visual element implies that scaffolded department metrics are live telemetry."
+      ]
+    },
+    {
+      "id": "DEPT_CONTROL_NAMING",
+      "title": "Rename department controls from Kill/Restart to Isolate/Reinstate (or hide)",
+      "intent": "Align wording of department controls with their true capabilities today.",
+      "files": [
+        "static/dashboard.html",
+        "abigail/static/dashboard.html"
+      ],
+      "requirements": [
+        "Locate the Department Operating Surface cards and their action buttons.",
+        "Rename labels to 'Isolate Dept' and 'Reinstate Dept', update tooltips to explain governance-state shims pending backend wiring.",
+        "Ensure the Governance tab still clearly shows that only the global Kill Switch is live today.",
+        "Do NOT claim that any department-level kill/restart actually stops processes."
+      ],
+      "acceptance": [
+        "No button or tooltip in the UI uses the words 'Kill' or 'Restart' for departments unless true worker/process control exists.",
+        "Governance tab language remains accurate about Department Isolation being UI-only until wired."
+      ]
+    },
+    {
+      "id": "REVIEW_DRAWERS",
+      "title": "Add review drawers for departments and agents",
+      "intent": "Give operators a per-unit explanation surface: what is live vs inferred vs scaffolded for each department and agent.",
+      "files": [
+        "static/dashboard.html",
+        "abigail/static/dashboard.html"
+      ],
+      "requirements": [
+        "In the Departments tab: make each department card clickable or add a 'Review' control that opens a drawer or side panel.",
+        "Drawer content: Name, code, lead; what data is LIVE vs SCAFFOLD vs SHIM vs NOT IMPLEMENTED; available actions; 'Next wiring' note.",
+        "In the Agents tab: make each agent row open a similar review drawer.",
+        "Drawers must not break the existing single-scroll-region model."
+      ],
+      "acceptance": [
+        "From a department card or agent row, an operator can open a drawer and quickly see: (a) what is live, (b) what is scaffolded, (c) what actions are real, (d) what is planned.",
+        "No drawer claims telemetry is live when it is generated or derived scaffold data."
+      ]
+    },
+    {
+      "id": "INTAKE_DEFINITION_BUBBLES",
+      "title": "Definition bubbles for technical fields in Intake",
+      "intent": "Make the 16-section Intent Map usable by non-technical founders by explaining technical choices in plain language.",
+      "files": [
+        "static/intake.html",
+        "abigail/static/intake.html"
+      ],
+      "requirements": [
+        "Add small '?' help icons or definition bubbles next to highest-risk technical fields.",
+        "For each help bubble, answer: 1) What does this mean? 2) Why does Abigail/ASF need it? 3) What happens if I choose this?",
+        "Text must be short, non-jargony, and safe to show to a founder/operator audience.",
+        "Implementation can be pure HTML/CSS/JS inside intake.html (no new framework).",
+        "Respect the existing dark theme/visual style."
+      ],
+      "acceptance": [
+        "A non-technical user can read the definition bubble and make a reasonable choice without guessing.",
+        "No definition over-promises backend capabilities."
+      ]
+    },
+    {
+      "id": "TWELVE_DEPT_VALIDATION_MATRIX",
+      "title": "12-department local validation test matrix",
+      "intent": "Prove that Abigail routes, constrains, and audits correctly per department without hallucinating backend state.",
+      "files": [
+        "abigail/abigail_hardened_enhanced.py",
+        "static/dashboard.html"
+      ],
+      "requirements": [
+        "Define one canonical prompt per department in a test manifest.",
+        "Add brief instructions on how to run these prompts locally in the operator chat and verify correct behavior.",
+        "Document pass/fail criteria clearly."
+      ],
+      "acceptance": [
+        "Running through all 12 prompts locally yields department-appropriate answers without hallucinated backend state.",
+        "Each test interaction appears in /api/audit-tail.",
+        "Any failure mode is easy to spot via the documented criteria."
+      ]
+    }
+  ],
+
+  "non_goals": [
+    "No implementation of real department-level worker kill/restart in this sprint.",
+    "No change to core audit-chain cryptography or Sentinel's internal behavior.",
+    "No migration to a new UI framework or design system."
+  ]
+}

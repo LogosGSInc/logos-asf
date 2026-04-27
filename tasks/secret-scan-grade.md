@@ -1,0 +1,31 @@
+# Secret Scan Grade
+
+All lines found refer to variable names, mock template values, regex patterns, or comments. No live key values are leaked.
+
+.abigail.env.example:13:GROQ_API_KEY=YOUR_GROQ_API_KEY_HERE - SAFE (Mock value)
+.abigail.env.example:14:# ANTHROPIC_API_KEY=YOUR_ANTHROPIC_API_KEY_HERE - SAFE (Mock value)
+.abigail.env.example:23:ABIGAIL_ADMIN_TOKEN=GENERATE_A_STRONG_RANDOM_TOKEN_HERE - SAFE (Mock value)
+Makefile:67:            -H "X-Abigail-Mode-Token: $$(grep ABIGAIL_ADMIN_TOKEN .abigail.env | cut -d= -f2)" \ - SAFE (Variable access)
+README.md:49:| ADMIN | `ABIGAIL_ADMIN_TOKEN` value | Full constitutional detail, DRS ranges, Sentinel relationship | - SAFE (Documentation)
+abigail/abigail_hardened_enhanced.py:45:# ABIGAIL_ADMIN_TOKEN → X-Abigail-Mode-Token value that grants ADMIN mode - SAFE (Comment)
+abigail/abigail_hardened_enhanced.py:130:    Tokens come from ABIGAIL_ADMIN_TOKEN / ABIGAIL_DEMO_TOKEN env vars. - SAFE (Comment)
+abigail/abigail_hardened_enhanced.py:134:    admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN", "") - SAFE (Variable name)
+abigail/abigail_hardened_enhanced.py:314:    r"(gsk_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{36}|[A-Za-z0-9+/]{40,}={0,2})", - SAFE (Regex pattern)
+abigail/abigail_hardened_enhanced.py:386:    "groq": {"env": "GROQ_API_KEY", "label": "Groq (Llama 4 Scout)"}, - SAFE (Variable name)
+abigail/abigail_hardened_enhanced.py:387:    "anthropic": {"env": "ANTHROPIC_API_KEY", "label": "Anthropic (Claude Sonnet)"}, - SAFE (Variable name)
+abigail/abigail_hardened_enhanced.py:401:        r = Groq(api_key=_require_env_key("GROQ_API_KEY"), timeout=GROQ_TIMEOUT).chat.completions.create( - SAFE (Variable name)
+abigail/abigail_hardened_enhanced.py:420:        r = anthropic.Anthropic(api_key=_require_env_key("ANTHROPIC_API_KEY")).messages.create( - SAFE (Variable name)
+abigail/entrypoint.sh:8:if [ -n "${GROQ_API_KEY:-}" ]; then - SAFE (Variable name)
+abigail/entrypoint.sh:9:  echo "[ABIGAIL-ENTRYPOINT] GROQ_API_KEY found in container environment" - SAFE (Log statement)
+abigail/entrypoint.sh:11:  echo "[ABIGAIL-ENTRYPOINT] GROQ_API_KEY missing from container environment" - SAFE (Log statement)
+abigail/entrypoint.sh:15:GROQ_API_KEY=${GROQ_API_KEY:-} - SAFE (Variable name)
+abigail/entrypoint.sh:16:ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-} - SAFE (Variable name)
+abigail/entrypoint.sh:17:ABIGAIL_ADMIN_TOKEN=${ABIGAIL_ADMIN_TOKEN:-} - SAFE (Variable name)
+abigail/entrypoint.sh:26:if grep -q '^GROQ_API_KEY=.' /root/.abigail.env; then - SAFE (Variable name)
+abigail/entrypoint.sh:27:  echo "[ABIGAIL-ENTRYPOINT] /root/.abigail.env created with GROQ_API_KEY present" - SAFE (Log statement)
+abigail/entrypoint.sh:29:  echo "[ABIGAIL-ENTRYPOINT] /root/.abigail.env created but GROQ_API_KEY is empty" - SAFE (Log statement)
+docker-compose.yml:45:# DISABLED stale direct GROQ override:       - GROQ_API_KEY=${GROQ_API_KEY} - SAFE (Comment / Variable)
+docker-compose.yml:46:      - ABIGAIL_ADMIN_TOKEN=${ABIGAIL_ADMIN_TOKEN} - SAFE (Variable)
+start.ps1:25:    Write-Host "       Create .abigail.env with: GROQ_API_KEY=..." - SAFE (Log statement)
+
+Grade: A (Clean, no actual key leaks)

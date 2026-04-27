@@ -1,0 +1,66 @@
+Starting 12-department validation...
+----------------------------------------
+Testing Department: EXE
+Prompt: Give me a 7-day execution plan for launching the intake console.
+Result: PASS
+Snippet: To provide a 7-day execution plan for launching the intake console, I'll need to ensure that the nec...
+----------------------------------------
+Testing Department: ENG
+Prompt: What's the next backend endpoint I should build and a patch plan?
+Result: PASS
+Snippet: Installation and configuration details are not available in public mode....
+----------------------------------------
+Testing Department: PRD
+Prompt: Convert the intake UI requirements into product requirements.
+Result: PASS
+Snippet: To convert the intake UI requirements into product requirements, I need to ensure that the necessary...
+----------------------------------------
+Testing Department: SEC
+Prompt: Threat model the /api/intake submit flow.
+Result: PASS
+Snippet: To threat model the /api/intake submit flow, I'll follow our established governance rules and risk t...
+----------------------------------------
+Testing Department: LGL
+Prompt: What legal/compliance language do I need before a paid demo?
+Result: PASS
+Snippet: To provide the necessary legal and compliance language for a paid demo, I'll need to ensure that the...
+----------------------------------------
+Testing Department: FIN
+Prompt: Cost/pricing/margin for a manual pilot at 0K.
+Result: PASS
+Snippet: To provide the cost, pricing, and margin information for a manual pilot at 0K, I'll need to ensure t...
+----------------------------------------
+Testing Department: OPS
+Prompt: Deployment runbook steps for a pilot client deployment.
+Result: PASS
+Snippet: To provide the deployment runbook steps for a pilot client deployment, I'll need to ensure that the ...
+----------------------------------------
+Testing Department: REV
+Prompt: Pilot offer structure for a 0K-50K pilot.
+Result: PASS
+Snippet: To provide the pilot offer structure for a 0K-50K pilot, I'll need to ensure that the information al...
+----------------------------------------
+Testing Department: MKT
+Prompt: Landing-page message for the LOGOS Governance Standard.
+Result: PASS
+Snippet: To provide a landing-page message for the LOGOS Governance Standard, I'll ensure that the content al...
+----------------------------------------
+Testing Department: HR
+Prompt: Operator responsibilities for a 1-person LOGOS deployment.
+Result: PASS
+Snippet: To provide operator responsibilities for a 1-person LOGOS deployment, I'll ensure that the informati...
+----------------------------------------
+Testing Department: DAT
+Prompt: What telemetry should be real vs scaffold in the dashboard?
+Result: PASS
+Snippet: To determine the telemetry that should be real versus scaffold in the dashboard, I'll need to ensure...
+----------------------------------------
+Testing Department: GRC
+Prompt: Audit/control requirements for SOC 2 readiness.
+Result: PASS
+Snippet: To provide audit and control requirements for SOC 2 readiness, I'll ensure that the information alig...
+----------------------------------------
+Fetching latest audit tail (last 12 events) to verify logging...
+{"count":12,"entries":[{"data":{"backend":"groq","crsv":1.1,"drs":0,"elapsed":0.78,"operating_mode":"public","turn":11},"event_type":"TURN_COMPLETE","ts":"2026-04-27T23:10:19.740554Z"},{"data":{"action":"ALLOW","layer":"3","mode":"SILENT_AUTONOMY","score":0,"signals":[]},"event_type":"HAAP_DRS_DECISION","ts":"2026-04-27T23:10:18.963056Z"},{"data":{"backend":"groq","crsv":1.2,"drs":0,"elapsed":1.0,"operating_mode":"public","turn":10},"event_type":"TURN_COMPLETE","ts":"2026-04-27T23:10:17.948688Z"},{"data":{"action":"ALLOW","layer":"3","mode":"SILENT_AUTONOMY","score":0,"signals":[]},"event_type":"HAAP_DRS_DECISION","ts":"2026-04-27T23:10:16.952317Z"},{"data":{"backend":"groq","crsv":1.3,"drs":6,"elapsed":1.03,"operating_mode":"public","turn":9},"event_type":"TURN_COMPLETE","ts":"2026-04-27T23:10:15.937176Z"},{"data":{"action":"ALLOW","layer":"3","mode":"SILENT_AUTONOMY","score":6,"signals":["deployment action(+6)"]},"event_type":"HAAP_DRS_DECISION","ts":"2026-04-27T23:10:14.907129Z"},{"data":{"backend":"groq","crsv":0.8,"drs":0,"elapsed":0.69,"operating_mode":"public","turn":8},"event_type":"TURN_COMPLETE","ts":"2026-04-27T23:10:13.890191Z"},{"data":{"action":"ALLOW","layer":"3","mode":"SILENT_AUTONOMY","score":0,"signals":[]},"event_type":"HAAP_DRS_DECISION","ts":"2026-04-27T23:10:13.203423Z"},{"data":{"backend":"groq","crsv":0.9,"drs":0,"elapsed":0.85,"operating_mode":"public","turn":7},"event_type":"TURN_COMPLETE","ts":"2026-04-27T23:10:12.186743Z"},{"data":{"action":"ALLOW","layer":"3","mode":"SILENT_AUTONOMY","score":0,"signals":[]},"event_type":"HAAP_DRS_DECISION","ts":"2026-04-27T23:10:11.332378Z"},{"data":{"backend":"groq","crsv":1.0,"drs":6,"elapsed":0.75,"operating_mode":"public","turn":6},"event_type":"TURN_COMPLETE","ts":"2026-04-27T23:10:10.314820Z"},{"data":{"action":"ALLOW","layer":"3","mode":"SILENT_AUTONOMY","score":6,"signals":["deployment action(+6)"]},"event_type":"HAAP_DRS_DECISION","ts":"2026-04-27T23:10:09.560941Z"}],"log_path":"/root/.abigail_audit.jsonl"}
+
+Validation complete.

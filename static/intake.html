@@ -197,6 +197,19 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
   .panel-pane{height:auto;min-height:400px}
   .panel-pane + .panel-pane{border-left:none;border-top:1px solid var(--border)}
 }
+
+/* ── HELP BUBBLES ── */
+.mm-field-label-row{display:flex;align-items:center;gap:.3rem;margin-bottom:.3rem}
+.mm-field-label-row .mm-field-label{margin-bottom:0}
+.help-wrap{position:relative;display:inline-flex;align-items:center}
+.help-icon{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--surface-3);border:1px solid var(--border-hi);color:var(--muted);font-size:.55rem;font-weight:800;cursor:pointer;flex-shrink:0;transition:all var(--ease);line-height:1;font-style:normal;user-select:none}
+.help-icon:hover,.help-wrap:focus-within .help-icon{background:var(--primary-glow);border-color:var(--primary);color:var(--primary)}
+.help-bubble{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:300;width:270px;background:var(--surface);border:1px solid var(--border-hi);border-radius:var(--r-md);padding:.75rem .875rem;font-size:.7rem;line-height:1.55;color:var(--text);box-shadow:0 8px 28px rgba(0,0,0,.5);display:none;pointer-events:none;white-space:normal}
+.help-bubble::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--border-hi)}
+.help-wrap:hover .help-bubble,.help-wrap:focus-within .help-bubble{display:block}
+.help-bubble .hb-title{font-family:var(--font-d);font-weight:800;color:var(--primary);font-size:.75rem;margin-bottom:.4rem}
+.help-bubble .hq{font-size:.6rem;font-weight:800;color:var(--muted);margin-top:.45rem;letter-spacing:.05em;text-transform:uppercase}
+.help-bubble .ha{font-size:.7rem;color:var(--text);line-height:1.5}
 </style>
 </head>
 <body>
@@ -513,6 +526,76 @@ const SECTIONS = [
     ]
   }
 ];
+
+/* ═══════════════════════════════════════════════════════════════════════
+   1b. FIELD HELP — plain-language definitions for technical fields.
+       Each entry answers three questions for a non-technical founder:
+         what  — what does this mean?
+         why   — why does Abigail/ASF need it?
+         when  — what happens when I choose this option?
+   ═══════════════════════════════════════════════════════════════════════ */
+const FIELD_HELP = {
+  permissions: {
+    title: "Permissions model",
+    what: "Controls who can see and do what inside your product.",
+    why: "Abigail uses this to generate the right security rules, database policies, and API guards for your product.",
+    when: "Choosing 'Role-based tabs' means different users see different screens. 'Public view' means anyone can access it — no login required. 'Multi-tenant' means each customer company has their own isolated data."
+  },
+  compliance: {
+    title: "Compliance triggers",
+    what: "Legal or regulatory frameworks your product must follow based on the type of data it handles.",
+    why: "Abigail uses these to add the right audit trails, encryption requirements, and data handling rules to the architecture.",
+    when: "Select HIPAA if your product stores or processes health data. Select GDPR if you serve EU users. Select PCI-DSS if you handle payment card data. You can select multiple. Selecting one does NOT mean you are fully compliant — it flags which rules the stack must accommodate."
+  },
+  audit_required: {
+    title: "Audit logging",
+    what: "A record of who did what and when inside your product.",
+    why: "Abigail uses this to wire the right logging infrastructure into the stack. Some compliance frameworks (HIPAA, FedRAMP) require it.",
+    when: "'No' means no logging architecture is included. 'Yes — basic' adds a standard append-only log (user, action, timestamp). 'Yes — immutable chain' adds a cryptographic hash-chain so logs cannot be quietly altered after the fact — similar to what ASF uses internally."
+  },
+  confirmation: {
+    title: "Confirmation behavior",
+    what: "What happens when a user clicks a button that makes a permanent or risky change.",
+    why: "Abigail uses this to decide what kind of safety mechanism to add before destructive actions like delete or submit.",
+    when: "'Immediate action' — click once, it happens. 'Confirm modal' — a popup asks 'are you sure?' before proceeding. 'Undo toast' — action happens instantly but a brief window appears to undo it. 'Double-confirm destructive' — for dangerous operations like deleting an account, the user must type the item name to confirm. 'Permission gate' — only certain roles can perform the action."
+  },
+  error: {
+    title: "Error state",
+    what: "How the product tells users when something went wrong.",
+    why: "Abigail uses this to generate the right error display components and accessibility markup.",
+    when: "'Inline form error' — a small red message appears right below the problem field. 'Banner error' — a full-width message appears at the top of the screen. 'Modal error' — a popup explains what went wrong. 'Retry CTA' — the error message includes a button to try the action again."
+  },
+  success: {
+    title: "Success state",
+    what: "How the product tells users when something worked.",
+    why: "Abigail uses this to generate the right confirmation UI and accessibility feedback.",
+    when: "'Toast' — a small notification briefly appears then disappears (non-blocking). 'Inline confirmation' — a checkmark or green text appears right where the action happened. 'Modal success' — a popup confirms the action, often with next steps. 'Checkmark' — a simple visual check replaces the button or form."
+  },
+  pagination: {
+    title: "Pagination",
+    what: "How your product handles large lists of items — how you move from page to page.",
+    why: "Abigail uses this to generate the right database query patterns, API contracts, and frontend caching strategy.",
+    when: "'Traditional' — numbered pages (1, 2, 3…). 'Load more' — a button at the bottom loads the next batch. 'Infinite scroll' — content loads automatically as you scroll down (requires cursor-based queries, not simple offset). 'Virtualized list' — only the visible rows are rendered in the browser — best for very large datasets."
+  },
+  filtering: {
+    title: "Filtering",
+    what: "How users narrow down a large list to find what they need.",
+    why: "Abigail uses this to add the right query parameters, database indexes, and filter UI components.",
+    when: "'None' — show everything. 'Dropdown filters' — a select menu filters by category. 'Sidebar filters' — a persistent panel on the left lets users combine multiple filters. 'Chips / tags' — small clickable tags above the list (e.g., All / Active / Archived). 'Advanced filter modal' — a popup with many filter options for power users."
+  },
+  sorting: {
+    title: "Sorting",
+    what: "How users reorder a list — for example, newest first or by name.",
+    why: "Abigail uses this to add the right database indexes and UI sort controls.",
+    when: "'None' — fixed order. 'Table header sort' — click column headers to sort (requires indexed columns). 'Dropdown sort' — a separate sort control above the list. 'Drag to prioritize' — users manually drag rows to set their own order (requires a position/rank field in the database)."
+  },
+  selection: {
+    title: "Selection model",
+    what: "Whether users can select one item, multiple items, or none at all.",
+    why: "Abigail uses this to generate the right checkbox UI, selection state management, and bulk-action API routes.",
+    when: "'None' — no selection. 'Single select' — user picks one item at a time. 'Multi-select' — checkboxes let users pick several. 'Bulk actions' — after selecting multiple items, a toolbar appears with actions like Archive or Delete. 'Row selection + toolbar' — same as bulk actions but the whole row highlights when selected."
+  }
+};
 
 /* ═══════════════════════════════════════════════════════════════════════
    2. STATE

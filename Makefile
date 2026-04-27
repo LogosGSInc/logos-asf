@@ -98,6 +98,10 @@ test-persistence:
 		-d '{"actor_id":"operator","session_id":"persistence-test-2"}' | python3 -m json.tool
 	@echo "If starting_state is not Clear — persistence is working."
 
+validate-departments:
+	@echo "--- Validating 12 ASF Departments ---"
+	@bash tasks/validate-departments.sh
+
 
 
 ## ── Red team ────────────────────────────────────────────────────────────────
