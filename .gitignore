@@ -1,27 +1,32 @@
-# LOGOS ASF — gitignore
-# NEVER commit secrets
 
-# Env files with real keys
+abigail/.abigail.env
+.abigail_audit.jsonl
 .abigail.env
-
+abigail.env
+.abigail_history
 # Audit logs (contain operational data)
-*.jsonl
+*.bak.*
 data/
-
-# Rust build artifacts
+# Docker
+.DS_Store
+*.env
+.env
+# Env files with real keys
+*.env.local
 governance-spine/target/
-
-# Python
-__pycache__/
+*.jsonl
+*.log
+# LOGOS ASF — gitignore
+# LOGOS local secrets / runtime
+# NEVER commit secrets
+# OS
 *.pyc
+__pycache__/
 *.pyo
+# Python
+# Rust build artifacts
+*.secret
+*.secrets
+Thumbs.db
 .venv/
 venv/
-
-# Docker
-*.log
-
-# OS
-.DS_Store
-Thumbs.db
-.env

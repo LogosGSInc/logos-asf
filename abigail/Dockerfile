@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY abigail_hardened_enhanced.py /app/abigail_hardened_enhanced.py
 COPY entrypoint.sh /app/entrypoint.sh
+COPY static/ /app/static/
 
 RUN python -m pip install --no-cache-dir \
     groq \

@@ -1,0 +1,7 @@
+services:
+  abby:
+    env_file:
+      - ./.abigail.env
+    environment:
+      SENTINEL_URL: http://sentinel:8080
+      ABIGAIL_HEADLESS: "1"

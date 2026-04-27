@@ -358,9 +358,25 @@ def _load_env_file(path: Path):
 
 
 def _require_env_key(name: str):
-    v = os.environ.get(name, "")
+    # LOGOS_REQUIRE_ENV_FILE_FALLBACK_PATCH
+    # Load env files immediately before strict validation.
+    # This protects Docker/container startup where /root/.abigail.env is created by entrypoint.
+    for candidate in (
+        ENV_FILE,
+        Path("/root/.abigail.env"),
+        Path("/app/.abigail.env"),
+        Path(".abigail.env"),
+    ):
+        try:
+            _load_env_file(candidate)
+        except Exception:
+            pass
+
+    v = os.environ.get(name, "").strip()
+
     if not v or v.upper().startswith("YOUR_") or v == "PLACEHOLDER":
         raise RuntimeError(f"[CONFIG-FATAL] {name} is required. Set it in {ENV_FILE}.")
+
     return v
 
 
@@ -1184,11 +1200,65 @@ def run_web(session, kill_switch, active_backend, port=7070):
         sys.exit(1)
 
     app = Flask(__name__)
+
+    # LOGOS_STATIC_UI_INTERCEPTOR_PATCH
+    # Serves the real LOGOS ASF dashboard/intake files before placeholder routes.
+    from pathlib import Path as _LogosPath
+    import os as _logos_os
+    import urllib.request as _logos_urlrequest
+    from flask import request as _logos_request
+    from flask import send_from_directory as _logos_send_from_directory
+    from flask import jsonify as _logos_jsonify
+    from flask import Response as _logos_response
+
+    _LOGOS_STATIC_DIR = _LogosPath("/app/static")
+
+    @app.before_request
+    def logos_static_ui_interceptor():
+        path = _logos_request.path
+
+        if path in ("/dashboard", "/static/dashboard.html"):
+            return _logos_send_from_directory(str(_LOGOS_STATIC_DIR), "dashboard.html")
+
+        if path in ("/intake", "/static/intake.html"):
+            return _logos_send_from_directory(str(_LOGOS_STATIC_DIR), "intake.html")
+
+        if path == "/health":
+            return _logos_jsonify({
+                "ok": True,
+                "service": "abigail",
+                "static_dir": str(_LOGOS_STATIC_DIR),
+                "dashboard_exists": (_LOGOS_STATIC_DIR / "dashboard.html").exists(),
+                "intake_exists": (_LOGOS_STATIC_DIR / "intake.html").exists(),
+            })
+
+        if path == "/api/sentinel-health":
+            sentinel_url = _logos_os.getenv("SENTINEL_URL", "http://sentinel:8080").rstrip("/") + "/health"
+            try:
+                req = _logos_urlrequest.Request(sentinel_url, headers={"Accept": "application/json"})
+                with _logos_urlrequest.urlopen(req, timeout=3) as resp:
+                    body = resp.read()
+                    content_type = resp.headers.get("Content-Type", "application/json")
+                    return _logos_response(body, status=resp.status, content_type=content_type)
+            except Exception as e:
+                return _logos_jsonify({
+                    "ok": False,
+                    "service": "abigail",
+                    "sentinel_url": sentinel_url,
+                    "error": str(e),
+                }), 502
+
+    # END LOGOS_STATIC_UI_INTERCEPTOR_PATCH
+
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     @app.route("/")
     def index():
-        return Response(WEB_HTML, mimetype="text/html")
+        return Response(
+            '<meta http-equiv="refresh" content="0; url=/dashboard">'
+            '<p>Redirecting to <a href="/dashboard">/dashboard</a>…</p>',
+            mimetype="text/html",
+        )
 
     @app.route("/intake")
     def intake():
@@ -1222,6 +1292,7 @@ def run_web(session, kill_switch, active_backend, port=7070):
             "compliance": data.get("compliance", []),
             "constraints_declared": bool(data.get("constraints", "")),
             "sentinel_active": True,  # Always true — non-negotiable
+            "intent_payload": data.get("intent_payload"),  # Sprint 5: mind-map selections
         })
 
         return jsonify({
@@ -1250,6 +1321,112 @@ def run_web(session, kill_switch, active_backend, port=7070):
             return jsonify({"ok": False, "text": "Empty message.", "drs": 0, "mode": "NONE", "crsv": 0.0})
         mode = resolve_mode(dict(request.headers))
         return jsonify(process_message(msg, session, kill_switch, active_backend, mode))
+
+    @app.route("/dashboard")
+    def dashboard():
+        """Serve the ASF Operator Console (Sprint 5)."""
+        dash_path = Path(__file__).parent.parent / "static" / "dashboard.html"
+        if dash_path.exists():
+            return Response(dash_path.read_text(), mimetype="text/html")
+        return Response("<h1>Dashboard not found</h1>", mimetype="text/html", status=404)
+
+    @app.route("/api/sentinel-health")
+    def sentinel_health_proxy():
+        """Server-side proxy to Sentinel /health — works in Codespaces, VPS, and reverse-proxy deployments."""
+        import urllib.request
+        import urllib.error
+        sentinel_url = os.environ.get("SENTINEL_URL", "http://sentinel:8080")
+        try:
+            req = urllib.request.Request(
+                f"{sentinel_url}/health",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                body = resp.read().decode("utf-8")
+                payload = json.loads(body) if body else {}
+                return jsonify(payload), 200
+        except urllib.error.URLError as e:
+            return jsonify({
+                "ok": False,
+                "error": "sentinel_unreachable",
+                "detail": str(e.reason) if hasattr(e, "reason") else str(e),
+            }), 200
+        except Exception as e:
+            return jsonify({
+                "ok": False,
+                "error": type(e).__name__,
+                "detail": str(e)[:200],
+            }), 200
+
+    @app.route("/api/audit-tail")
+    def audit_tail():
+        """Return the last N audit entries for dashboard polling. Default N=25, max N=200."""
+        try:
+            n = int(request.args.get("n", 25))
+        except ValueError:
+            n = 25
+        n = max(1, min(n, 200))
+
+        if not LOG_FILE.exists():
+            return jsonify({"entries": [], "count": 0, "log_path": str(LOG_FILE)})
+
+        try:
+            lines = LOG_FILE.read_text(encoding="utf-8").strip().splitlines()
+        except Exception as e:
+            return jsonify({"entries": [], "error": f"read_failed: {type(e).__name__}"}), 200
+
+        entries = []
+        for line in lines[-n:]:
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        entries.reverse()  # newest first for dashboard rendering
+        return jsonify({"entries": entries, "count": len(entries), "log_path": str(LOG_FILE)})
+
+    @app.route("/api/ebrake", methods=["POST"])
+    def ebrake_activate():
+        """Activate the kill switch from the dashboard. KillSwitch.activate() writes the audit event."""
+        data = request.get_json(silent=True) or {}
+        principal = (data.get("principal") or "DASHBOARD-OPERATOR")
+        try:
+            kill_switch.activate(principal=principal)
+            return jsonify({"ok": True, "active": True, "principal": principal})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:200]}), 500
+
+    @app.route("/api/ebrake/clear", methods=["POST"])
+    def ebrake_clear():
+        """Clear the kill switch. Requires a named principal for audit integrity."""
+        data = request.get_json(silent=True) or {}
+        principal = (data.get("principal") or "").strip()
+        if not principal:
+            return jsonify({"ok": False, "error": "principal required to clear kill switch"}), 400
+        try:
+            kill_switch.clear(principal=principal)
+            return jsonify({"ok": True, "active": False, "cleared_by": principal})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:200]}), 500
+
+    @app.route("/api/dept/<code>/kill", methods=["POST"])
+    def dept_kill_stub(code):
+        return jsonify({
+            "ok": False,
+            "error": "not_implemented",
+            "sprint": "Sprint 6",
+            "department": code,
+            "message": "Department-level kill is scheduled for Sprint 6. Use /api/ebrake for global halt.",
+        }), 501
+
+    @app.route("/api/dept/<code>/restart", methods=["POST"])
+    def dept_restart_stub(code):
+        return jsonify({
+            "ok": False,
+            "error": "not_implemented",
+            "sprint": "Sprint 6",
+            "department": code,
+            "message": "Department-level restart is scheduled for Sprint 6.",
+        }), 501
 
     url = f"http://127.0.0.1:{port}"
     print(f"\n  Abigail web UI  →  {url}")
