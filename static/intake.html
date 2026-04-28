@@ -1,892 +1,733 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ASF Job Order Intake — Logos Governance Systems</title>
-<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&f[]=cabinet-grotesk@700,800,900&display=swap" rel="stylesheet">
+<title>Start Your Assessment — LOGOS Assess</title>
+<meta name="description" content="Begin your governed security and governance assessment. One repo. All 18 engines. Board-readable report.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-/* ── TOKENS ── */
-:root{
-  --bg:#0d0d0b;--surface:#141412;--surface-2:#1a1a18;--surface-3:#202020;
-  --border:rgba(255,255,255,0.07);--border-hi:rgba(255,255,255,0.16);
-  --text:#e6e4de;--muted:#8c8a84;--faint:#4a4845;
-  --primary:#4f98a3;--primary-h:#3a8390;--primary-glow:rgba(79,152,163,0.14);
-  --gold:#e8af34;--gold-glow:rgba(232,175,52,0.12);
-  --success:#6daa45;--error:#dd6974;--warning:#fdab43;
-  --r-sm:6px;--r-md:10px;--r-lg:16px;--r-xl:22px;--r-pill:999px;
-  --font-d:"Cabinet Grotesk",sans-serif;
-  --font-b:"Satoshi",sans-serif;
-  --ease:180ms cubic-bezier(0.16,1,0.3,1);
-}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#07090f;
+  --surface:#0c1018;
+  --surface-2:#111722;
+  --border:#1a2d40;
+  --border-focus:#4a9fd4;
+  --text:#dde4ee;
+  --text-muted:#7a8fa6;
+  --text-faint:#3d5166;
+  --primary:#4a9fd4;
+  --primary-bright:#6db8e8;
+  --primary-glow:rgba(74,159,212,0.12);
+  --error:#c04a6a;
+  --error-bg:rgba(192,74,106,0.10);
+  --success:#3d9e6a;
+  --success-bg:rgba(61,158,106,0.10);
+  --gold:#c8942a;
+  --gold-bg:rgba(200,148,42,0.10);
+  --font-display:'DM Sans',sans-serif;
+  --font-body:'DM Sans',sans-serif;
+  --font-mono:'DM Mono',monospace;
+}
+
 html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
-body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text);background:var(--bg)}
+body{
+  font-family:var(--font-body);
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(46,138,150,0.12) 0%, transparent 60%),
+    linear-gradient(rgba(46,138,150,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(46,138,150,0.025) 1px, transparent 1px);
+  background-size:100% 100%, 48px 48px, 48px 48px;
+}
 
-/* ── LAYOUT ── */
-.shell{max-width:820px;margin:0 auto;padding:2rem 1.25rem 6rem}
+/* ── Header ── */
+.topbar{
+  padding:20px 32px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid var(--border);
+  background:rgba(8,12,20,0.8);
+  backdrop-filter:blur(12px);
+  position:sticky;
+  top:0;
+  z-index:100;
+}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none}
+.brand-mark{
+  width:36px;height:36px;border-radius:8px;
+  border:1.5px solid var(--primary);
+  display:grid;place-items:center;
+  font-family:var(--font-display);font-weight:800;font-size:0.9rem;
+  color:var(--primary);letter-spacing:0.05em;
+}
+.brand-name{font-family:var(--font-display);font-weight:700;font-size:0.95rem;color:var(--text);letter-spacing:0.08em;text-transform:uppercase}
+.brand-sub{font-size:0.72rem;color:var(--text-muted);letter-spacing:0.12em;text-transform:uppercase;margin-top:1px}
+.topbar-right{font-family:var(--font-mono);font-size:0.75rem;color:var(--text-muted);letter-spacing:0.06em}
+.topbar-right span{color:var(--primary)}
+.topbar-nav{display:flex;align-items:center;gap:1.5rem}
+.topbar-nav a{font-size:0.82rem;font-weight:500;color:var(--text-muted);text-decoration:none;transition:color 0.18s}
+.topbar-nav a:hover{color:var(--primary-bright)}
+.topbar-nav-cta{background:var(--primary);color:#fff !important;padding:7px 16px;border-radius:8px;font-weight:600 !important;font-size:0.8rem !important}
+.topbar-nav-cta:hover{background:var(--primary-bright) !important}
+@media(max-width:700px){.topbar-nav{display:none}}
 
-/* ── BRAND ── */
-.brand{display:flex;align-items:center;gap:.75rem;margin-bottom:2rem}
-.brand svg{width:34px;height:34px;flex-shrink:0}
-.brand-name{font-family:var(--font-d);font-size:1.125rem;font-weight:900;letter-spacing:-.02em}
-.brand-name em{color:var(--primary);font-style:normal}
+/* ── Layout ── */
+.page{
+  flex:1;
+  display:grid;
+  grid-template-columns:1fr 420px;
+  max-width:1100px;
+  margin:0 auto;
+  width:100%;
+  padding:48px 32px 80px;
+  gap:64px;
+  align-items:start;
+}
 
-/* ── HEADING ── */
-.pg-head{margin-bottom:2rem}
-.pg-head h1{font-family:var(--font-d);font-size:clamp(1.6rem,4vw,2.25rem);font-weight:900;letter-spacing:-.03em;line-height:1.1;margin-bottom:.4rem}
-.pg-head p{color:var(--muted);font-size:.9375rem;max-width:54ch}
+/* ── Left Panel ── */
+.left-panel{padding-top:8px}
+.eyebrow{
+  font-family:var(--font-mono);
+  font-size:0.72rem;
+  color:var(--primary);
+  letter-spacing:0.18em;
+  text-transform:uppercase;
+  margin-bottom:16px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.eyebrow::before{content:'';width:24px;height:1px;background:var(--primary)}
+.left-panel h1{
+  font-family:var(--font-display);
+  font-size:clamp(2rem,3.5vw,3rem);
+  font-weight:800;
+  line-height:1.06;
+  letter-spacing:-0.01em;
+  color:#fff;
+  margin-bottom:20px;
+}
+.left-panel h1 em{
+  font-style:normal;
+  color:var(--primary-bright);
+}
+.left-panel .lead{
+  font-size:1.02rem;
+  color:var(--text-muted);
+  line-height:1.7;
+  margin-bottom:36px;
+  max-width:440px;
+}
 
-/* ── STEPPER ── */
-.stepper{display:flex;margin-bottom:2.25rem;border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
-.step{flex:1;padding:.75rem .5rem;text-align:center;font-size:.72rem;font-weight:600;color:var(--faint);background:var(--surface);border-right:1px solid var(--border);cursor:default;transition:all var(--ease);line-height:1.3}
-.step:last-child{border-right:none}
-.step .sn{display:block;font-family:var(--font-d);font-size:1rem;font-weight:900;margin-bottom:.15rem}
-.step.active{color:var(--primary);background:var(--surface-3)}
-.step.done{color:var(--success)}
-.step.done::after{content:" ✓";font-size:.65rem}
+/* ── What You Get ── */
+.deliverables{display:flex;flex-direction:column;gap:12px;margin-bottom:40px}
+.deliverable{
+  display:flex;align-items:flex-start;gap:14px;
+  padding:14px 18px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:10px;
+  transition:border-color 0.2s;
+}
+.deliverable:hover{border-color:var(--border-focus)}
+.del-icon{
+  width:32px;height:32px;border-radius:6px;
+  background:var(--primary-glow);
+  display:grid;place-items:center;flex-shrink:0;
+  font-size:14px;
+}
+.del-body{}
+.del-title{font-size:0.88rem;font-weight:600;color:var(--text);margin-bottom:2px}
+.del-desc{font-size:0.78rem;color:var(--text-muted);line-height:1.5}
 
-/* ── CARD ── */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:1.75rem;margin-bottom:1.25rem}
-.card-h{font-family:var(--font-d);font-size:1.05rem;font-weight:800;margin-bottom:.3rem}
-.card-sub{font-size:.8375rem;color:var(--muted);margin-bottom:1.375rem;max-width:58ch;line-height:1.5}
+/* ── Trust Badges ── */
+.trust-row{display:flex;flex-wrap:wrap;gap:10px}
+.trust-badge{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 12px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  font-family:var(--font-mono);
+  font-size:0.7rem;
+  color:var(--text-muted);
+  letter-spacing:0.06em;
+}
+.trust-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--success)}
 
-/* ── TYPE CARDS (Step 1) ── */
-.type-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.875rem}
-.type-card{background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:1.375rem 1.125rem;cursor:pointer;transition:all var(--ease);text-align:left;position:relative}
-.type-card:hover{border-color:var(--primary);background:var(--surface-3)}
-.type-card.sel{border-color:var(--primary);background:var(--primary-glow);box-shadow:0 0 0 1px var(--primary) inset}
-.type-icon{font-size:1.875rem;margin-bottom:.6rem;display:block}
-.type-label{font-family:var(--font-d);font-size:.9375rem;font-weight:800;display:block;margin-bottom:.3rem}
-.type-desc{font-size:.775rem;color:var(--muted);line-height:1.45}
-.type-card.sel .type-desc{color:rgba(79,152,163,.9)}
-.sel-dot{position:absolute;top:.7rem;right:.7rem;width:18px;height:18px;border-radius:50%;background:var(--primary);display:none;align-items:center;justify-content:center}
-.sel-dot svg{width:10px;height:10px;stroke:#fff;stroke-width:3;fill:none}
-.type-card.sel .sel-dot{display:flex}
+/* ── Form Panel ── */
+.form-panel{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:32px;
+  position:sticky;
+  top:88px;
+  box-shadow:0 24px 64px rgba(0,0,0,0.4);
+}
+.form-title{
+  font-family:var(--font-display);
+  font-size:1.1rem;
+  font-weight:700;
+  color:#fff;
+  margin-bottom:4px;
+}
+.form-sub{font-size:0.8rem;color:var(--text-muted);margin-bottom:28px}
 
-/* ── AGENT FORK ── */
-.fork{margin-top:1.25rem;padding:1.25rem;background:var(--surface-3);border:1px solid var(--border-hi);border-radius:var(--r-lg);display:none}
-.fork.show{display:block}
-.fork-title{font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.875rem}
-.fork-opts{display:flex;flex-direction:column;gap:.625rem}
-.fork-opt{display:flex;align-items:flex-start;gap:.75rem;background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-md);padding:1rem;cursor:pointer;transition:all var(--ease)}
-.fork-opt:hover{border-color:var(--primary)}
-.fork-opt.sel{border-color:var(--primary);background:var(--primary-glow)}
-.fork-radio{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted);margin-top:3px;flex-shrink:0;transition:all var(--ease)}
-.fork-opt.sel .fork-radio{border-color:var(--primary);background:var(--primary)}
-.fork-opt-title{font-family:var(--font-d);font-size:.9rem;font-weight:800;margin-bottom:.2rem}
-.fork-opt-desc{font-size:.775rem;color:var(--muted);line-height:1.4}
+/* ── Plan Selector ── */
+.plan-label{font-size:0.75rem;font-weight:600;color:var(--text-muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px}
+.plan-grid{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
+.plan-option{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border:1.5px solid var(--border);
+  border-radius:10px;
+  cursor:pointer;
+  transition:all 0.18s;
+  position:relative;
+}
+.plan-option:hover{border-color:var(--border-focus);background:rgba(46,138,150,0.04)}
+.plan-option.selected{border-color:var(--primary);background:var(--primary-glow)}
+.plan-option input[type="radio"]{
+  accent-color:var(--primary);
+  width:16px;height:16px;flex-shrink:0;cursor:pointer;
+}
+.plan-info{flex:1}
+.plan-name{font-size:0.85rem;font-weight:600;color:var(--text)}
+.plan-desc{font-size:0.72rem;color:var(--text-muted);margin-top:1px}
+.plan-price{
+  font-family:var(--font-mono);
+  font-size:0.82rem;
+  font-weight:500;
+  color:var(--primary-bright);
+  white-space:nowrap;
+  text-align:right;
+}
+.plan-price .per{font-size:0.65rem;color:var(--text-muted);display:block}
+.plan-badge{
+  position:absolute;top:-8px;right:10px;
+  font-family:var(--font-mono);
+  font-size:0.62rem;
+  font-weight:500;
+  padding:2px 8px;
+  border-radius:999px;
+  background:var(--gold-bg);
+  color:var(--gold);
+  border:1px solid var(--gold);
+  letter-spacing:0.06em;
+}
+.plan-free-badge{
+  position:absolute;top:-8px;right:10px;
+  font-family:var(--font-mono);
+  font-size:0.62rem;
+  padding:2px 8px;
+  border-radius:999px;
+  background:var(--success-bg);
+  color:var(--success);
+  border:1px solid var(--success);
+  letter-spacing:0.06em;
+}
 
-/* ── INFO ICON / TOOLTIP ── */
-.info-wrap{position:relative;display:inline-flex;align-items:center}
-.info-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--muted);color:var(--muted);font-size:.625rem;font-weight:700;cursor:pointer;margin-left:.35rem;transition:all var(--ease);flex-shrink:0;user-select:none;vertical-align:middle}
-.info-icon:hover,.info-icon.open{border-color:var(--primary);color:var(--primary);background:var(--primary-glow)}
-.tooltip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#262624;border:1px solid var(--border-hi);border-radius:var(--r-md);padding:.625rem .875rem;font-size:.775rem;line-height:1.5;color:var(--text);width:220px;z-index:100;pointer-events:none;opacity:0;transition:opacity var(--ease);box-shadow:0 8px 24px rgba(0,0,0,.4)}
-.tooltip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#262624}
-.info-icon:hover + .tooltip,.info-icon.open + .tooltip{opacity:1}
+/* ── Repo count ── */
+.repo-row{display:flex;gap:8px;margin-bottom:24px}
+.repo-btn{
+  flex:1;padding:10px 8px;
+  border:1.5px solid var(--border);
+  border-radius:8px;
+  background:transparent;
+  color:var(--text-muted);
+  font-family:var(--font-mono);
+  font-size:0.8rem;
+  cursor:pointer;
+  transition:all 0.18s;
+  text-align:center;
+}
+.repo-btn:hover{border-color:var(--border-focus);color:var(--text)}
+.repo-btn.active{border-color:var(--primary);background:var(--primary-glow);color:var(--primary-bright)}
+.repo-btn.disabled{opacity:0.3;cursor:not-allowed;pointer-events:none}
 
-/* ── FORM ELEMENTS ── */
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
-.form-row.full{grid-template-columns:1fr}
-.form-group{display:flex;flex-direction:column;gap:.375rem}
-.form-label{font-size:.8rem;font-weight:600;color:var(--muted);display:flex;align-items:center}
-.req{color:var(--error);margin-left:2px}
-.form-input,.form-select,.form-textarea{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.6875rem .875rem;font-family:var(--font-b);font-size:.9375rem;color:var(--text);transition:border-color var(--ease),box-shadow var(--ease);width:100%}
-.form-input::placeholder,.form-textarea::placeholder{color:var(--faint)}
-.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
-.form-textarea{resize:vertical;min-height:90px;line-height:1.55}
-.form-select option{background:var(--surface-2);color:var(--text)}
+/* ── Field ── */
+.field{margin-bottom:18px}
+.field-label{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:0.75rem;font-weight:600;
+  color:var(--text-muted);
+  letter-spacing:0.08em;text-transform:uppercase;
+  margin-bottom:8px;
+}
+.field-label .optional{color:var(--text-faint);font-weight:400;letter-spacing:0.04em;text-transform:none;font-size:0.7rem}
+.field-input{
+  width:100%;
+  padding:11px 14px;
+  background:var(--surface-2);
+  border:1.5px solid var(--border);
+  border-radius:8px;
+  color:var(--text);
+  font-family:var(--font-body);
+  font-size:0.9rem;
+  transition:all 0.18s;
+  outline:none;
+}
+.field-input::placeholder{color:var(--text-faint)}
+.field-input:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px rgba(46,138,150,0.12)}
+.field-input.error{border-color:var(--error);box-shadow:0 0 0 3px var(--error-bg)}
+.field-hint{font-size:0.72rem;color:var(--text-muted);margin-top:6px;line-height:1.5}
+.field-error{font-size:0.72rem;color:var(--error);margin-top:6px;display:none}
+.field-input.error + .field-hint{display:none}
+.field-input.error ~ .field-error{display:block}
 
-/* ── RANGE SLIDER ── */
-.range-group{margin-bottom:1rem}
-.range-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.625rem}
-.range-label{font-size:.8rem;font-weight:600;color:var(--muted);display:flex;align-items:center}
-.range-val{font-family:var(--font-d);font-weight:800;font-size:.875rem;color:var(--primary)}
-.range-track{width:100%;position:relative}
-input[type=range]{width:100%;-webkit-appearance:none;height:4px;border-radius:2px;background:linear-gradient(to right,var(--primary) 0%,var(--primary) var(--p,0%),var(--surface-3) var(--p,0%));cursor:pointer}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--primary);border:2.5px solid var(--bg);box-shadow:0 0 0 3px var(--primary-glow)}
-.range-marks{display:flex;justify-content:space-between;margin-top:.375rem}
-.range-mark{font-size:.65rem;color:var(--faint)}
+/* ── Consent ── */
+.consent-block{margin-bottom:20px;display:flex;flex-direction:column;gap:10px}
+.consent-item{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.consent-item input[type="checkbox"]{
+  accent-color:var(--primary);
+  width:15px;height:15px;
+  margin-top:2px;flex-shrink:0;cursor:pointer;
+}
+.consent-text{font-size:0.76rem;color:var(--text-muted);line-height:1.55}
+.consent-text a{color:var(--primary-bright);text-decoration:none}
+.consent-text a:hover{text-decoration:underline}
+.consent-required{color:var(--error);font-size:0.7rem;margin-top:4px;display:none}
 
-/* ── DELIVERY CARDS ── */
-.delivery-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.875rem;margin-bottom:1.25rem}
-.delivery-card{background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:1.25rem 1rem;cursor:pointer;transition:all var(--ease);display:flex;flex-direction:column}
-.delivery-card:hover{border-color:var(--primary)}
-.delivery-card.sel{border-color:var(--primary);background:var(--primary-glow)}
-.dc-title{font-family:var(--font-d);font-size:1rem;font-weight:900;margin-bottom:.25rem}
-.dc-sub{font-size:.72rem;color:var(--muted);margin-bottom:.875rem;line-height:1.4;flex:1}
-.dc-features{list-style:none;margin-bottom:.875rem}
-.dc-features li{font-size:.75rem;color:var(--muted);padding:.2rem 0;display:flex;align-items:flex-start;gap:.4rem;line-height:1.35}
-.dc-features li::before{content:"·";color:var(--primary);font-weight:900;margin-top:.05rem}
-.delivery-card.sel .dc-features li{color:var(--text)}
-.sentinel-badge{display:flex;align-items:center;gap:.4rem;background:rgba(79,152,163,.1);border:1px solid rgba(79,152,163,.3);border-radius:var(--r-sm);padding:.375rem .625rem;margin-top:auto;font-size:.7rem;font-weight:700;color:var(--primary)}
-.sentinel-dot{width:6px;height:6px;border-radius:50%;background:var(--primary);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+/* ── Submit ── */
+.btn-submit{
+  width:100%;
+  padding:14px;
+  background:var(--primary);
+  border:none;
+  border-radius:10px;
+  color:#fff;
+  font-family:var(--font-display);
+  font-size:1rem;
+  font-weight:700;
+  letter-spacing:0.04em;
+  cursor:pointer;
+  transition:all 0.2s;
+  position:relative;
+  overflow:hidden;
+}
+.btn-submit:hover{background:var(--primary-bright);transform:translateY(-1px);box-shadow:0 8px 24px rgba(46,138,150,0.3)}
+.btn-submit:active{transform:translateY(0)}
+.btn-submit:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+.btn-submit .btn-text{}
+.btn-submit .btn-loading{display:none;align-items:center;justify-content:center;gap:8px}
+.btn-submit.loading .btn-text{display:none}
+.btn-submit.loading .btn-loading{display:flex}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 
-/* ── COMPLIANCE GRID ── */
-.compliance-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.625rem}
-.compliance-item{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.75rem;cursor:pointer;transition:all var(--ease);position:relative}
-.compliance-item:hover{border-color:var(--gold)}
-.compliance-item.on{border-color:var(--gold);background:var(--gold-glow)}
-.ci-name{font-size:.8125rem;font-weight:700;margin-bottom:.15rem;display:flex;align-items:center}
-.ci-desc{font-size:.7rem;color:var(--muted);line-height:1.35}
-.compliance-item.on .ci-desc{color:rgba(232,175,52,.8)}
+.form-footer{
+  margin-top:14px;
+  text-align:center;
+  font-family:var(--font-mono);
+  font-size:0.68rem;
+  color:var(--text-faint);
+  letter-spacing:0.06em;
+  line-height:1.7;
+}
 
-/* ── ALERT ── */
-.alert{border-radius:var(--r-md);padding:.875rem 1rem;font-size:.875rem;margin-bottom:1.25rem;border-left:3px solid;line-height:1.5}
-.alert-teal{background:rgba(79,152,163,.08);border-color:var(--primary);color:var(--primary)}
-.alert-gold{background:rgba(232,175,52,.08);border-color:var(--gold);color:var(--gold)}
+/* ── Success State ── */
+.success-state{
+  display:none;
+  text-align:center;
+  padding:20px 0;
+}
+.success-icon{
+  width:64px;height:64px;
+  border-radius:50%;
+  background:var(--success-bg);
+  border:1.5px solid var(--success);
+  display:grid;place-items:center;
+  margin:0 auto 20px;
+  font-size:28px;
+}
+.success-title{font-family:var(--font-display);font-size:1.3rem;font-weight:700;color:#fff;margin-bottom:8px}
+.success-msg{font-size:0.85rem;color:var(--text-muted);line-height:1.6}
+.success-ref{
+  margin-top:20px;
+  padding:12px;
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  font-family:var(--font-mono);
+  font-size:0.75rem;
+  color:var(--primary-bright);
+  letter-spacing:0.06em;
+}
 
-/* ── CERT BADGE ── */
-.cert-banner{display:flex;align-items:center;gap:1.125rem;background:linear-gradient(135deg,rgba(232,175,52,.07),rgba(79,152,163,.07));border:1px solid var(--gold);border-radius:var(--r-xl);padding:1.375rem 1.5rem;margin-bottom:1.375rem}
-.cert-icon{font-size:2.25rem;flex-shrink:0}
-.cert-title{font-family:var(--font-d);font-weight:900;font-size:1rem;color:var(--gold);letter-spacing:-.01em}
-.cert-sub{font-size:.8rem;color:var(--muted);margin-top:.2rem;line-height:1.45}
+/* ── Divider ── */
+.field-divider{height:1px;background:var(--border);margin:20px 0}
 
-/* ── SUMMARY ── */
-.summary-rows{display:grid;gap:0}
-.sr{display:flex;justify-content:space-between;align-items:flex-start;padding:.75rem 0;border-bottom:1px solid var(--border);font-size:.875rem;gap:1rem}
-.sr:last-child{border-bottom:none}
-.sr-k{color:var(--muted);font-weight:600;min-width:140px;flex-shrink:0}
-.sr-v{color:var(--text);text-align:right;flex:1}
-.tag-row{display:flex;flex-wrap:wrap;gap:.35rem;justify-content:flex-end}
-.tag{background:var(--primary-glow);border:1px solid rgba(79,152,163,.4);color:var(--primary);border-radius:var(--r-sm);padding:.2rem .5rem;font-size:.7rem;font-weight:600}
-
-/* ── HASH BOX ── */
-.hash-box{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:1rem 1.25rem;font-family:monospace;font-size:.8125rem;color:var(--primary);letter-spacing:.03em;margin-bottom:1rem;display:flex;flex-direction:column;gap:.3rem}
-.hash-label{font-size:.7rem;color:var(--muted);font-family:var(--font-b);letter-spacing:.06em;text-transform:uppercase}
-.hash-id{font-size:.9375rem;font-weight:700;color:var(--gold)}
-
-/* ── SUCCESS SCREEN ── */
-.success-wrap{text-align:center;padding:3rem 1rem}
-.success-icon{font-size:4rem;margin-bottom:1rem}
-.success-h{font-family:var(--font-d);font-size:1.75rem;font-weight:900;margin-bottom:.75rem}
-.success-p{color:var(--muted);max-width:42ch;margin:0 auto 2rem;font-size:.9375rem;line-height:1.6}
-.success-id{font-family:monospace;font-size:1.125rem;color:var(--gold);font-weight:700;background:var(--surface-2);display:inline-block;padding:.5rem 1.25rem;border-radius:var(--r-md);border:1px solid var(--gold);margin-bottom:1.5rem;letter-spacing:.04em}
-.success-flags{display:flex;flex-direction:column;gap:.625rem;max-width:380px;margin:0 auto}
-.flag{display:flex;align-items:center;gap:.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.75rem 1rem;font-size:.875rem;text-align:left}
-.flag-icon{font-size:1.25rem;flex-shrink:0}
-.flag-text{font-weight:600}
-.flag-sub{font-size:.75rem;color:var(--muted)}
-
-/* ── NAV ── */
-.nav-bar{display:flex;justify-content:space-between;align-items:center;margin-top:1.75rem;padding-top:1.375rem;border-top:1px solid var(--border)}
-.btn{padding:.75rem 1.75rem;border-radius:var(--r-md);font-family:var(--font-b);font-size:.9375rem;font-weight:700;cursor:pointer;transition:all var(--ease);border:none}
-.btn-primary{background:var(--primary);color:#fff}
-.btn-primary:hover{background:var(--primary-h);transform:translateY(-1px);box-shadow:0 4px 16px var(--primary-glow)}
-.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
-.btn-ghost:hover{color:var(--text);border-color:var(--border-hi)}
-.btn-submit{background:linear-gradient(135deg,var(--primary),#28707a);color:#fff;padding:.875rem 2.5rem;font-size:1rem}
-.btn-submit:hover{transform:translateY(-2px);box-shadow:0 8px 28px var(--primary-glow)}
-
-/* ── PAGE VISIBILITY ── */
-.page{display:none}.page.active{display:block}
-
-/* ── RESPONSIVE ── */
+/* ── Responsive ── */
+@media(max-width:900px){
+  .page{grid-template-columns:1fr;gap:40px;padding:32px 20px 60px}
+  .form-panel{position:static}
+}
 @media(max-width:600px){
-  .type-grid,.delivery-grid{grid-template-columns:1fr}
-  .form-row{grid-template-columns:1fr}
-  .stepper .step{font-size:.65rem;padding:.6rem .35rem}
-  .step .sn{font-size:.875rem}
-  .compliance-grid{grid-template-columns:1fr 1fr}
+  .topbar{padding:16px 20px}
+  .trust-row{gap:6px}
 }
 </style>
 </head>
 <body>
-<div class="shell">
 
-<!-- BRAND -->
-<div class="brand">
-  <svg viewBox="0 0 34 34" fill="none" aria-label="Logos Governance Systems">
-    <rect width="34" height="34" rx="8" fill="#141412"/>
-    <polygon points="17,3 30,10 30,24 17,31 4,24 4,10" fill="none" stroke="#4f98a3" stroke-width="1.5"/>
-    <polygon points="17,8 25,13 25,21 17,26 9,21 9,13" fill="none" stroke="#4f98a3" stroke-width=".8" opacity=".45"/>
-    <circle cx="17" cy="17" r="3" fill="#4f98a3"/>
-  </svg>
-  <div class="brand-name">LOGOS <em>ASF</em></div>
-</div>
-
-<div class="pg-head">
-  <h1>Job Order Intake</h1>
-  <p>Every deliverable we ship is governed, secured, and Sentinel-monitored from day one. Tell us exactly what you need.</p>
-</div>
-
-<!-- STEPPER -->
-<div class="stepper">
-  <div class="step active" id="stp1"><span class="sn">01</span>Type</div>
-  <div class="step" id="stp2"><span class="sn">02</span>Scope</div>
-  <div class="step" id="stp3"><span class="sn">03</span>Delivery</div>
-  <div class="step" id="stp4"><span class="sn">04</span>Timeline</div>
-  <div class="step" id="stp5"><span class="sn">05</span>Review</div>
-</div>
-
-<!-- ══════════════ PAGE 1 — TYPE ══════════════ -->
-<div class="page active" id="pg1">
-  <div class="card">
-    <div class="card-h">What are you building?</div>
-    <div class="card-sub">Pick the primary type. Everything downstream adapts to your choice.</div>
-
-    <div class="type-grid">
-      <button class="type-card" id="tc-app" onclick="selType('app')">
-        <span class="type-icon">📱</span>
-        <span class="type-label">App or Software</span>
-        <span class="type-desc">Web apps, mobile tools, dashboards, SaaS platforms, internal systems</span>
-        <span class="sel-dot"><svg viewBox="0 0 10 8"><polyline points="1,4 4,7 9,1"/></svg></span>
-      </button>
-      <button class="type-card" id="tc-ent" onclick="selType('ent')">
-        <span class="type-icon">🏢</span>
-        <span class="type-label">Enterprise Software</span>
-        <span class="type-desc">Multi-tenant systems, ERP/CRM integrations, compliance infrastructure</span>
-        <span class="sel-dot"><svg viewBox="0 0 10 8"><polyline points="1,4 4,7 9,1"/></svg></span>
-      </button>
-      <button class="type-card" id="tc-agt" onclick="selType('agt')">
-        <span class="type-icon">🤖</span>
-        <span class="type-label">Agent or Workflow</span>
-        <span class="type-desc">AI agents, automation pipelines, governed multi-agent orchestration</span>
-        <span class="sel-dot"><svg viewBox="0 0 10 8"><polyline points="1,4 4,7 9,1"/></svg></span>
-      </button>
-    </div>
-
-    <!-- AGENT FORK -->
-    <div class="fork" id="agent-fork">
-      <div class="fork-title">What kind of agent build?</div>
-      <div class="fork-opts">
-        <div class="fork-opt" id="fork-single" onclick="selFork('single')">
-          <div class="fork-radio"></div>
-          <div>
-            <div class="fork-opt-title">One Agent — a single AI worker for a specific job</div>
-            <div class="fork-opt-desc">Best for focused tasks: customer support, research, data processing, document generation. One agent with a constitution, SOP, and handoff contract.</div>
-          </div>
-        </div>
-        <div class="fork-opt" id="fork-team" onclick="selFork('team')">
-          <div class="fork-radio"></div>
-          <div>
-            <div class="fork-opt-title">A Team of Agents — multiple agents working as a firm</div>
-            <div class="fork-opt-desc">A management agent orchestrates specialist sub-agents. Built like a department: RI-01, EN-01, SC-01. Each agent gets its own constitution and the team shares a governance spine.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SUBTYPE CHIPS (App / Ent) -->
-    <div id="app-chips" style="display:none;margin-top:1.25rem">
-      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.625rem">Platform</div>
-      <div style="display:flex;flex-wrap:wrap;gap:.5rem" id="chips-app">
-        <div class="chip" onclick="toggleChip(this)">Web Browser</div>
-        <div class="chip" onclick="toggleChip(this)">iOS</div>
-        <div class="chip" onclick="toggleChip(this)">Android</div>
-        <div class="chip" onclick="toggleChip(this)">Desktop (Mac)</div>
-        <div class="chip" onclick="toggleChip(this)">Desktop (Windows)</div>
-        <div class="chip" onclick="toggleChip(this)">API / Backend Only</div>
-        <div class="chip" onclick="toggleChip(this)">Browser Extension</div>
-      </div>
-    </div>
-    <div id="ent-chips" style="display:none;margin-top:1.25rem">
-      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.625rem">System Type</div>
-      <div style="display:flex;flex-wrap:wrap;gap:.5rem">
-        <div class="chip" onclick="toggleChip(this)">ERP Integration</div>
-        <div class="chip" onclick="toggleChip(this)">CRM Platform</div>
-        <div class="chip" onclick="toggleChip(this)">Multi-Tenant SaaS</div>
-        <div class="chip" onclick="toggleChip(this)">Data Pipeline</div>
-        <div class="chip" onclick="toggleChip(this)">Compliance Platform</div>
-        <div class="chip" onclick="toggleChip(this)">Identity / Auth System</div>
-        <div class="chip" onclick="toggleChip(this)">Reporting / BI</div>
-      </div>
-    </div>
-  </div>
-  <div class="nav-bar"><div></div><button class="btn btn-primary" onclick="goTo(2)">Continue →</button></div>
-</div>
-
-<!-- ══════════════ PAGE 2 — SCOPE ══════════════ -->
-<div class="page" id="pg2">
-  <div class="card">
-    <div class="card-h">What does it need to do?</div>
-    <div class="card-sub">Your answers here become the constitutional foundation. Be specific — vagueness costs money.</div>
-
-    <div class="form-row full">
-      <div class="form-group">
-        <label class="form-label">Project name <span class="req">*</span></label>
-        <input class="form-input" id="f-name" type="text" placeholder="e.g. Customer Support Agent for Acme HVAC">
-      </div>
-    </div>
-    <div class="form-row full">
-      <div class="form-group">
-        <label class="form-label">What problem does this solve? <span class="req">*</span></label>
-        <textarea class="form-textarea" id="f-problem" placeholder="Describe the pain point. Who suffers from it, how often, and what it costs them."></textarea>
-      </div>
-    </div>
-    <div class="form-row full">
-      <div class="form-group">
-        <label class="form-label">What does success look like? <span class="req">*</span></label>
-        <textarea class="form-textarea" id="f-success" placeholder="If this works perfectly, what changes? What can someone do they couldn't before?"></textarea>
-      </div>
-    </div>
-    <div class="form-row full">
-      <div class="form-group">
-        <label class="form-label" style="gap:.35rem">
-          What must it never do?
-          <span class="req">*</span>
-          <span class="info-wrap">
-            <span class="info-icon" onclick="toggleTip(this)">ⓘ</span>
-            <span class="tooltip">These become Constitutional Bounds — hard rules the agent or system can never break, regardless of user instructions.</span>
-          </span>
-        </label>
-        <textarea class="form-textarea" id="f-nogo" placeholder="e.g. Must not store patient names. Must not send emails without approval. Must not modify production data directly."></textarea>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Industry / Sector</label>
-        <select class="form-select" id="f-sector">
-          <option value="">Select…</option>
-          <option>Healthcare</option>
-          <option>Legal</option>
-          <option>Finance / Banking</option>
-          <option>Insurance</option>
-          <option>Real Estate</option>
-          <option>Construction / Trades</option>
-          <option>Retail / E-Commerce</option>
-          <option>Manufacturing</option>
-          <option>Logistics / Supply Chain</option>
-          <option>Education</option>
-          <option>Government / Public Sector</option>
-          <option>Non-Profit</option>
-          <option>Technology / SaaS</option>
-          <option>Faith-Based / Ministry</option>
-          <option>Other</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Existing tech stack (if any)</label>
-        <input class="form-input" id="f-stack" type="text" placeholder="e.g. Python, React, PostgreSQL, Salesforce">
-      </div>
-    </div>
-
-    <div class="range-group" style="margin-top:.5rem">
-      <div class="range-header">
-        <span class="range-label">Complexity</span>
-        <span class="range-val" id="complexity-val">Standard</span>
-      </div>
-      <input type="range" min="0" max="4" value="1" id="complexity-r" oninput="setRange(this,'complexity-val',['Simple — focused task, 1–2 weeks','Standard — multi-feature, 2–6 weeks','Moderate — integrated system, 1–3 months','Complex — full platform, 3–6 months','Enterprise — firm-level, 6+ months'])">
-      <div class="range-marks">
-        <span class="range-mark">Simple</span>
-        <span class="range-mark">Standard</span>
-        <span class="range-mark">Moderate</span>
-        <span class="range-mark">Complex</span>
-        <span class="range-mark">Enterprise</span>
-      </div>
-    </div>
-  </div>
-  <div class="nav-bar">
-    <button class="btn btn-ghost" onclick="goTo(1)">← Back</button>
-    <button class="btn btn-primary" onclick="goTo(3)">Continue →</button>
-  </div>
-</div>
-
-<!-- ══════════════ PAGE 3 — DELIVERY ══════════════ -->
-<div class="page" id="pg3">
-  <div class="alert alert-teal">
-    <strong>🛡️ Sentinel OverWatch</strong>
-    <span class="info-wrap">
-      <span class="info-icon" onclick="toggleTip(this)">ⓘ</span>
-      <span class="tooltip">Sentinel OverWatch is the LOGOS security layer. It monitors every agent or system for threats, behavioral drift, and unauthorized actions in real time.</span>
-    </span>
-    is active on every tier we deliver. It is not optional — it is part of every Governance Certificate.
-  </div>
-
-  <div class="card">
-    <div class="card-h">Delivery Scope</div>
-    <div class="card-sub">Choose the scope of your build. Sentinel OverWatch is active on all three.</div>
-    <div class="delivery-grid">
-      <!-- GOVERNED -->
-      <div class="delivery-card sel" id="dc-gov" onclick="selDelivery('gov')">
-        <div class="dc-title">Governed</div>
-        <div class="dc-sub">One deliverable — fully constitutional from day one</div>
-        <ul class="dc-features">
-          <li>Single agent or application</li>
-          <li>System prompt + SOP</li>
-          <li>
-            <span class="info-wrap" style="display:inline">Constitution
-              <span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span>
-              <span class="tooltip">Constitutional Bounds — rules the agent can never break, no matter what anyone asks.</span>
-            </span>
-          </li>
-          <li>
-            <span class="info-wrap" style="display:inline">Handoff Contract
-              <span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span>
-              <span class="tooltip">A typed agreement between agents — prevents miscommunication and data loss at transition points.</span>
-            </span>
-          </li>
-          <li>Audit trail</li>
-          <li>
-            <span class="info-wrap" style="display:inline">Governance Certificate
-              <span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span>
-              <span class="tooltip">Signed proof your agent was built to a documented governance standard.</span>
-            </span>
-          </li>
-        </ul>
-        <div class="sentinel-badge"><span class="sentinel-dot"></span> Sentinel OverWatch: ACTIVE</div>
-      </div>
-      <!-- FIRM -->
-      <div class="delivery-card" id="dc-firm" onclick="selDelivery('firm')">
-        <div class="dc-title">Firm</div>
-        <div class="dc-sub">A full department — manager + specialist sub-agents</div>
-        <ul class="dc-features">
-          <li>Management agent + sub-agents</li>
-          <li>Individual constitutions per agent</li>
-          <li>Shared governance spine</li>
-          <li>Routing + escalation rules</li>
-          <li>
-            <span class="info-wrap" style="display:inline">DRS scoring
-              <span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span>
-              <span class="tooltip">Dynamic Risk Score — real-time safety rating on every action the agent takes.</span>
-            </span>
-          </li>
-          <li>Full documentation package</li>
-        </ul>
-        <div class="sentinel-badge"><span class="sentinel-dot"></span> Sentinel OverWatch: ACTIVE</div>
-      </div>
-      <!-- ENTERPRISE -->
-      <div class="delivery-card" id="dc-ent" onclick="selDelivery('ent')">
-        <div class="dc-title">Enterprise</div>
-        <div class="dc-sub">All ASF departments — full constitutional infrastructure</div>
-        <ul class="dc-features">
-          <li>All departments (RI-01, EN-01, SC-01, EX-01)</li>
-          <li>Compliance certification</li>
-          <li>SLA + ongoing oversight</li>
-          <li>HAAP integration</li>
-          <li>Human escalation chain</li>
-          <li>Managed post-delivery</li>
-        </ul>
-        <div class="sentinel-badge"><span class="sentinel-dot"></span> Sentinel OverWatch: ACTIVE</div>
-      </div>
-    </div>
-
-    <!-- COMPLIANCE -->
-    <div class="card-h" style="margin-bottom:.3rem">Compliance Requirements</div>
-    <div class="card-sub" style="margin-bottom:1rem">Select every framework your environment must satisfy. We produce a compliance audit document for each one selected.</div>
-    <div class="compliance-grid">
-      <div class="compliance-item" onclick="toggleCI(this)">
-        <div class="ci-name">HIPAA <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Required if your agent handles patient or medical information.</span></span></div>
-        <div class="ci-desc">Healthcare data privacy</div>
-      </div>
-      <div class="compliance-item" onclick="toggleCI(this)">
-        <div class="ci-name">SOC 2 <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Required for SaaS products serving business customers who need security assurance.</span></span></div>
-        <div class="ci-desc">Service org controls</div>
-      </div>
-      <div class="compliance-item" onclick="toggleCI(this)">
-        <div class="ci-name">GDPR <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Required if you serve users located in Europe or the UK.</span></span></div>
-        <div class="ci-desc">EU data protection</div>
-      </div>
-      <div class="compliance-item" onclick="toggleCI(this)">
-        <div class="ci-name">PCI-DSS <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Required if your agent handles payments or payment card data.</span></span></div>
-        <div class="ci-desc">Payment card data</div>
-      </div>
-      <div class="compliance-item" onclick="toggleCI(this)">
-        <div class="ci-name">NIST AI RMF <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Federal AI risk management standard — required for government work or regulated industries.</span></span></div>
-        <div class="ci-desc">AI risk framework</div>
-      </div>
-      <div class="compliance-item" onclick="toggleCI(this)">
-        <div class="ci-name">FedRAMP <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">Cloud security standard required for US federal agency deployments.</span></span></div>
-        <div class="ci-desc">Federal cloud security</div>
-      </div>
-      <div class="compliance-item" onclick="toggleCI(this)">
-        <div class="ci-name">CCPA</div>
-        <div class="ci-desc">California consumer privacy</div>
-      </div>
-      <div class="compliance-item" onclick="toggleCI(this)">
-        <div class="ci-name">FERPA</div>
-        <div class="ci-desc">Education records</div>
-      </div>
-      <div class="compliance-item on" onclick="toggleCI(this)">
-        <div class="ci-name">LOGOS Baseline <span class="info-wrap"><span class="info-icon" onclick="event.stopPropagation();toggleTip(this)">ⓘ</span><span class="tooltip">The Logos constitutional governance baseline is always included. It cannot be removed — it is what makes the Governance Certificate valid.</span></span></div>
-        <div class="ci-desc">Always included</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="nav-bar">
-    <button class="btn btn-ghost" onclick="goTo(2)">← Back</button>
-    <button class="btn btn-primary" onclick="goTo(4)">Continue →</button>
-  </div>
-</div>
-
-<!-- ══════════════ PAGE 4 — TIMELINE ══════════════ -->
-<div class="page" id="pg4">
-  <div class="card">
-    <div class="card-h">Timeline & Budget</div>
-    <div class="card-sub">Realistic scoping at intake prevents timeline surprises and change orders.</div>
-
-    <div class="range-group">
-      <div class="range-header">
-        <span class="range-label">Target Timeline</span>
-        <span class="range-val" id="timeline-val">30 days</span>
-      </div>
-      <input type="range" min="0" max="4" value="2" id="timeline-r" oninput="setRange(this,'timeline-val',['ASAP — expedite if possible','2 weeks','30 days','60 days','Flexible — no hard deadline'])">
-      <div class="range-marks">
-        <span class="range-mark">ASAP</span>
-        <span class="range-mark">2 wks</span>
-        <span class="range-mark">30 days</span>
-        <span class="range-mark">60 days</span>
-        <span class="range-mark">Flexible</span>
-      </div>
-    </div>
-
-    <div class="range-group" style="margin-top:1.25rem">
-      <div class="range-header">
-        <span class="range-label">Budget Range</span>
-        <span class="range-val" id="budget-val">$1,000 – $5,000</span>
-      </div>
-      <input type="range" min="0" max="6" value="1" id="budget-r" oninput="setRange(this,'budget-val',['Under $1,000','$1,000 – $5,000','$5,000 – $15,000','$15,000 – $50,000','$50,000 – $150,000','$150,000 – $500,000','$500,000+'])">
-      <div class="range-marks">
-        <span class="range-mark">&lt;$1k</span>
-        <span class="range-mark">$5k</span>
-        <span class="range-mark">$15k</span>
-        <span class="range-mark">$50k</span>
-        <span class="range-mark">$150k</span>
-        <span class="range-mark">$500k</span>
-        <span class="range-mark">$500k+</span>
-      </div>
-    </div>
-
-    <div class="form-row" style="margin-top:1.25rem">
-      <div class="form-group">
-        <label class="form-label">Engagement Model</label>
-        <select class="form-select" id="f-model">
-          <option>One-time delivery</option>
-          <option>Managed monthly</option>
-          <option>Licensing</option>
-          <option>Pilot first, then expand</option>
-          <option>Open to recommendation</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Post-Delivery Support</label>
-        <select class="form-select" id="f-support">
-          <option>None needed</option>
-          <option>30-day bug warranty</option>
-          <option>Monthly maintenance</option>
-          <option>Sentinel OverWatch (ongoing)</option>
-          <option>Full managed service</option>
-        </select>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-h">Contact & Authorization</div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Full Name <span class="req">*</span></label>
-        <input class="form-input" id="f-contact" type="text" placeholder="Your name">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Organization</label>
-        <input class="form-input" id="f-org" type="text" placeholder="Company or individual">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Email <span class="req">*</span></label>
-        <input class="form-input" id="f-email" type="email" placeholder="you@example.com">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Preferred Contact</label>
-        <select class="form-select" id="f-contact-method">
-          <option>Email</option>
-          <option>Phone call</option>
-          <option>Text / SMS</option>
-          <option>Video call</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-row full">
-      <div class="form-group">
-        <label class="form-label">Anything else we should know?</label>
-        <textarea class="form-textarea" style="min-height:75px" id="f-notes" placeholder="Existing vendor relationships, must-avoid technologies, constraints we haven't asked about…"></textarea>
-      </div>
-    </div>
-  </div>
-
-  <div class="nav-bar">
-    <button class="btn btn-ghost" onclick="goTo(3)">← Back</button>
-    <button class="btn btn-primary" onclick="buildReview();goTo(5)">Review Order →</button>
-  </div>
-</div>
-
-<!-- ══════════════ PAGE 5 — REVIEW ══════════════ -->
-<div class="page" id="pg5">
-  <div class="cert-banner">
-    <div class="cert-icon">🏛️</div>
+<!-- Header -->
+<header class="topbar">
+  <a href="index.html" class="brand">
+    <div class="brand-mark">L</div>
     <div>
-      <div class="cert-title">LOGOS GOVERNANCE CERTIFICATE — PENDING</div>
-      <div class="cert-sub">Issued upon project acceptance. Certifies constitutional compliance, Sentinel OverWatch integration, and governed delivery standards. This certificate is your chain of custody from intent to deployment.</div>
+      <div class="brand-name">LOGOS Assess</div>
+      <div class="brand-sub">Governance Systems</div>
     </div>
-  </div>
+  </a>
+  <nav class="topbar-nav">
+    <a href="index.html#governance">How It Works</a>
+    <a href="index.html#scans">Scanners</a>
+    <a href="index.html#pricing">Pricing</a>
+    <a href="index.html#demo">Demo</a>
+    <a href="intake.html?plan=free" class="topbar-nav-cta">Start Free Scan →</a>
+  </nav>
+</header>
 
-  <div class="card">
-    <div class="card-h">Scope Summary</div>
-    <div class="card-sub">Review carefully. This becomes the binding scope reference for your project and the basis of the Governance Certificate.</div>
-    <div class="summary-rows" id="review-rows"></div>
-  </div>
+<!-- Page -->
+<div class="page">
 
-  <div class="hash-box" id="hash-display">
-    <span class="hash-label">Scope Hash (SHA-256 intent fingerprint)</span>
-    <span class="hash-label">Job Order ID</span>
-    <span class="hash-id" id="job-id">Generating…</span>
-  </div>
+  <!-- Left Panel -->
+  <div class="left-panel">
+    <div class="eyebrow">Start your assessment</div>
+    <h1>You don't know what's<br><em>inside your stack.</em></h1>
+    <p class="lead">One governed scan. All 18 engines. A board-readable report with posture grade, CVEs, governance gaps, and a 30-day remediation roadmap — on read-only access to your repo.</p>
 
-  <div class="alert alert-gold">📋 Once submitted, an ASF intake specialist (Abigail) will review your order within 24 hours and issue a formal Statement of Work.</div>
-
-  <div class="nav-bar">
-    <button class="btn btn-ghost" onclick="goTo(4)">← Back</button>
-    <button class="btn btn-primary btn-submit" onclick="submitOrder()">Submit Job Order →</button>
-  </div>
-</div>
-
-<!-- ══════════════ SUCCESS ══════════════ -->
-<div class="page" id="pg-ok">
-  <div class="success-wrap">
-    <div class="success-icon">✅</div>
-    <h2 class="success-h">Job Order Received</h2>
-    <p class="success-p">Your order has been submitted to the Logos ASF intake queue. Abigail will review and respond within 24 hours.</p>
-    <div class="success-id" id="confirm-id">LOGOS-XXXXXXXX-XXXXXXXX</div>
-    <div class="success-flags">
-      <div class="flag">
-        <div class="flag-icon">🏛️</div>
-        <div>
-          <div class="flag-text">Governance Certificate</div>
-          <div class="flag-sub">PENDING — issued at scope lock</div>
+    <div class="deliverables">
+      <div class="deliverable">
+        <div class="del-icon">🔬</div>
+        <div class="del-body">
+          <div class="del-title">18 Automated Scanners</div>
+          <div class="del-desc">CVE/SCA · SBOM · SAST · Secrets · Container · IaC · License · Supply Chain · AI Risk · Governance Posture</div>
         </div>
       </div>
-      <div class="flag">
-        <div class="flag-icon">🛡️</div>
-        <div>
-          <div class="flag-text">Sentinel OverWatch</div>
-          <div class="flag-sub">ACTIVE on delivery</div>
+      <div class="deliverable">
+        <div class="del-icon">📊</div>
+        <div class="del-body">
+          <div class="del-title">Board-Readable Report</div>
+          <div class="del-desc">Posture grade A–F · Security score · Governance score · Executive summary · Technical appendix</div>
         </div>
       </div>
-      <div class="flag">
-        <div class="flag-icon">📋</div>
-        <div>
-          <div class="flag-text">Abigail Review</div>
-          <div class="flag-sub">Within 24 hours</div>
+      <div class="deliverable">
+        <div class="del-icon">🗺️</div>
+        <div class="del-body">
+          <div class="del-title">30-Day Remediation Roadmap</div>
+          <div class="del-desc">Prioritized action plan · Immediate · 30-day · 60–90 day horizons · Integration recommendations</div>
+        </div>
+      </div>
+      <div class="deliverable">
+        <div class="del-icon">🔒</div>
+        <div class="del-body">
+          <div class="del-title">Read-Only. Always.</div>
+          <div class="del-desc">Zero write access · No credentials required · No production access · Evidence-backed findings only</div>
         </div>
       </div>
     </div>
+
+    <div class="trust-row">
+      <div class="trust-badge"><span class="dot"></span>SOC2-compliant logging</div>
+      <div class="trust-badge"><span class="dot"></span>NIST AI RMF 1.0 aligned</div>
+      <div class="trust-badge"><span class="dot"></span>Read-only access</div>
+      <div class="trust-badge"><span class="dot"></span>No credentials required</div>
+    </div>
   </div>
+
+  <!-- Form Panel -->
+  <div class="form-panel">
+    <div id="form-view">
+      <div class="form-title">Begin Your Assessment</div>
+      <div class="form-sub">Fill out the fields below — we'll handle the rest.</div>
+
+      <!-- Plan Selection -->
+      <div class="plan-label">Select a plan</div>
+      <div class="plan-grid" id="plan-grid">
+
+        <label class="plan-option selected" data-plan="free">
+          <input type="radio" name="plan" value="free" checked>
+          <div class="plan-info">
+            <div class="plan-name">Free Scan</div>
+            <div class="plan-desc">1 repo · Full report · 30-day roadmap · One-time only</div>
+          </div>
+          <div class="plan-price">$0<span class="per">one time</span></div>
+          <span class="plan-free-badge">START HERE</span>
+        </label>
+
+        <label class="plan-option" data-plan="basic">
+          <input type="radio" name="plan" value="basic">
+          <div class="plan-info">
+            <div class="plan-name">Basic</div>
+            <div class="plan-desc">1 repo · 72hr continuous monitoring · Dashboard access</div>
+          </div>
+          <div class="plan-price">$997<span class="per">/ month</span></div>
+        </label>
+
+        <label class="plan-option" data-plan="plus">
+          <input type="radio" name="plan" value="plus">
+          <div class="plan-info">
+            <div class="plan-name">Plus</div>
+            <div class="plan-desc">3 repos · Dashboard · Trend charts · Priority support</div>
+          </div>
+          <div class="plan-price">$1,997<span class="per">/ month</span></div>
+        </label>
+
+        <label class="plan-option" data-plan="governed">
+          <input type="radio" name="plan" value="governed">
+          <div class="plan-info">
+            <div class="plan-name">Governed</div>
+            <div class="plan-desc">5 repos · Sentinel OverWatch · Immutable audit logs · Monthly exec call</div>
+          </div>
+          <div class="plan-price">$2,997<span class="per">/ month</span></div>
+          <span class="plan-badge">MOST COMPLETE</span>
+        </label>
+
+      </div>
+
+      <!-- Repo Count -->
+      <div class="field">
+        <div class="field-label">Number of repositories</div>
+        <div class="repo-row" id="repo-row">
+          <button type="button" class="repo-btn active" data-count="1">1</button>
+          <button type="button" class="repo-btn disabled" data-count="3">3</button>
+          <button type="button" class="repo-btn disabled" data-count="5">5</button>
+        </div>
+        <div class="field-hint" id="repo-hint">Free scan covers 1 repository.</div>
+      </div>
+
+      <div class="field-divider"></div>
+
+      <!-- Email -->
+      <div class="field">
+        <div class="field-label">Email address</div>
+        <input type="email" class="field-input" id="email" name="email" placeholder="you@company.com" autocomplete="email">
+        <div class="field-hint">A one-time report link will be sent here. Expires in 72 hours.</div>
+        <div class="field-error" id="email-error">Please enter a valid work email address.</div>
+      </div>
+
+      <!-- Repo URL -->
+      <div class="field">
+        <div class="field-label">Repository URL</div>
+        <input type="url" class="field-input" id="repo-url" name="repo_url" placeholder="https://github.com/org/repo">
+        <div class="field-hint">GitHub, GitLab, or Bitbucket. Read-only access only — we never write.</div>
+        <div class="field-error" id="repo-error">Please enter a valid GitHub, GitLab, or Bitbucket repository URL.</div>
+      </div>
+
+      <!-- Phone (optional) -->
+      <div class="field">
+        <div class="field-label">Phone number <span class="optional">optional</span></div>
+        <input type="tel" class="field-input" id="phone" name="phone" placeholder="+1 (555) 000-0000" autocomplete="tel">
+        <div class="field-hint">For priority support on Plus and Governed plans only.</div>
+      </div>
+
+      <div class="field-divider"></div>
+
+      <!-- Consent -->
+      <div class="consent-block">
+        <label class="consent-item">
+          <input type="checkbox" id="consent-terms">
+          <span class="consent-text">I confirm I have read and agree to the LOGOS Governance Systems <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>. I authorize read-only access to the repository provided above.</span>
+        </label>
+        <div class="consent-required" id="terms-error">You must agree to the terms to proceed.</div>
+
+        <label class="consent-item">
+          <input type="checkbox" id="consent-scan">
+          <span class="consent-text">I confirm I have the authority to authorize a security assessment of the specified repository and understand findings are for review purposes only — no automated remediation will occur without explicit human approval.</span>
+        </label>
+        <div class="consent-required" id="scan-error">Authorization confirmation required.</div>
+
+        <label class="consent-item">
+          <input type="checkbox" id="consent-comms">
+          <span class="consent-text">Optional: I'd like to receive security updates, product news, and remediation guidance from LOGOS Governance Systems. Unsubscribe anytime.</span>
+        </label>
+      </div>
+
+      <!-- Submit -->
+      <button class="btn-submit" id="submit-btn" type="button">
+        <span class="btn-text">Start Assessment →</span>
+        <span class="btn-loading"><span class="spinner"></span>Submitting…</span>
+      </button>
+
+      <div class="form-footer">
+        LOGOS-STD-GOV-001 · Read-only access · Zero write permissions<br>
+        DEP.KEYSTONE Patent Pending 63/953,447
+      </div>
+    </div>
+
+    <!-- Success State -->
+    <div class="success-state" id="success-view">
+      <div class="success-icon">✓</div>
+      <div class="success-title">Assessment Queued</div>
+      <div class="success-msg">Your scan is in the queue. All 18 engines are being initialized against your repository. You'll receive your report link within 72 hours.</div>
+      <div class="success-ref" id="success-ref">REF: LGS-000000 · Plan: FREE</div>
+      <div class="success-msg" style="margin-top:16px;font-size:0.78rem">Check your email for confirmation. Report link expires 72 hours after delivery.</div>
+    </div>
+  </div>
+
 </div>
-
-</div><!-- /shell -->
-
-<!-- CHIP STYLE (inline for dynamic chips) -->
-<style>
-.chip{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:.35rem .7rem;font-size:.7875rem;cursor:pointer;transition:all var(--ease);color:var(--muted)}
-.chip:hover{border-color:var(--primary);color:var(--text)}
-.chip.on{background:var(--primary-glow);border-color:var(--primary);color:var(--primary);font-weight:600}
-</style>
 
 <script>
-// ── STATE ──
-const S = {
-  type: null,
-  fork: null,
-  delivery: 'gov',
-  page: 1
+/* ── Plan Selection Logic ── */
+const plans = {
+  free:     { repos:[1],       repoHint:'Free scan covers 1 repository.' },
+  basic:    { repos:[1],       repoHint:'Basic plan covers 1 repository with continuous monitoring.' },
+  plus:     { repos:[1,3],     repoHint:'Plus plan covers up to 3 repositories.' },
+  governed: { repos:[1,3,5],   repoHint:'Governed plan covers up to 5 repositories.' }
 };
 
-// ── TYPE SELECTION ──
-function selType(t) {
-  S.type = t;
-  ['app','ent','agt'].forEach(k => {
-    document.getElementById('tc-' + k).classList.toggle('sel', k === t);
+const repoBtns = document.querySelectorAll('.repo-btn');
+const repoHint = document.getElementById('repo-hint');
+let selectedPlan = 'free';
+let selectedRepoCount = 1;
+
+document.querySelectorAll('.plan-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.plan-option').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    selectedPlan = opt.dataset.plan;
+    updateRepoButtons();
   });
-  document.getElementById('agent-fork').classList.toggle('show', t === 'agt');
-  document.getElementById('app-chips').style.display = t === 'app' ? 'block' : 'none';
-  document.getElementById('ent-chips').style.display = t === 'ent' ? 'block' : 'none';
-}
-
-// ── FORK ──
-function selFork(f) {
-  S.fork = f;
-  ['single','team'].forEach(k => {
-    document.getElementById('fork-' + k).classList.toggle('sel', k === f);
-  });
-}
-
-// ── DELIVERY ──
-function selDelivery(d) {
-  S.delivery = d;
-  ['gov','firm','ent'].forEach(k => {
-    document.getElementById('dc-' + k).classList.toggle('sel', k === d);
-  });
-}
-
-// ── CHIPS ──
-function toggleChip(el) { el.classList.toggle('on'); }
-function toggleCI(el) { el.classList.toggle('on'); }
-
-// ── RANGE ──
-function setRange(el, outId, labels) {
-  const v = parseInt(el.value);
-  const pct = (v / (parseInt(el.max))) * 100;
-  el.style.setProperty('--p', pct + '%');
-  document.getElementById(outId).textContent = labels[v];
-}
-
-// ── TOOLTIP ──
-function toggleTip(icon) {
-  const wasOpen = icon.classList.contains('open');
-  document.querySelectorAll('.info-icon.open').forEach(i => i.classList.remove('open'));
-  if (!wasOpen) icon.classList.add('open');
-}
-document.addEventListener('click', (e) => {
-  if (!e.target.classList.contains('info-icon')) {
-    document.querySelectorAll('.info-icon.open').forEach(i => i.classList.remove('open'));
-  }
 });
 
-// ── NAVIGATION ──
-function goTo(n) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById(n === 'ok' ? 'pg-ok' : 'pg' + n).classList.add('active');
-  document.querySelectorAll('.step').forEach((s, i) => {
-    s.classList.remove('active', 'done');
-    if (typeof n === 'number') {
-      if (i + 1 < n) s.classList.add('done');
-      if (i + 1 === n) s.classList.add('active');
+function updateRepoButtons(){
+  const allowed = plans[selectedPlan].repos;
+  repoHint.textContent = plans[selectedPlan].repoHint;
+  repoBtns.forEach(btn => {
+    const count = parseInt(btn.dataset.count);
+    if(allowed.includes(count)){
+      btn.classList.remove('disabled');
+      if(count === allowed[0]){
+        btn.classList.add('active');
+        selectedRepoCount = count;
+      }
     } else {
-      s.classList.add('done');
+      btn.classList.remove('active');
+      btn.classList.add('disabled');
     }
   });
-  S.page = n;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ── SIMPLE HASH (FNV-like, no crypto API needed in sandbox) ──
-function simpleHash(str) {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = (h * 0x01000193) >>> 0;
+repoBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    if(btn.classList.contains('disabled')) return;
+    repoBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedRepoCount = parseInt(btn.dataset.count);
+  });
+});
+
+/* ── Validation ── */
+function isValidEmail(email){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+}
+
+function isValidRepo(url){
+  return /^https?:\/\/(github\.com|gitlab\.com|bitbucket\.org)\/[a-zA-Z0-9_.\-]+\/[a-zA-Z0-9_.\-]+/.test(url);
+}
+
+function setError(inputId, errorId, show){
+  const input = document.getElementById(inputId);
+  const error = document.getElementById(errorId);
+  if(show){
+    input.classList.add('error');
+    error.style.display = 'block';
+  } else {
+    input.classList.remove('error');
+    error.style.display = 'none';
   }
-  return h.toString(16).toUpperCase().padStart(8, '0');
 }
 
-function genJobId(data) {
-  const now = new Date();
-  const ts = now.getFullYear().toString() +
-    String(now.getMonth() + 1).padStart(2, '0') +
-    String(now.getDate()).padStart(2, '0');
-  const hash = simpleHash(JSON.stringify(data));
-  return `LOGOS-${ts}-${hash}`;
+function setConsentError(errorId, show){
+  document.getElementById(errorId).style.display = show ? 'block' : 'none';
 }
 
-// ── COLLECT STATE ──
-function collectState() {
-  const typeMap = { app: 'App / Software', ent: 'Enterprise Software', agt: 'Agent / Workflow' };
-  const delivMap = { gov: 'Governed', firm: 'Firm', ent: 'Enterprise' };
-  const compls = Array.from(document.querySelectorAll('.compliance-item.on')).map(el =>
-    el.querySelector('.ci-name').textContent.replace(/ⓘ/g, '').trim()
-  );
+/* ── URL Plan Pre-selection ── */
+(function(){
+  const params = new URLSearchParams(window.location.search);
+  const plan = params.get('plan');
+  if(plan){
+    const planOption = document.querySelector('.plan-option[data-plan="' + plan + '"]');
+    if(planOption){
+      document.querySelectorAll('.plan-option').forEach(o => o.classList.remove('selected'));
+      planOption.classList.add('selected');
+      const radio = planOption.querySelector('input[type="radio"]');
+      if(radio) radio.checked = true;
+      selectedPlan = plan;
+      updateRepoButtons();
+    }
+  }
+})();
 
-  return {
-    type: S.type ? typeMap[S.type] : 'Not selected',
-    fork: S.type === 'agt' ? (S.fork === 'single' ? 'Single Agent' : S.fork === 'team' ? 'Agent Team' : 'Not selected') : null,
-    name: document.getElementById('f-name').value || '',
-    problem: document.getElementById('f-problem').value || '',
-    success: document.getElementById('f-success').value || '',
-    nogo: document.getElementById('f-nogo').value || '',
-    sector: document.getElementById('f-sector').value || '',
-    stack: document.getElementById('f-stack').value || '',
-    complexity: document.getElementById('complexity-val').textContent,
-    delivery: delivMap[S.delivery],
-    compliance: compls,
-    timeline: document.getElementById('timeline-val').textContent,
-    budget: document.getElementById('budget-val').textContent,
-    engmodel: document.getElementById('f-model').value,
-    support: document.getElementById('f-support').value,
-    contact: document.getElementById('f-contact').value || '',
-    email: document.getElementById('f-email').value || '',
-    org: document.getElementById('f-org').value || '',
-    contactMethod: document.getElementById('f-contact-method').value,
-    notes: document.getElementById('f-notes').value || ''
-  };
-}
+/* ── Submit ── */
+document.getElementById('submit-btn').addEventListener('click', async () => {
+  const email = document.getElementById('email').value.trim();
+  const repoUrl = document.getElementById('repo-url').value.trim();
+  const termsChecked = document.getElementById('consent-terms').checked;
+  const scanChecked = document.getElementById('consent-scan').checked;
 
-// ── BUILD REVIEW ──
-function buildReview() {
-  const d = collectState();
-  const id = genJobId(d);
-  document.getElementById('job-id').textContent = id;
-  window._jobId = id;
+  let valid = true;
 
-  const rows = [
-    ['Order Type', d.type],
-    ...(d.fork ? [['Agent Structure', d.fork]] : []),
-    ['Project Name', d.name || '—'],
-    ['Industry', d.sector || '—'],
-    ['Complexity', d.complexity],
-    ['Delivery Scope', d.delivery],
-    ['Compliance', d.compliance.length ? d.compliance : ['Logos Baseline']],
-    ['Timeline', d.timeline],
-    ['Budget', d.budget],
-    ['Engagement', d.engmodel],
-    ['Post-Delivery', d.support],
-    ['Contact', [d.contact, d.email, d.org].filter(Boolean).join(' · ') || '—'],
-  ];
+  setError('email','email-error', !isValidEmail(email));
+  if(!isValidEmail(email)) valid = false;
 
-  document.getElementById('review-rows').innerHTML = rows.map(([k, v]) => {
-    const val = Array.isArray(v)
-      ? '<div class="tag-row">' + v.map(x => `<span class="tag">${x}</span>`).join('') + '</div>'
-      : `<span>${v}</span>`;
-    return `<div class="sr"><span class="sr-k">${k}</span><span class="sr-v">${val}</span></div>`;
-  }).join('');
-}
+  setError('repo-url','repo-error', !isValidRepo(repoUrl));
+  if(!isValidRepo(repoUrl)) valid = false;
 
-// ── SUBMIT ──
-function submitOrder() {
-  const jobId = window._jobId || 'LOGOS-' + Date.now();
-  document.getElementById('confirm-id').textContent = jobId;
+  setConsentError('terms-error', !termsChecked);
+  if(!termsChecked) valid = false;
 
-  // Collect all form data for API submission
-  const payload = {
-    job_order_id: jobId,
-    scope_hash: window._scopeHash || '',
-    order_type: window._sel?.type || '',
-    agent_fork: window._sel?.fork || '',
-    delivery_tier: window._sel?.delivery || '',
-    sector: document.getElementById('f-sector')?.value || '',
-    compliance: Array.from(document.querySelectorAll('.comp-chip.sel'))
-                     .map(el => el.dataset.val || el.textContent.trim()),
-    constraints: document.getElementById('f-constraints')?.value || '',
-    problem: document.getElementById('f-problem')?.value || '',
-    success: document.getElementById('f-success')?.value || '',
-    name: document.getElementById('f-name')?.value || '',
-    email: document.getElementById('f-email')?.value || '',
-  };
+  setConsentError('scan-error', !scanChecked);
+  if(!scanChecked) valid = false;
 
-  // POST to Abigail's intake endpoint — non-blocking, show success immediately
-  fetch('/api/intake', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }).then(r => r.json()).then(data => {
-    if (!data.ok) console.warn('Intake API error:', data.error);
-  }).catch(e => console.warn('Intake API unreachable:', e));
+  if(!valid) return;
 
-  goTo('ok');
-}
+  // Submit
+  const btn = document.getElementById('submit-btn');
+  btn.classList.add('loading');
+  btn.disabled = true;
 
-// ── INIT RANGES ──
-document.addEventListener('DOMContentLoaded', () => {
-  setRange(document.getElementById('complexity-r'), 'complexity-val',
-    ['Simple — focused task, 1–2 weeks','Standard — multi-feature, 2–6 weeks','Moderate — integrated system, 1–3 months','Complex — full platform, 3–6 months','Enterprise — firm-level, 6+ months']);
-  setRange(document.getElementById('timeline-r'), 'timeline-val',
-    ['ASAP — expedite if possible','2 weeks','30 days','60 days','Flexible — no hard deadline']);
-  setRange(document.getElementById('budget-r'), 'budget-val',
-    ['Under $1,000','$1,000 – $5,000','$5,000 – $15,000','$15,000 – $50,000','$50,000 – $150,000','$150,000 – $500,000','$500,000+']);
+  // Simulate submission — replace with real API call
+  await new Promise(r => setTimeout(r, 1800));
+
+  // Generate reference
+  const ref = 'LGS-' + Date.now().toString(36).toUpperCase().slice(-6);
+  const planLabel = selectedPlan.toUpperCase();
+
+  document.getElementById('success-ref').textContent = `REF: ${ref} · Plan: ${planLabel} · Repos: ${selectedRepoCount}`;
+  document.getElementById('form-view').style.display = 'none';
+  document.getElementById('success-view').style.display = 'block';
+});
+
+/* ── Live validation on blur ── */
+document.getElementById('email').addEventListener('blur', function(){
+  if(this.value) setError('email','email-error', !isValidEmail(this.value.trim()));
+});
+document.getElementById('repo-url').addEventListener('blur', function(){
+  if(this.value) setError('repo-url','repo-error', !isValidRepo(this.value.trim()));
 });
 </script>
+
+<footer style="border-top:1px solid var(--border);padding:1.5rem 2rem;background:var(--bg);margin-top:auto">
+  <div style="max-width:1100px;margin:0 auto;display:flex;flex-direction:column;align-items:center;text-align:center;gap:0.35rem">
+    <div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)">LOGOS-STD-GOV-001 · DEP.KEYSTONE patent pending 63/953,447</div>
+    <div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)">David W. Smith Jr. · Founder &amp; CEO · <a href="mailto:david@logosgs.net" style="color:var(--primary-bright)">david@logosgs.net</a></div>
+    <div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)">© 2026 Logos Governance Systems Inc. · assess.logosgs.net</div>
+    <div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)"><a href="terms.html" style="color:var(--primary-bright)">Terms of Service</a> · <a href="privacy.html" style="color:var(--primary-bright)">Privacy Policy</a></div>
+    <div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-faint);margin-top:0.25rem">Nothing runs unverified.</div>
+  </div>
+</footer>
 </body>
 </html>
