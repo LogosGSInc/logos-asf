@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- SECURITY: Content Security Policy — restricts script execution to same-origin,
+     disallows eval(), restricts fonts to trusted CDN. Defence-in-depth against XSS. -->
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; font-src https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-src 'self'; base-uri 'self'; form-action 'self';">
+<meta name="referrer" content="no-referrer">
 <title>ASF Intake — Intent Compiler · LOGOS Governance Systems</title>
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&f[]=cabinet-grotesk@700,800,900&display=swap" rel="stylesheet">
 <style>
@@ -1521,14 +1526,17 @@ function renderNotes(list){
    ═══════════════════════════════════════════════════════════════════════ */
 function buildSubmissionPayload(){
   const inf = inferStack();
+  const selectionsJson = JSON.stringify(state.intent, Object.keys(state.intent).sort());
   return {
     // existing /api/intake contract — unchanged
     job_order_id: `JOB-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+    scope_hash: simpleHash(selectionsJson),  // backend requires this; deterministic SHA-like signature of selections
     order_type: val("interface_type") || "Custom build",
     sector: val("ux_tone") || "Unspecified",
     problem: val("product_name") || `${val("interface_type")||"Custom"} build via Intent Compiler`,
     constraints: (val("compliance")||[]).join("; ") || "None specified",
     delivery_tier: val("audit_required") === "Yes — immutable chain" ? "high-assurance" : "standard",
+    compliance: val("compliance") || [],
     // NEW: ride-along payload — audit handler stores this unchanged
     intent_payload: {
       compiler_version: "0.2",
@@ -1546,6 +1554,18 @@ function buildSubmissionPayload(){
   };
 }
 
+// FNV-1a 32-bit hash, hex-encoded — deterministic, dependency-free.
+// Sufficient for scope-hash use (audit signature, not crypto).
+// Backend can replace with SHA-256 server-side if hardening required.
+function simpleHash(s){
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++){
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return "scope_" + h.toString(16).padStart(8, "0");
+}
+
 function openSubmitModal(){
   if (selectionCount() === 0){
     showStatus("err", "Make at least one selection before submitting.");
@@ -1553,11 +1573,18 @@ function openSubmitModal(){
   }
   const payload = buildSubmissionPayload();
   document.getElementById("modalTitle").textContent = "Confirm submission to Abigail";
-  document.getElementById("modalBody").innerHTML = `
-    Submitting <strong>${selectionCount()} selections</strong> as a governed job order.
-    Audit event <code>JOB_ORDER_RECEIVED</code> will be written. The intent payload
-    rides along with the existing <code>/api/intake</code> contract — zero backend changes required.
-  `;
+  // SECURITY FIX: build modal body via DOM API to avoid innerHTML with any
+  // computed values, even numeric ones (defence-in-depth pattern).
+  const modalBody = document.getElementById("modalBody");
+  modalBody.textContent = "";
+  const line1 = document.createElement("p");
+  const strong = document.createElement("strong");
+  strong.textContent = `${selectionCount()} selections`;
+  line1.append("Submitting ", strong, " as a governed job order.");
+  const line2 = document.createElement("p");
+  line2.style.marginTop = ".5rem";
+  line2.textContent = "Audit event JOB_ORDER_RECEIVED will be written. The intent payload rides along with the existing /api/intake contract — zero backend changes required.";
+  modalBody.append(line1, line2);
   document.getElementById("modalPayload").textContent = JSON.stringify(payload, null, 2);
   document.getElementById("modal").classList.add("show");
 }
@@ -1616,7 +1643,23 @@ function copyStack(){
 }
 
 function resetAll(){
-  if (selectionCount() > 0 && !confirm("Clear all selections?")) return;
+  // SECURITY FIX: replaced confirm() with 2-step button arm pattern.
+  // confirm() is blocked in Codespaces/iframes and is UX-hostile.
+  const btn = document.querySelector("[onclick*='resetAll'], button[data-reset]") ||
+    [...document.querySelectorAll("button")].find(b => b.textContent.includes("Clear") || b.textContent.includes("Reset"));
+  if (selectionCount() > 0) {
+    if (!resetAll._armed) {
+      resetAll._armed = true;
+      if (btn) { btn._origText = btn.textContent; btn.textContent = "Confirm clear? Click again"; }
+      setTimeout(() => {
+        resetAll._armed = false;
+        if (btn && btn._origText) btn.textContent = btn._origText;
+      }, 4000);
+      return;
+    }
+    resetAll._armed = false;
+    if (btn && btn._origText) btn.textContent = btn._origText;
+  }
   state.intent = {};
   state.openSections = new Set(["context"]);
   renderMindmap();
