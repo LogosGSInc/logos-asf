@@ -1358,6 +1358,100 @@ def run_web(session, kill_switch, active_backend, port=7070):
                 "detail": str(e)[:200],
             }), 200
 
+    @app.route("/api/departments")
+    def api_departments():
+        """Return department list with live audit-derived metrics."""
+        from datetime import datetime, timedelta, timezone
+        
+        # Base doctrine
+        departments = [
+            {"code":"EXE", "name":"Executive / Command", "lead":"EXE-01 (Chief Executive Agent)", "status":"green"},
+            {"code":"ENG", "name":"Engineering", "lead":"ENG-01 (Chief Engineering Agent)", "status":"green"},
+            {"code":"PRD", "name":"Product", "lead":"PRD-01 (Chief Product Agent)", "status":"green"},
+            {"code":"SEC", "name":"Security", "lead":"SEC-01 (Chief Security Agent)", "status":"green"},
+            {"code":"LGL", "name":"Legal", "lead":"LGL-01 (Chief Legal Agent)", "status":"yellow"},
+            {"code":"FIN", "name":"Finance", "lead":"FIN-01 (Chief Financial Agent)", "status":"green"},
+            {"code":"OPS", "name":"Operations", "lead":"OPS-01 (Chief Operations Agent)", "status":"green"},
+            {"code":"REV", "name":"Revenue / Sales", "lead":"REV-01 (Chief Revenue Agent)", "status":"green"},
+            {"code":"MKT", "name":"Marketing", "lead":"MKT-01 (Marketing Director Agent)", "status":"green"},
+            {"code":"HR",  "name":"People / HR", "lead":"HR-01 (Chief People Agent)", "status":"green"},
+            {"code":"DAT", "name":"Data", "lead":"DAT-01 (Chief Data Agent)", "status":"green"},
+            {"code":"GRC", "name":"Governance, Risk & Compliance", "lead":"GRC-01 (Chief GRC Agent)", "status":"green"}
+        ]
+        
+        counts = {d["code"]: 0 for d in departments}
+        lasts = {d["code"]: None for d in departments}
+        
+        if LOG_FILE.exists():
+            try:
+                now = datetime.now(timezone.utc)
+                lines = LOG_FILE.read_text(encoding="utf-8").strip().splitlines()
+                # Check events from newest to oldest
+                for line in reversed(lines):
+                    try:
+                        r = json.loads(line)
+                        ts_str = r.get("ts")
+                        if not ts_str:
+                            continue
+                        # "2026-04-27T23:10:19.740554Z" -> 2026-04-27 23:10:19.740554+00:00
+                        try:
+                            # From 3.11 fromisoformat handles Z
+                            event_ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        except ValueError:
+                            continue
+                        
+                        if now - event_ts > timedelta(hours=24):
+                            break # We have gone past 24h, stop scanning
+                            
+                        # Extract department from data
+                        dept = r.get("data", {}).get("department")
+                        if not dept and r.get("event_type") == "JOB_ORDER_RECEIVED":
+                            dept = r.get("data", {}).get("job", {}).get("department")
+                            
+                        if dept in counts:
+                            counts[dept] += 1
+                            if lasts[dept] is None:
+                                lasts[dept] = ts_str
+                                
+                    except json.JSONDecodeError:
+                        continue
+            except Exception:
+                pass
+                
+        for d in departments:
+            d["audit_count_24h"] = counts[d["code"]]
+            d["last_event_ts"] = lasts[d["code"]]
+            
+        return jsonify(departments)
+
+    @app.route("/api/jobs")
+    def api_jobs():
+        """Return list of recent JOB_ORDER_RECEIVED audit events as job records."""
+        jobs = []
+        if LOG_FILE.exists():
+            try:
+                lines = LOG_FILE.read_text(encoding="utf-8").strip().splitlines()
+                for line in reversed(lines[-500:]): # Look at last 500 events
+                    try:
+                        r = json.loads(line)
+                        if r.get("event_type") == "JOB_ORDER_RECEIVED":
+                            data = r.get("data", {})
+                            job = data.get("job", {})
+                            if job:
+                                jobs.append({
+                                    "id": job.get("id", "UNKNOWN"),
+                                    "title": job.get("title", "Untitled Job"),
+                                    "department": job.get("department", "UNASSIGNED"),
+                                    "status": job.get("status", "New"),
+                                    "progress": job.get("progress", 0),
+                                    "priority": job.get("priority", "Normal")
+                                })
+                    except json.JSONDecodeError:
+                        continue
+            except Exception:
+                pass
+        return jsonify(jobs[:20]) # Return latest 20
+
     @app.route("/api/audit-tail")
     def audit_tail():
         """Return the last N audit entries for dashboard polling. Default N=25, max N=200."""

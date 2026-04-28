@@ -467,7 +467,7 @@ async function postJSON(url, payload) {
 
 /* ── LIVE REFRESH ── */
 async function refreshLive() {
-  let abigail = null, sentinel = null, audit = [];
+  let abigail = null, sentinel = null, audit = [], departments = [], jobs = [];
   try { abigail = await getJSON(`${ENDPOINTS.abigailBase}/api/status`); }
   catch (e) { abigail = { error: String(e) }; }
   try { sentinel = await getJSON(`${ENDPOINTS.abigailBase}/api/sentinel-health`); }
@@ -476,9 +476,40 @@ async function refreshLive() {
     const t = await getJSON(`${ENDPOINTS.abigailBase}/api/audit-tail?n=25`);
     audit = Array.isArray(t.entries) ? t.entries : [];
   } catch (e) { /* tail endpoint may not be live yet — non-fatal */ }
+  try { departments = await getJSON(`${ENDPOINTS.abigailBase}/api/departments`); }
+  catch (e) { /* non-fatal */ }
+  try { jobs = await getJSON(`${ENDPOINTS.abigailBase}/api/jobs`); }
+  catch (e) { /* non-fatal */ }
   state.abigail = abigail;
   state.sentinel = sentinel;
   state.audit = audit;
+  
+  const baseDepts = buildDepartmentState();
+  if (departments && departments.length > 0) {
+    state.departments = baseDepts.map(b => {
+      const live = departments.find(d => d.code === b.code) || {};
+      return {
+        ...b,
+        ...live,
+        jobs: jobs && jobs.length > 0 ? jobs.filter(j => j.department === b.code) : state.jobs.filter(j => j.department === b.code),
+        scaffold_status: true,
+        telemetry_status: "SCAFFOLD",
+        audit_status: "LIVE_AUDIT_DERIVED"
+      };
+    });
+  } else {
+    state.departments = baseDepts.map(b => ({
+      ...b,
+      jobs: state.jobs.filter(j => j.department === b.code),
+      scaffold_status: true,
+      telemetry_status: "SCAFFOLD",
+      audit_count_24h: 0,
+      last_event_ts: null,
+      audit_status: "LIVE_AUDIT_DERIVED"
+    }));
+  }
+  
+  if (jobs && jobs.length > 0) state.jobs = jobs;
   state.lastRefresh = new Date();
   state.lastRefreshError = (abigail?.error || sentinel?.error) ? true : false;
   refreshSelective();
@@ -623,7 +654,7 @@ function renderOverview() {
               <div class="kpis">
                 <div class="kpi"><span class="tiny">Jobs ${tbadge("scaffold","SC")}</span><strong>${d.activeJobs}</strong></div>
                 <div class="kpi"><span class="tiny">Tokens ${tbadge("scaffold","SC")}</span><strong>${(d.tokenUsage/1000).toFixed(1)}K</strong></div>
-                <div class="kpi"><span class="tiny">Model</span><strong style="font-size:.7rem">${d.model.replace("Groq · ","")}</strong></div>
+                <div class="kpi"><span class="tiny">Model ${tbadge("scaffold","SC")}</span><strong style="font-size:.7rem">${d.model.replace("Groq · ","")}</strong></div>
               </div>
               <div class="dept-actions">
                 <button class="mini review" onclick="openDeptDrawer('${d.code}')">Review ${d.code}</button>
@@ -929,7 +960,7 @@ function renderDepartments() {
               ${pctBar(d.alignment)}
             </div>
             <div class="kpis">
-              <div class="kpi"><span class="tiny">Role</span><strong style="font-size:.7rem">${d.role}</strong></div>
+              <div class="kpi"><span class="tiny">Role ${tbadge("scaffold","SC")}</span><strong style="font-size:.7rem">${d.role}</strong></div>
               <div class="kpi"><span class="tiny">Jobs ${tbadge("scaffold","SC")}</span><strong>${d.activeJobs}</strong></div>
               <div class="kpi"><span class="tiny">Tokens ${tbadge("scaffold","SC")}</span><strong>${(d.tokenUsage/1000).toFixed(1)}K</strong></div>
             </div>
@@ -968,14 +999,17 @@ function renderAgents() {
             <th>Completion ${tbadge("scaffold","SC")}</th>
             <th>Alignment ${tbadge("scaffold","SC")}</th>
             <th>Tokens ${tbadge("scaffold","SC")}</th>
-            <th>Model</th>
+            <th>Model ${tbadge("scaffold","SC")}</th>
           </tr>
         </thead>
         <tbody>
           ${agents.map(a => `
             <tr onclick="openAgentDrawer('${escapeHtml(a.id)}')" title="Click to review ${escapeHtml(a.name)}">
               <td style="font-weight:700;color:var(--gold)">${a.dept}</td>
-              <td>${a.name}</td>
+              <td>
+                ${a.name}
+                <div style="font-size:0.65rem;color:var(--warning);margin-top:2px;opacity:0.8;">Scaffolded agent identity — no live worker process attached yet.</div>
+              </td>
               <td><span class="status blue">${a.class}</span></td>
               <td>${badge(a.status, a.status === "green" ? "OK" : "Review")}</td>
               <td>${a.completion}%</td>
@@ -1130,6 +1164,14 @@ function openDeptDrawer(code) {
         <span class="dv">${tbadge("live","LIVE")} — sourced from /api/audit-tail (real, persisted)</span>
       </div>
       <div class="drawer-row">
+        <span class="dk">24h Audit Events (${d.audit_count_24h ?? 0})</span>
+        <span class="dv">${tbadge("live","LIVE")} — live events matched to ${escapeHtml(d.code)}</span>
+      </div>
+      <div class="drawer-row">
+        <span class="dk">Last Event</span>
+        <span class="dv">${tbadge("live","LIVE")} — ${d.last_event_ts ? formatTs(d.last_event_ts) : "None recorded"}</span>
+      </div>
+      <div class="drawer-row">
         <span class="dk">Runtime health</span>
         <span class="dv">${tbadge("live","LIVE")} — sourced from /api/status (Abigail) and /api/sentinel-health</span>
       </div>
@@ -1205,7 +1247,7 @@ function openAgentDrawer(agentId) {
       <div class="drawer-row"><span class="dk">Name</span><span class="dv">${escapeHtml(a.name)}</span></div>
       <div class="drawer-row"><span class="dk">Class</span><span class="dv">${escapeHtml(a.class)}</span></div>
       <div class="drawer-row"><span class="dk">Department</span><span class="dv">${escapeHtml(a.dept)} · ${escapeHtml(a.deptName)}</span></div>
-      <div class="drawer-row"><span class="dk">Model</span><span class="dv">${escapeHtml(a.model)}</span></div>
+      <div class="drawer-row"><span class="dk">Model</span><span class="dv">${tbadge("scaffold","SCAFFOLD")} — ${escapeHtml(a.model)}</span></div>
     </div>
 
     <div class="drawer-section">
