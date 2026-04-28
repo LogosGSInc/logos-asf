@@ -1186,6 +1186,9 @@ def run_web(session, kill_switch, active_backend, port=7070):
     app = Flask(__name__)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
+    PLAN_REGISTRY = {}
+    ALL_AGENTS = ["sentinel", "corridor", "overwatch", "arbiter", "abby"]
+
     @app.route("/")
     def index():
         return Response(WEB_HTML, mimetype="text/html")
@@ -1202,8 +1205,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
     def intake_submit():
         """
         Receive a job order submission from the intake form.
-        Creates a job order record, logs it as a governance event,
-        and returns the Job Order ID for the Governance Certificate.
+        Creates a governed intake record that remains in standby
+        until Abigail approves the plan and activates selected agents.
         """
         data = request.get_json(silent=True) or {}
         job_id = data.get("job_order_id", "")
@@ -1211,6 +1214,20 @@ def run_web(session, kill_switch, active_backend, port=7070):
 
         if not job_id or not scope_hash:
             return jsonify({"ok": False, "error": "job_order_id and scope_hash required"}), 400
+
+        requested_agents = data.get("requested_agents") or ["abby", "sentinel"]
+        requested_agents = [a for a in requested_agents if a in ALL_AGENTS]
+
+        PLAN_REGISTRY[job_id] = {
+            "job_order_id": job_id,
+            "scope_hash": scope_hash,
+            "plan_status": "SUBMITTED",
+            "governance_certificate": "PENDING",
+            "agent_activation": "STANDBY",
+            "requested_agents": requested_agents,
+            "live_agents": [],
+            "approved_by": None,
+        }
 
         log_event("JOB_ORDER_RECEIVED", {
             "job_order_id": job_id,
@@ -1221,7 +1238,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
             "sector": data.get("sector", ""),
             "compliance": data.get("compliance", []),
             "constraints_declared": bool(data.get("constraints", "")),
-            "sentinel_active": True,  # Always true — non-negotiable
+            "requested_agents": requested_agents,
+            "sentinel_active": True,
         })
 
         return jsonify({
@@ -1229,8 +1247,57 @@ def run_web(session, kill_switch, active_backend, port=7070):
             "job_order_id": job_id,
             "scope_hash": scope_hash,
             "sentinel_active": True,
+            "plan_status": "SUBMITTED",
+            "agent_activation": "STANDBY",
+            "requested_agents": requested_agents,
+            "live_agents": [],
             "governance_certificate": "PENDING",
-            "message": "Job order received. Abigail will review within 24 hours.",
+            "message": "Job order received. Abigail review required before agent activation.",
+        })
+
+    @app.route("/api/plan/approve", methods=["POST"])
+    def approve_plan():
+        data = request.get_json(silent=True) or {}
+        job_id = data.get("job_order_id", "")
+        approved_by = data.get("approved_by", "Abigail")
+        approved_agents = data.get("approved_agents") or []
+
+        plan = PLAN_REGISTRY.get(job_id)
+        if not plan:
+            return jsonify({"ok": False, "error": "unknown job_order_id"}), 404
+
+        approved_agents = [a for a in approved_agents if a in plan["requested_agents"]]
+        if not approved_agents:
+            approved_agents = plan["requested_agents"]
+
+        plan["plan_status"] = "APPROVED"
+        plan["governance_certificate"] = "ACTIVE"
+        plan["agent_activation"] = "LIVE_APPROVED"
+        plan["live_agents"] = approved_agents
+        plan["approved_by"] = approved_by
+
+        log_event("PLAN_APPROVED", {
+            "job_order_id": job_id,
+            "approved_by": approved_by,
+            "approved_agents": approved_agents,
+            "agent_activation": "LIVE_APPROVED",
+        })
+
+        return jsonify({"ok": True, **plan})
+
+    @app.route("/api/agents/live")
+    def agents_live():
+        job_id = request.args.get("job_order_id", "")
+        plan = PLAN_REGISTRY.get(job_id)
+        if not plan:
+            return jsonify({"ok": False, "error": "unknown job_order_id"}), 404
+        return jsonify({
+            "ok": True,
+            "job_order_id": job_id,
+            "plan_status": plan["plan_status"],
+            "agent_activation": plan["agent_activation"],
+            "live_agents": plan["live_agents"],
+            "requested_agents": plan["requested_agents"],
         })
 
     @app.route("/api/status")
@@ -1241,6 +1308,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
             "turns": session.turn_count,
             "kill_switch": kill_switch.is_active,
             "version": VERSION,
+            "plans_tracked": len(PLAN_REGISTRY),
+            "agents_available": ALL_AGENTS,
         })
 
     @app.route("/api/chat", methods=["POST"])
