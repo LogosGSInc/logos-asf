@@ -255,6 +255,27 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 </div>
 
 <script>
+
+/* Abigail API base resolver.
+   For GitHub Pages, set this in browser console:
+   localStorage.setItem("ABIGAIL_API_BASE", "https://YOUR-CODESPACE-7070.app.github.dev")
+*/
+function abigailApiBase() {
+  const saved = localStorage.getItem("ABIGAIL_API_BASE");
+  if (saved) return saved.replace(/\/$/, "");
+
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+    return "http://localhost:7070";
+  }
+
+  return "";
+}
+
+function abigailApiUrl(path) {
+  return `${abigailApiBase()}${path}`;
+}
+
+
 /* ─────────────────────────────────────────────────────────────────────
    ENDPOINTS — all same-origin. Sentinel is reached via Abigail proxy.
    This works everywhere: localhost, Docker, Codespaces, VPS, reverse proxy.
@@ -777,7 +798,7 @@ async function handleSend() {
   renderChat();
 
   try {
-    const result = await postJSON(`${ENDPOINTS.abigailBase}/api/chat`, { message: text });
+    const result = await postJSON(abigailApiUrl("/api/chat"), { message: text });
     state.chatBusy = false;
     if (result.ok) {
       pushChat("agent", result.text,
