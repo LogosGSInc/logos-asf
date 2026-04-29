@@ -99,8 +99,6 @@ impl GovernancePipeline {
             .transpose()?
             .map(Arc::new);
 
-        Ok(Self {
-
         // Initialize GovMem based on env var
         let govmem_mode = std::env::var("GOVMEM_MODE")
             .unwrap_or_else(|_| "v1".to_string());
@@ -109,6 +107,8 @@ impl GovernancePipeline {
             _ => GovMemMode::V1,
         };
         let govmem = Arc::new(GovMem::new(mode));
+
+        Ok(Self {
             sentinel,
             corridor,
             overwatch,
@@ -192,7 +192,7 @@ impl GovernancePipeline {
         let ow_signal = {
             let overwatch = self.overwatch.read();
             overwatch.evaluate(user_input, Direction::Inbound, session_id)
-        )
+        };
         self.govmem.record_layer_signal(session_id, "overwatch", &ow_signal);
 
         // GovMem V2: Check drift (multi-turn detection)
@@ -200,7 +200,6 @@ impl GovernancePipeline {
             self.ingest_to_memory(session_id, &highest_signal, &classification);
             return EnforcementResult::Quarantined("GOVMEM-DRIFT-DETECTED".to_string());
         }
-        };
         self.track_highest(&ow_signal, &mut highest_signal);
         let state = self.arbiter.process_with_modifier(&ow_signal, threshold_modifier);
         if let Some(result) = self.check_hard_block(&state, "L4-OverWatch", session_id) {

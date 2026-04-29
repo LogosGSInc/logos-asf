@@ -1009,171 +1009,6 @@ def process_message(raw, session, kill_switch, active_backend,
 
 # ── Web UI ────────────────────────────────────────────────────────────────────
 
-WEB_HTML = r"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Abigail — LOGOS Control Plane</title>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0d0f14;--surface:#161a23;--border:#252b38;
-  --accent:#3b82f6;--warn:#f59e0b;--danger:#ef4444;--ok:#22c55e;
-  --text:#e2e8f0;--muted:#64748b;
-}
-html,body{height:100%;background:var(--bg);color:var(--text);
-  font-family:system-ui,sans-serif;font-size:14px}
-body{display:flex;flex-direction:column;align-items:center;padding:12px;gap:10px}
-
-header{
-  width:100%;max-width:820px;background:var(--surface);
-  border:1px solid var(--border);border-radius:8px;
-  padding:12px 16px;display:flex;align-items:center;gap:12px
-}
-.logo{font-size:16px;font-weight:700;color:var(--accent)}
-.sub{font-size:11px;color:var(--muted);margin-top:2px}
-.pills{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
-.pill{font-size:11px;padding:2px 8px;border-radius:999px;
-  border:1px solid var(--border);background:var(--bg);color:var(--muted)}
-.pill.green{border-color:var(--ok);color:var(--ok)}
-.pill.red{border-color:var(--danger);color:var(--danger)}
-.pill.yellow{border-color:var(--warn);color:var(--warn)}
-
-#chat{
-  width:100%;max-width:820px;flex:1;overflow-y:auto;
-  background:var(--surface);border:1px solid var(--border);border-radius:8px;
-  padding:14px;display:flex;flex-direction:column;gap:10px;
-  min-height:260px;max-height:calc(100vh - 210px)
-}
-
-.msg{display:flex;flex-direction:column;gap:3px;max-width:88%}
-.msg.user{align-self:flex-end;align-items:flex-end}
-.msg.agent{align-self:flex-start;align-items:flex-start}
-.msg.sys{align-self:center;align-items:center;max-width:100%}
-
-.bubble{padding:9px 13px;border-radius:8px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
-.msg.user  .bubble{background:var(--accent);color:#fff}
-.msg.agent .bubble{background:var(--bg);border:1px solid var(--border)}
-.msg.sys   .bubble{background:transparent;border:1px solid var(--border);
-  color:var(--muted);font-size:11px;font-family:monospace}
-.msg.blocked .bubble{border-color:var(--danger)!important;color:var(--danger)}
-
-.meta{font-size:11px;color:var(--muted);padding:0 3px}
-.drift{font-size:11px;color:var(--warn);padding:0 3px}
-
-#composer{width:100%;max-width:820px;display:flex;gap:8px}
-#input{
-  flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;
-  color:var(--text);font:inherit;font-size:14px;padding:10px 14px;
-  resize:none;outline:none;min-height:44px;max-height:130px;line-height:1.5;
-  transition:border-color .15s
-}
-#input:focus{border-color:var(--accent)}
-#send{
-  background:var(--accent);color:#fff;border:none;border-radius:8px;
-  padding:0 18px;font:inherit;font-size:14px;font-weight:600;
-  cursor:pointer;white-space:nowrap;transition:opacity .15s
-}
-#send:disabled{opacity:.4;cursor:default}
-#statusbar{width:100%;max-width:820px;font-size:11px;color:var(--muted);text-align:right}
-</style>
-</head>
-<body>
-<header>
-  <div>
-    <div class="logo">Abigail — CP-00</div>
-    <div class="sub">LOGOS Constitutional Administrator · HAAP Active</div>
-  </div>
-  <div class="pills">
-    <span class="pill green" id="p-ks">Kill-switch: ARMED</span>
-    <span class="pill" id="p-be">Backend: —</span>
-    <span class="pill" id="p-cv">CRSV: 0.0</span>
-  </div>
-</header>
-
-<div id="chat">
-  <div class="msg sys"><div class="bubble">HAAP Five-Layer Enforcement ACTIVE · Type below to engage Abigail</div></div>
-</div>
-
-<div id="composer">
-  <textarea id="input" rows="1" placeholder="Message Abigail…" autofocus></textarea>
-  <button id="send">Send</button>
-</div>
-<div id="statusbar">Ready</div>
-
-<script>
-const chat=document.getElementById('chat'),
-      inp=document.getElementById('input'),
-      btn=document.getElementById('send'),
-      pKS=document.getElementById('p-ks'),
-      pBE=document.getElementById('p-be'),
-      pCV=document.getElementById('p-cv'),
-      sb=document.getElementById('statusbar');
-let busy=false;
-
-inp.addEventListener('input',()=>{inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,130)+'px'});
-inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
-btn.addEventListener('click',send);
-
-function scroll(){chat.scrollTop=chat.scrollHeight}
-
-function addMsg(role,text,meta,drift){
-  const w=document.createElement('div'); w.className='msg '+role;
-  const b=document.createElement('div'); b.className='bubble'; b.textContent=text;
-  w.appendChild(b);
-  if(drift){const d=document.createElement('div');d.className='drift';d.textContent=drift;w.appendChild(d)}
-  if(meta){const m=document.createElement('div');m.className='meta';m.textContent=meta;w.appendChild(m)}
-  chat.appendChild(w); scroll(); return w;
-}
-
-function addTyping(){
-  const d=document.createElement('div'); d.id='typing'; d.style.cssText='color:var(--muted);font-style:italic;font-size:13px;padding:4px 0';
-  d.textContent='Abigail is thinking…'; chat.appendChild(d); scroll();
-}
-function rmTyping(){const d=document.getElementById('typing');if(d)d.remove()}
-
-async function fetchStatus(){
-  try{
-    const d=await(await fetch('/api/status')).json();
-    pBE.textContent='Backend: '+d.backend;
-    pCV.textContent='CRSV: '+d.crsv.toFixed(1);
-    if(d.kill_switch){pKS.textContent='Kill-switch: ACTIVE';pKS.className='pill red'}
-    else{pKS.textContent='Kill-switch: ARMED';pKS.className='pill green'}
-  }catch(e){}
-}
-
-async function send(){
-  const text=inp.value.trim(); if(!text||busy) return;
-  busy=true; btn.disabled=true; inp.value=''; inp.style.height='auto';
-  addMsg('user',text); addTyping(); sb.textContent='Sending…';
-  try{
-    const d=await(await fetch('/api/chat',{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:text})})).json();
-    rmTyping();
-    if(d.ok){
-      addMsg('agent',d.text,
-        `DRS ${d.drs}/100 · ${d.mode} · CRSV ${d.crsv}`,
-        d.drift||null);
-      sb.textContent=`Turn complete — DRS ${d.drs}/100 · ${d.mode}`;
-    } else {
-      addMsg('agent blocked',d.text);
-      sb.textContent='Blocked by HAAP';
-    }
-    fetchStatus();
-  }catch(e){
-    rmTyping(); addMsg('agent blocked','[Network error — server not responding]');
-    sb.textContent='Error';
-  }
-  busy=false; btn.disabled=false; inp.focus();
-}
-
-fetchStatus();
-setInterval(fetchStatus,15000);
-</script>
-</body>
-</html>"""
 
 
 def run_web(session, kill_switch, active_backend, port=7070):
@@ -1191,7 +1026,13 @@ def run_web(session, kill_switch, active_backend, port=7070):
 
     @app.route("/")
     def index():
-        return Response(WEB_HTML, mimetype="text/html")
+        return jsonify({
+            "ok": True,
+            "service": "abigail-cp00",
+            "role": "backend-api",
+            "message": "Abigail backend API is live. Use the GitHub Pages ASF Operator Console for UI.",
+            "dashboard": "https://logosgsinc.github.io/logos-asf/dashboard.html"
+        })
 
     @app.route("/intake")
     def intake():
@@ -1299,6 +1140,62 @@ def run_web(session, kill_switch, active_backend, port=7070):
             "live_agents": plan["live_agents"],
             "requested_agents": plan["requested_agents"],
         })
+
+
+    @app.route("/api/sentinel-health", methods=["GET"])
+    def api_sentinel_health():
+        """Proxy Sentinel health through Abigail so the static dashboard has one API base."""
+        import urllib.request as _urllib_request
+        import json as _json
+
+        base = os.getenv("SENTINEL_URL", "http://sentinel:8080").rstrip("/")
+        try:
+            with _urllib_request.urlopen(f"{base}/health", timeout=3) as resp:
+                raw = resp.read().decode("utf-8")
+            data = _json.loads(raw)
+            data.setdefault("ok", True)
+            return jsonify(data)
+        except Exception as e:
+            return jsonify({
+                "ok": False,
+                "service": "sentinel-overwatch",
+                "error": str(e),
+            }), 502
+
+    @app.route("/api/audit-tail", methods=["GET"])
+    def api_audit_tail():
+        """Return the last n audit events from Abigail's JSONL audit log."""
+        import json as _json
+
+        try:
+            n = int(request.args.get("n", "25"))
+        except Exception:
+            n = 25
+
+        n = max(1, min(n, 200))
+        path = str(LOG_FILE)
+
+        try:
+            if not os.path.exists(path):
+                return jsonify({"ok": True, "events": [], "count": 0, "path": path})
+
+            with open(path, "r", encoding="utf-8") as f:
+                lines = f.readlines()[-n:]
+
+            events = []
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(_json.loads(line))
+                except Exception:
+                    events.append({"raw": line})
+
+            return jsonify({"ok": True, "events": events, "count": len(events), "path": path})
+        except Exception as e:
+            return jsonify({"ok": False, "events": [], "count": 0, "error": str(e)}), 500
+
 
     @app.route("/api/status")
     def status():
