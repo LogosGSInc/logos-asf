@@ -6,7 +6,7 @@
 <!-- SECURITY: Content Security Policy — restricts script execution to same-origin,
      disallows eval(), restricts fonts to trusted CDN. Defence-in-depth against XSS. -->
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; font-src https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-src 'self'; base-uri 'self'; form-action 'self';">
+  content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; font-src https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' https://ominous-space-halibut-jj6x9795jr663pjj-7070.app.github.dev; img-src 'self' data:; object-src 'none'; frame-src 'self'; base-uri 'self'; form-action 'self';">
 <meta name="referrer" content="no-referrer">
 <title>ASF Intake — Intent Compiler · LOGOS Governance Systems</title>
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&f[]=cabinet-grotesk@700,800,900&display=swap" rel="stylesheet">
@@ -304,7 +304,7 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 
 /* Abigail API base resolver.
    For GitHub Pages, set this in browser console:
-   localStorage.setItem("ABIGAIL_API_BASE", "https://YOUR-CODESPACE-7070.app.github.dev")
+   localStorage.setItem("ABIGAIL_API_BASE", "https://ominous-space-halibut-jj6x9795jr663pjj-7070.app.github.dev")
 */
 function abigailApiBase() {
   const saved = localStorage.getItem("ABIGAIL_API_BASE");

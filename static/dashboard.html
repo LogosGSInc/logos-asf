@@ -1,13 +1,12 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- SECURITY: Content Security Policy — same-origin scripts only, no eval,
      fonts from trusted CDN only. Blocks XSS escalation even if a payload
      reaches an unescaped innerHTML path. -->
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; font-src https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' http://localhost:7070 http://127.0.0.1:7070 https://*.app.github.dev http://localhost:7070 http://127.0.0.1:7070 https://*.app.github.dev; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
+  content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; font-src https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' http://localhost:7070 http://127.0.0.1:7070 https://*.app.github.dev https://ominous-space-halibut-jj6x9795jr663pjj-7070.app.github.dev; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';">
 <meta name="referrer" content="no-referrer">
 <title>ASF Operator Console — LOGOS Governance Systems</title>
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&f[]=cabinet-grotesk@700,800,900&display=swap" rel="stylesheet">
@@ -258,7 +257,7 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 
 /* Abigail API base resolver.
    For GitHub Pages, set this in browser console:
-   localStorage.setItem("ABIGAIL_API_BASE", "https://YOUR-CODESPACE-7070.app.github.dev")
+   localStorage.setItem("ABIGAIL_API_BASE", "https://ominous-space-halibut-jj6x9795jr663pjj-7070.app.github.dev")
 */
 function abigailApiBase() {
   const saved = localStorage.getItem("ABIGAIL_API_BASE");
