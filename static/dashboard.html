@@ -255,19 +255,40 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 
 <script>
 
-/* Abigail API base resolver.
-   For GitHub Pages, set this in browser console:
-   localStorage.setItem("ABIGAIL_API_BASE", "https://ominous-space-halibut-jj6x9795jr663pjj-7070.app.github.dev")
-*/
+/* ─── Abigail API base resolver ─────────────────────────────────────────────
+   Priority:
+   1. localStorage override (set once via Settings panel or browser console)
+   2. Same-origin (served by Abigail itself — localhost / Docker / VPS)
+   3. GitHub Pages → prompt operator to set backend URL once
+
+   To set backend from console:
+     localStorage.setItem("ABIGAIL_API_BASE", "https://YOUR-CODESPACE-7070.app.github.dev")
+   ─────────────────────────────────────────────────────────────────────────── */
 function abigailApiBase() {
   const saved = localStorage.getItem("ABIGAIL_API_BASE");
   if (saved) return saved.replace(/\/$/, "");
 
-  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-    return "http://localhost:7070";
+  // Local or Docker — Abigail is serving this page directly
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1" ||
+      location.hostname.endsWith(".app.github.dev")) {
+    return `${location.protocol}//${location.hostname}${location.port ? ":"+location.port : ""}`;
   }
 
-  return "https://ominous-space-halibut-jj6x9795jr663pjj-7070.app.github.dev";
+  // GitHub Pages — no backend URL set yet, prompt once
+  if (location.hostname.endsWith("github.io")) {
+    const url = prompt(
+      "Abigail backend URL not set.\n\n" +
+      "Enter your backend URL (e.g. http://localhost:7070 or your Codespace URL):\n",
+      "http://localhost:7070"
+    );
+    if (url) {
+      localStorage.setItem("ABIGAIL_API_BASE", url.replace(/\/$/, ""));
+      return url.replace(/\/$/, "");
+    }
+  }
+
+  // Last resort: localhost
+  return "http://localhost:7070";
 }
 
 function abigailApiUrl(path) {
@@ -301,7 +322,7 @@ function resolveApiUrl(url) {
    over the Docker network (server-side, not browser-side).
    ───────────────────────────────────────────────────────────────────── */
 const ENDPOINTS = {
-  abigailBase: "https://ominous-space-halibut-jj6x9795jr663pjj-7070.app.github.dev",  /* Codespace backend */
+  abigailBase: abigailApiBase(),  /* resolved dynamically — no hardcoded URL */
 };
 
 /* ── 12-DEPARTMENT DOCTRINE STACK ── */

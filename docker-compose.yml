@@ -1,5 +1,12 @@
 version: "3.9"
 
+# LOGOS Agentic Software Firm — docker-compose
+# BYOAPIKEY — Model Agnostic
+# US Provisional Patent 63/953,447
+#
+# One-click: ./setup.sh
+# Manual:    cp .abigail.env.example .abigail.env && make up
+
 services:
 
   # ── Sentinel OverWatch — Rust Governance Spine ────────────────────────────
@@ -25,7 +32,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Abigail — Constitutional Control Plane (CP-00) ──────────────────────── 
+  # ── Abigail CP-00 — Constitutional Control Plane ──────────────────────────
   abby:
     build:
       context: ./abigail
@@ -36,15 +43,23 @@ services:
     env_file:
       - ./.abigail.env
     volumes:
-      - ./.abigail.env:/app/.abigail.env:ro
       - abigail-logs:/app/logs
     environment:
+      # Model-agnostic: set ABIGAIL_BACKEND + the matching key in .abigail.env
       - ABIGAIL_BACKEND=${ABIGAIL_BACKEND:-groq}
       - ABIGAIL_HEADLESS=1
       - SENTINEL_URL=http://sentinel:8080
-      - GROQ_API_KEY=${GROQ_API_KEY}
+      # BYOAPIKEY — all providers, operator supplies the key they have
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      # Auth tokens
       - ABIGAIL_ADMIN_TOKEN=${ABIGAIL_ADMIN_TOKEN}
       - ABIGAIL_DEMO_TOKEN=${ABIGAIL_DEMO_TOKEN}
+      # Governance profile
+      - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
+      - SENTOW_HAAP_DRS_CEILING=${SENTOW_HAAP_DRS_CEILING:-60}
     depends_on:
       sentinel:
         condition: service_healthy
@@ -53,7 +68,8 @@ services:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7070/api/status', timeout=5)"]
       interval: 30s
       timeout: 10s
-      retries: 3    
+      retries: 3
+
 volumes:
   sentinel-audit:
   sentinel-data:

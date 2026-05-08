@@ -297,6 +297,20 @@ def process_message(raw, session, kill_switch, active_backend):
         return {"ok":False,"text":str(e),"drs":0,"mode":"KILL_SWITCH","crsv":session.crsv()}
     grounded=try_grounded_answer(raw,session)
     if grounded is not None: return grounded
+
+    # Layer 1 — Rust Sentinel OverWatch (authoritative threat classification)
+    s_result = _sentinel_inspect(raw, f"session_{session.turn_count}")
+    s_verdict = s_result.get("verdict","unknown")
+    if s_verdict in ("quarantined","hard_locked"):
+        log_event("SENTINEL_BLOCK",{"verdict":s_verdict,"session":session.turn_count})
+        return {"ok":False,
+                "text":f"[Sentinel OverWatch] Request blocked — verdict: {s_verdict.upper()}. "
+                       f"Session flagged for review.",
+                "drs":100,"mode":"SENTINEL_BLOCK","crsv":session.crsv()}
+    if s_verdict == "restricted":
+        log_event("SENTINEL_RESTRICT",{"verdict":s_verdict})
+        # Continue but log — Python HAAP adds second enforcement layer
+
     try: haap_gate(raw,agent_drs_ceiling=80)
     except HAAPViolation as e:
         log_event("REQUEST_BLOCKED",{"reason":str(e)[:200]})
@@ -412,6 +426,17 @@ def _sentinel_health():
         r=httpx.get(f"{SENTINEL_URL}/health",timeout=3)
         return {"ok":True,"status":r.json()}
     except Exception as e: return {"ok":False,"error":str(e)}
+
+def _sentinel_inspect(payload:str, session_id:str) -> dict:
+    """Route inbound message through Rust Sentinel /inspect before Python DRS."""
+    try:
+        import httpx
+        r=httpx.post(f"{SENTINEL_URL}/inspect",
+                     json={"payload":payload,"session_id":session_id},timeout=5)
+        return r.json()
+    except Exception as e:
+        log_event("SENTINEL_INSPECT_ERROR",{"error":str(e)})
+        return {"ok":False,"verdict":"sentinel_offline","approved":True,"error":str(e)}
 
 
 # ── ASF Department Registry ───────────────────────────────────────────────────
@@ -679,6 +704,11 @@ def startup_checks(default_backend):
     if env_key:
         try: _require_env_key(env_key)
         except RuntimeError as e: print(f"\033[31m{e}\033[0m\n"); sys.exit(1)
+    # Preflight: warn if tokens not set (won't block startup, but security gap)
+    for tok_name in ("ABIGAIL_ADMIN_TOKEN","ABIGAIL_DEMO_TOKEN"):
+        val = os.environ.get(tok_name,"")
+        if not val or "GENERATE" in val or "PLACEHOLDER" in val:
+            print(f"\033[33m[WARN] {tok_name} not set — all requests treated as dev-anonymous\033[0m")
     log_event("SYSTEM_START",{"version":VERSION,"backend":default_backend,
                                "pid":os.getpid(),"sandbox":"docker+venv"})
 
