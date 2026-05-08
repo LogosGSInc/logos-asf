@@ -25,7 +25,7 @@ use governance_spine::{
 
 fn ok_json(body: &str) -> String {
     format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: http://localhost:7070\r\nX-Content-Type-Options: nosniff\r\n\r\n{}",
         body.len(), body
     )
 }
@@ -55,6 +55,8 @@ fn parse_json_field(json: &str, key: &str) -> Option<String> {
     }
 }
 
+const MAX_BODY_BYTES: usize = 262_144; // 256 KB — prevents OOM on adversarial oversized payloads
+
 fn read_body(reader: &mut BufReader<&mut TcpStream>) -> String {
     let mut headers = HashMap::new();
     let mut line = String::new();
@@ -68,7 +70,9 @@ fn read_body(reader: &mut BufReader<&mut TcpStream>) -> String {
         }
     }
     let len: usize = headers.get("content-length")
-        .and_then(|v| v.parse().ok()).unwrap_or(0);
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+        .min(MAX_BODY_BYTES); // enforce ceiling
     let mut body = vec![0u8; len];
     use std::io::Read;
     reader.read_exact(&mut body).unwrap_or(());
@@ -159,14 +163,25 @@ fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
         }
 
         ("POST", "/session/start") => {
-            let body     = read_body(&mut reader);
-            let actor_id = parse_json_field(&body, "actor_id")
+            let body       = read_body(&mut reader);
+            let actor_id   = parse_json_field(&body, "actor_id")
                 .unwrap_or_else(|| "anonymous".into());
-            
+            let session_id = parse_json_field(&body, "session_id")
+                .unwrap_or_else(|| actor_id.clone());
+
+            // Return real session state from pipeline memory (not hardcoded "Clean")
+            let state = pipeline.current_state(&session_id);
+            let drs   = pipeline.session_drs(&session_id);
+            let starting_state = match state {
+                governance_spine::arbiter::SecurityState::S1 => "Clean",
+                governance_spine::arbiter::SecurityState::S2 => "Watching",
+                governance_spine::arbiter::SecurityState::S3 => "Elevated",
+                governance_spine::arbiter::SecurityState::S4 => "Locked",
+            };
+
             ok_json(&format!(
-                "{{\"ok\":true,\"actor_id\":\"{}\",\"starting_state\":\"{}\",\"threshold_modifier\":{:.2},\"prior_escalations\":{}}}",
-                actor_id, "Clean",
-                1.0, 0,
+                "{{\"ok\":true,\"actor_id\":\"{}\",\"session_id\":\"{}\",\"starting_state\":\"{}\",\"drs\":{},\"threshold_modifier\":{:.2},\"prior_escalations\":{}}}",
+                actor_id, session_id, starting_state, drs, 1.0, 0,
             ))
         }
 

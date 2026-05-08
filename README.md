@@ -69,7 +69,7 @@ Docker + venv  — Constitutional sandbox for all spawned agents
 - Layer 1: Sentinel gates (Rust pattern-based adversarial detection)
 - Layer 2: OverWatch multi-turn drift detection (CRSV)
 - Layer 3: DRS execution interlock (5-tier routing: 0-20 / 21-40 / 41-60 / 61-80 / 81-100)
-- Layer 4: Immutable audit log (hash-chained JSONL)
+- Layer 4: Tamper-evident append-only audit log (hash-chained JSONL)
 
 ---
 
