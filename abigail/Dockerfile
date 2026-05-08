@@ -10,6 +10,7 @@ RUN python -m pip install --no-cache-dir \
     anthropic \
     httpx \
     flask \
+    flask-cors \
     prompt_toolkit \
  && chmod +x /app/entrypoint.sh
 
