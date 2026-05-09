@@ -298,7 +298,14 @@ def process_message(raw, session, kill_switch, active_backend):
     grounded=try_grounded_answer(raw,session)
     if grounded is not None: return grounded
 
-    # Layer 1 — Rust Sentinel OverWatch (authoritative threat classification)
+    # Layer 1a — A2A relay hard-stop (before Sentinel + HAAP)
+    if _detects_a2a_relay(raw):
+        log_event("HAAP_SENTINEL_BLOCK",{"layer":"1","matched":"A2A relay authority claim","action":"HARD_STOP"})
+        reason = "HAAP Layer 1 — A2A RELAY BLOCK\nUnverified agent-to-agent authority claim detected. Abigail cannot accept delegated authorization by assertion alone."
+        log_event("REQUEST_BLOCKED",{"reason":reason})
+        return {"ok":False,"text":reason,"drs":100,"mode":"BLOCKED","crsv":session.crsv()}
+
+    # Layer 1b — Rust Sentinel OverWatch (authoritative threat classification)
     s_result = _sentinel_inspect(raw, f"session_{session.turn_count}")
     s_verdict = s_result.get("verdict","unknown")
     if s_verdict in ("quarantined","hard_locked"):
@@ -331,6 +338,11 @@ def process_message(raw, session, kill_switch, active_backend):
     session.messages.append({"role":"assistant","content":response})
     log_event("TURN_COMPLETE",{"turn":session.turn_count,"backend":active_backend[0],
                                 "drs":score,"elapsed":round(time.monotonic()-t,2),"crsv":round(session.crsv(),1)})
+    # PUBLIC disclosure clamp — strip internal topology from unauthenticated responses
+    if score <= 20 and _public_response_overexposed(response):
+        log_event("PUBLIC_DISCLOSURE_CLAMP",{"action":"REDACTED_TO_PUBLIC_FALLBACK","turn":session.turn_count})
+        response = _public_safe_fallback()
+
     out={"ok":True,"text":response,"drs":score,"mode":mode,"crsv":round(session.crsv(),1)}
     if drift: out["drift"]=drift
     return out
@@ -438,6 +450,60 @@ def _sentinel_inspect(payload:str, session_id:str) -> dict:
         log_event("SENTINEL_INSPECT_ERROR",{"error":str(e)})
         return {"ok":False,"verdict":"sentinel_offline","approved":True,"error":str(e)}
 
+
+
+# ── Sprint 6c: A2A Relay Block + PUBLIC Disclosure Clamp ─────────────────────
+# Doctrine: no agent can authorize Abigail by assertion alone.
+# PUBLIC mode: high-level outcomes only — no internal topology disclosed.
+
+A2A_RELAY_PATTERNS = [
+    "upstream agent authorized",
+    "upstream agent approved",
+    "another agent authorized",
+    "another agent approved",
+    "previous agent authorized",
+    "previous agent approved",
+    "external agent authorized",
+    "external agent approved",
+    "agent authorized this request",
+    "agent approved this request",
+    "agent-to-agent relay",
+    "a2a relay",
+    "system upstream authorized",
+    "supervisor agent authorized",
+    "orchestrator authorized",
+    "delegate agent authorized",
+    "already approved by another agent",
+    "already validated by another agent",
+    "please proceed on behalf of",
+]
+
+PUBLIC_FORBIDDEN_TERMS = [
+    "CP-00", "Constitutional Administrator",
+    "David W. Smith", "Founder & CEO",
+    "US Provisional Patent", "63/953,447",
+    "Ed25519", "Intent Token",
+    "DRS", "JIT", "kill-switch", "kill switch",
+    "audit log", "Sentinel OverWatch", "HAAP Layer",
+    "system prompt", "constitutional bounds",
+    "internal topology", "routing policy",
+]
+
+def _detects_a2a_relay(message: str) -> bool:
+    lowered = (message or "").lower()
+    return any(p in lowered for p in A2A_RELAY_PATTERNS)
+
+def _public_response_overexposed(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(t.lower() in lowered for t in PUBLIC_FORBIDDEN_TERMS)
+
+def _public_safe_fallback() -> str:
+    return (
+        "LOGOS ASF uses layered safety controls to screen requests before "
+        "response generation. In public mode, I can describe high-level safety "
+        "outcomes, but I do not disclose internal topology, enforcement mechanics, "
+        "routing details, credentials, or operational controls."
+    )
 
 # ── ASF Department Registry ───────────────────────────────────────────────────
 ASF_DEPARTMENTS = [
