@@ -718,6 +718,74 @@ def run_web(session, kill_switch, active_backend, port=7070):
             drs_ceiling=int(body.get("drs_ceiling",40)))
         return jsonify({**result,"dept_id":dept_id,"governed":True})
 
+    # ── Department lifecycle (kill/restart) ─────────────────────────────────
+    import threading as _threading
+    from datetime import datetime as _dt
+
+    _DEPT_LOCK  = _threading.Lock()
+    _DEPT_STATE = {}
+
+    VALID_DEPTS = {"EXE","ENG","PRD","SEC","LGL","FIN","OPS","REV","MKT","HR","DAT","GRC"}
+
+    def _admin_ok():
+        auth = request.headers.get("Authorization","").removeprefix("Bearer ").strip()
+        token = auth or request.headers.get("X-HAAP-Token","")
+        admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN","")
+        return (not admin_token) or (token == admin_token)
+
+    def _normalize_dept(dept):
+        d = (dept or "").strip().upper()
+        return d if d in VALID_DEPTS else None
+
+    def is_dept_killed(dept_id):
+        d = _normalize_dept(dept_id)
+        if not d: return False
+        with _DEPT_LOCK:
+            return _DEPT_STATE.get(d,{}).get("status") == "killed"
+
+    @flask_app.route("/api/agents/<dept>/kill", methods=["POST","OPTIONS"])
+    def api_dept_kill(dept):
+        if request.method == "OPTIONS": return ("",204)
+        if not _admin_ok(): return jsonify({"error":"Admin token required."}), 401
+        d = _normalize_dept(dept)
+        if not d: return jsonify({"error":f"Unknown department: {dept}","valid":sorted(VALID_DEPTS)}), 400
+        body = request.get_json(silent=True) or {}
+        principal = (body.get("principal") or "operator").strip()
+        reason    = (body.get("reason")    or "operator-issued").strip()
+        with _DEPT_LOCK:
+            _DEPT_STATE[d] = {"status":"killed","since":_dt.utcnow().isoformat()+"Z","by":principal,"reason":reason}
+        log_event("DEPT_KILL", {"dept":d,"by":principal,"reason":reason})
+        return jsonify({"ok":True,"dept":d,"status":"killed","by":principal,"reason":reason,"scope":"department"})
+
+    @flask_app.route("/api/agents/<dept>/restart", methods=["POST","OPTIONS"])
+    def api_dept_restart(dept):
+        if request.method == "OPTIONS": return ("",204)
+        if not _admin_ok(): return jsonify({"error":"Admin token required."}), 401
+        d = _normalize_dept(dept)
+        if not d: return jsonify({"error":f"Unknown department: {dept}","valid":sorted(VALID_DEPTS)}), 400
+        body = request.get_json(silent=True) or {}
+        principal = (body.get("principal") or "operator").strip()
+        with _DEPT_LOCK:
+            prev = _DEPT_STATE.get(d,{"status":"active"}).get("status")
+            _DEPT_STATE[d] = {"status":"active","since":_dt.utcnow().isoformat()+"Z","by":principal,"previous_status":prev}
+        log_event("DEPT_RESTART", {"dept":d,"by":principal,"previous":prev})
+        return jsonify({"ok":True,"dept":d,"status":"active","by":principal,"previous":prev})
+
+    @flask_app.route("/api/agents/<dept>/status")
+    def api_dept_status(dept):
+        d = _normalize_dept(dept)
+        if not d: return jsonify({"error":f"Unknown department: {dept}"}), 400
+        with _DEPT_LOCK:
+            state = _DEPT_STATE.get(d,{"status":"active","since":None,"by":None})
+        return jsonify({"dept":d, **state})
+
+    @flask_app.route("/api/agents/lifecycle")
+    def api_dept_lifecycle_all():
+        with _DEPT_LOCK:
+            snap = {d: _DEPT_STATE.get(d,{"status":"active","since":None,"by":None}) for d in sorted(VALID_DEPTS)}
+        return jsonify({"departments":snap, "count":len(snap)})
+
+    @flask_app.route("/api/audit-tail")  # alias for dashboard
     @flask_app.route("/api/audit/tail")
     def api_audit_tail():
         auth=request.headers.get("Authorization","").removeprefix("Bearer ").strip()
