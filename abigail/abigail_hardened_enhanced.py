@@ -646,8 +646,33 @@ def run_web(session, kill_switch, active_backend, port=7070):
                 response.headers["Access-Control-Allow-Methods"]="GET,POST,OPTIONS"
         return response
 
+    import os as _os
+    STATIC_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "static")
+    if not _os.path.isdir(STATIC_DIR):
+        STATIC_DIR = "/app/static"  # Docker path
+
     @flask_app.route("/")
-    def index(): return Response(WEB_HTML,mimetype="text/html")
+    def index():
+        p = _os.path.join(STATIC_DIR, "index.html")
+        if _os.path.exists(p):
+            return Response(open(p).read(), mimetype="text/html")
+        # Fallback if static dir not mounted
+        return Response("""<!doctype html><html><body style='background:#0b1020;color:#eef2ff;font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0'>
+<main style='text-align:center'><h1>LOGOS ASF</h1>
+<p style='color:#aeb7d8'>Static files not found. Run via docker-compose.</p>
+<p><a href='/api/status' style='color:#4f98a3'>Check /api/status</a></p></main></body></html>""", mimetype="text/html")
+
+    @flask_app.route("/<path:filename>")
+    def static_files(filename):
+        p = _os.path.join(STATIC_DIR, filename)
+        if _os.path.exists(p) and _os.path.isfile(p):
+            ext = filename.rsplit(".", 1)[-1].lower()
+            mime = {"html":"text/html","css":"text/css","js":"application/javascript",
+                    "json":"application/json","png":"image/png","svg":"image/svg+xml",
+                    "ico":"image/x-icon"}.get(ext, "text/plain")
+            return Response(open(p, "rb").read(), mimetype=mime)
+        from flask import abort
+        abort(404)
 
     @flask_app.route("/api/status")
     def api_status():

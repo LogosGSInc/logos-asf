@@ -2,9 +2,9 @@
 # US Provisional Patent 63/953,447
 # Usage: make up | make down | make logs | make redteam | make status
 
-COMPOSE := $(COMPOSE) --env-file .abigail.env
+COMPOSE := docker compose --env-file .abigail.env
 SENTINEL_HOST_URL ?= http://localhost:9090
-ABIGAIL_HOST_URL  ?= $(ABIGAIL_HOST_URL)
+ABIGAIL_HOST_URL ?= http://localhost:7070
 
 .PHONY: up down logs status redteam test clean
 

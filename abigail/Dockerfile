@@ -2,8 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY abigail_hardened_enhanced.py /app/abigail_hardened_enhanced.py
-COPY entrypoint.sh /app/entrypoint.sh
+COPY abigail/abigail_hardened_enhanced.py /app/abigail_hardened_enhanced.py
+COPY abigail/entrypoint.sh /app/entrypoint.sh
+# Static UI (index.html, dashboard.html, intake.html)
+COPY static /app/static
 
 RUN python -m pip install --no-cache-dir \
     groq \
