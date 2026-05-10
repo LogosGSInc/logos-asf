@@ -7,6 +7,14 @@ if [ -f /app/.abigail.env ]; then
   chmod 600 "$HOME/.abigail.env"
 fi
 
+# Export dotenv values into process environment for Python os.getenv().
+# File values intentionally override placeholder shell/Compose values.
+if [ -f "$HOME/.abigail.env" ]; then
+  set -a
+  . "$HOME/.abigail.env"
+  set +a
+fi
+
 # Ensure audit log directory exists with correct permissions
 mkdir -p "$HOME"
 mkdir -p /app/logs
