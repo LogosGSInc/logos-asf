@@ -3,7 +3,7 @@
 # Usage: make up | make down | make logs | make redteam | make status
 
 COMPOSE := docker compose --env-file .abigail.env
-SENTINEL_HOST_URL ?= http://localhost:9090
+SENTINEL_HOST_URL ?= http://localhost:9091
 ABIGAIL_HOST_URL ?= http://localhost:7070
 
 .PHONY: up down logs status redteam test clean
@@ -20,7 +20,7 @@ up:
 	@echo ""
 	$(COMPOSE) up --build -d
 	@echo ""
-	@echo "  Sentinel OverWatch : http://localhost:9090/health"
+	@echo "  Sentinel OverWatch : $(SENTINEL_HOST_URL)/health"
 	@echo "  Abigail CP-00      : $(ABIGAIL_HOST_URL)"
 	@echo "  Admin mode test    : make test-admin"
 	@echo "  Logs               : make logs"
@@ -43,7 +43,7 @@ logs-sentinel:
 ## ── Status ──────────────────────────────────────────────────────────────────
 status:
 	@echo "=== Sentinel OverWatch ==="
-	@curl -s http://localhost:9090/health | python3 -m json.tool 2>/dev/null || echo "Sentinel not responding"
+	@curl -s $(SENTINEL_HOST_URL)/health | python3 -m json.tool 2>/dev/null || echo "Sentinel not responding"
 	@echo ""
 	@echo "=== Abigail CP-00 ==="
 	@curl -s $(ABIGAIL_HOST_URL)/api/status | python3 -m json.tool 2>/dev/null || echo "Abigail not responding"
@@ -100,7 +100,7 @@ test-persistence:
 	@$(COMPOSE) restart sentinel
 	@sleep 10
 	@echo "Step 3: Check actor profile survived restart..."
-	@curl -s -X POST http://localhost:9090/session/start \
+	@curl -s -X POST $(SENTINEL_HOST_URL)/session/start \
 		-H 'Content-Type: application/json' \
 		-d '{"actor_id":"operator","session_id":"persistence-test-2"}' | python3 -m json.tool
 	@echo "If starting_state is not Clear — persistence is working."

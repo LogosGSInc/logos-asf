@@ -708,6 +708,13 @@ def run_web(session, kill_switch, active_backend, port=7070):
         body=request.get_json(force=True,silent=True) or {}
         dept_id=body.get("dept_id","DEPT-UNKNOWN")
         task=body.get("task","").strip()
+        if is_dept_killed(dept_id):
+            log_event("SPAWN_BLOCKED_DEPT_KILLED",{"dept":dept_id})
+            return jsonify({
+                "error":f"Department {dept_id} is isolated/killed.",
+                "blocked":True,
+                "reason":"DEPARTMENT_ISOLATED"
+            }),423
         if not task: return jsonify({"error":"task required."}),400
         try: haap_gate(task,agent_drs_ceiling=60)
         except HAAPViolation as e: return jsonify({"error":str(e),"blocked":True}),403
