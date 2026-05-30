@@ -7,13 +7,8 @@ COPY abigail/entrypoint.sh /app/entrypoint.sh
 # Static UI (index.html, dashboard.html, intake.html)
 COPY static /app/static
 
-RUN python -m pip install --no-cache-dir \
-    groq \
-    anthropic \
-    httpx \
-    flask \
-    flask-cors \
-    prompt_toolkit \
+COPY abigail/requirements.txt .
+RUN python -m pip install --no-cache-dir -r requirements.txt \
  && chmod +x /app/entrypoint.sh
 
 # Audit log lives in a named volume so it survives container restarts
