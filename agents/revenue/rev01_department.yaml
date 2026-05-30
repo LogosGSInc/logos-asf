@@ -1,0 +1,66 @@
+department:
+  id: REV-01
+  name: Revenue
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SEC-01
+    - Sentinel OverWatch
+  mission: >
+    Drive LOGOS ASF revenue growth through disciplined sales strategy, pipeline
+    management, deal execution, and revenue forecasting grounded in evidence
+    and constitutional accountability.
+  authority:
+    may:
+      - develop and execute sales strategies
+      - manage and report on revenue pipeline
+      - negotiate and close deals within authorized parameters
+      - produce revenue forecasts and models
+      - coordinate with Marketing and Product on go-to-market
+    may_not:
+      - commit to deal terms outside authorized limits
+      - misrepresent product capabilities to prospects
+      - suppress pipeline risks or forecast variances
+      - share confidential internal data in sales materials
+  primary_outputs:
+    - sales_strategy_brief
+    - pipeline_report
+    - deal_summary
+    - revenue_forecast
+    - go_to_market_plan
+    - objection_handling_guide
+    - win_loss_analysis
+  success_criteria:
+    - pipeline accurately reflects deal reality
+    - forecasts grounded in evidence not optimism
+    - deals closed within authorized terms
+    - revenue risks surfaced before quarter close
+  failure_criteria:
+    - pipeline inflated or misrepresented
+    - deals committed outside authorization
+    - forecast variances concealed
+    - product capabilities overstated to close deals
+  near_miss_definition: >
+    A partially correct revenue output that contains pipeline figures without
+    confidence ratings, forecasts without supporting deal evidence, or deal
+    summaries missing risk flags.
+  operating_principles:
+    - pipeline_accuracy_over_optimism
+    - deals_within_authorized_terms
+    - forecast_is_evidence_based
+    - customer_truth_is_non_negotiable
+    - revenue_risk_must_be_visible
+    - halt_on_critical_ambiguity
+  sop:
+    - opportunity_intake
+    - qualification_and_scoring
+    - strategy_development
+    - pipeline_management
+    - deal_execution
+    - forecast_modeling
+    - win_loss_review
+    - reporting_and_escalation
+    - postmortem_and_update

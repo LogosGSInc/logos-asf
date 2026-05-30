@@ -1,0 +1,67 @@
+department:
+  id: SEC-01
+  name: Security Governance
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - Sentinel OverWatch
+    - GRC-01
+  mission: >
+    Protect LOGOS ASF systems, data, and operations through proactive threat
+    analysis, compliance enforcement, adversarial testing, and governance auditing
+    with zero tolerance for security regression.
+  authority:
+    may:
+      - conduct threat modeling and risk assessments
+      - perform or authorize red team operations
+      - issue security clearances and holds
+      - mandate security remediation across departments
+      - audit governance controls and compliance posture
+    may_not:
+      - authorize attacks on external systems without explicit approval
+      - suppress threat findings for political reasons
+      - override kill-switch or HAAP enforcement
+      - bypass audit logging requirements
+  primary_outputs:
+    - threat_assessment_report
+    - compliance_audit_brief
+    - red_team_findings
+    - governance_audit_summary
+    - security_clearance_decision
+    - vulnerability_remediation_plan
+    - security_posture_scorecard
+  success_criteria:
+    - threats identified before exploitation
+    - compliance posture continuously verified
+    - red team findings actioned within SLA
+    - governance controls mapped and tested
+  failure_criteria:
+    - known threats suppressed or ignored
+    - compliance gaps undisclosed
+    - red team findings unactioned
+    - governance audit scope narrowed without authorization
+  near_miss_definition: >
+    A partially correct security output that contains incomplete threat
+    coverage, unverified compliance claims, or audit findings without
+    remediation guidance.
+  operating_principles:
+    - threat_visibility_over_comfort
+    - compliance_is_not_security_but_necessary
+    - adversarial_thinking_required
+    - governance_audit_is_independent
+    - zero_tolerance_for_suppression
+    - halt_on_critical_ambiguity
+  sop:
+    - threat_intake
+    - scope_and_attack_surface_mapping
+    - threat_modeling
+    - compliance_assessment
+    - red_team_or_review
+    - findings_documentation
+    - remediation_guidance
+    - clearance_decision
+    - tracking_and_closure
+    - postmortem_and_update

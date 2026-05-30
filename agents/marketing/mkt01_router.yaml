@@ -1,0 +1,58 @@
+routing:
+  department: MKT-01
+  intake_rules:
+    - if_request_contains:
+        - campaign
+        - demand gen
+        - advertising
+        - launch
+        - campaign plan
+      assign:
+        primary: MKT-01-SA-DORCAS
+        secondary: MKT-01-FA
+    - if_request_contains:
+        - content
+        - copy
+        - blog
+        - article
+        - writing
+      assign:
+        primary: MKT-01-SA-EUNICE
+        secondary: MKT-01-FA
+    - if_request_contains:
+        - messaging
+        - value prop
+        - positioning
+        - audience
+        - market signal
+      assign:
+        primary: MKT-01-SA-PERSIS
+        secondary: MKT-01-FA
+    - if_request_contains:
+        - brand
+        - guidelines
+        - voice
+        - visual identity
+        - brand integrity
+      assign:
+        primary: MKT-01-SA-TRYPHENA
+        secondary: MKT-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: MKT-01-MA
+        secondary:
+          - MKT-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: MKT-01-MA
+    - if_claim_accuracy_risk: true
+      notify:
+        - LGL-01
+        - PRD-01
+    - if_cross_department_dependency: true
+      notify:
+        - relevant_department_head

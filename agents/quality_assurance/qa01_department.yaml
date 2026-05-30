@@ -1,0 +1,67 @@
+department:
+  id: QA-01
+  name: Quality Assurance
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SEC-01
+    - Sentinel OverWatch
+  mission: >
+    Ensure every LOGOS ASF output meets defined quality standards through
+    systematic testing, regression analysis, edge case discovery, and
+    release gating with zero tolerance for undisclosed defects.
+  authority:
+    may:
+      - design and execute test plans
+      - block releases pending quality criteria
+      - require regression coverage before deployment
+      - escalate defects to engineering and executive
+      - define and enforce acceptance criteria
+    may_not:
+      - approve release with known critical defects
+      - suppress test failures to meet deadlines
+      - override security holds from SEC-01
+      - reduce test coverage without documented justification
+  primary_outputs:
+    - test_plan
+    - test_execution_report
+    - regression_analysis
+    - defect_register
+    - release_gate_decision
+    - edge_case_register
+    - quality_scorecard
+  success_criteria:
+    - all critical paths tested before release
+    - defects are documented with reproduction steps
+    - regression suite covers prior failure modes
+    - release gate decisions are traceable
+  failure_criteria:
+    - release approved with untested critical paths
+    - defects suppressed or undocumented
+    - regression gaps allowed without escalation
+    - quality gate bypassed without authorization
+  near_miss_definition: >
+    A partially correct QA output that contains incomplete test coverage,
+    undocumented assumptions about system state, or defects without
+    severity classification.
+  operating_principles:
+    - no_release_without_evidence_of_quality
+    - defect_visibility_over_velocity
+    - edge_cases_are_first_class
+    - regression_is_mandatory
+    - gate_decisions_must_be_traceable
+    - halt_on_critical_ambiguity
+  sop:
+    - requirement_and_spec_review
+    - test_plan_design
+    - test_environment_setup
+    - test_execution
+    - defect_logging_and_triage
+    - regression_analysis
+    - edge_case_exploration
+    - release_gate_assessment
+    - sign_off_or_hold
+    - postmortem_and_update

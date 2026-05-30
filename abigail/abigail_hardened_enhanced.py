@@ -22,6 +22,15 @@ import datetime, hashlib, json, logging, os, re, stat
 import subprocess, sys, threading, time, uuid, webbrowser
 from pathlib import Path
 
+# ── Agent loader (YAML definitions) ──────────────────────────────────────────
+try:
+    from agent_loader import get_agent as _get_yaml_agent, list_agents as _list_yaml_agents
+    _AGENT_LOADER_OK = True
+except ImportError:
+    _AGENT_LOADER_OK = False
+    def _get_yaml_agent(_id): return None
+    def _list_yaml_agents(): return []
+
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
 LOG_FILE     = HOME / ".abigail_audit.jsonl"
@@ -376,6 +385,8 @@ import os,json,sys,subprocess,venv,pathlib
 c=json.loads(os.environ.get("AGENT_CONSTITUTION","{}"))
 dept=c.get("dept_id","UNKNOWN"); ceiling=c.get("drs_ceiling",40)
 print(f"[AGENT:{dept}] Constitution loaded. DRS ceiling: {ceiling}",flush=True)
+sp=os.environ.get("AGENT_SYSTEM_PROMPT","")
+if sp: print(f"[AGENT:{dept}] System prompt loaded ({len(sp)} chars)",flush=True)
 venv_dir=pathlib.Path("/tmp/agent_venv")
 venv.create(str(venv_dir),with_pip=True,clear=True)
 pip=str(venv_dir/"bin"/"pip")
@@ -448,7 +459,7 @@ def _sentinel_inspect(payload:str, session_id:str) -> dict:
         return r.json()
     except Exception as e:
         log_event("SENTINEL_INSPECT_ERROR",{"error":str(e)})
-        return {"ok":False,"verdict":"sentinel_offline","approved":True,"error":str(e)}
+        return {"ok":False,"verdict":"sentinel_offline","approved":False,"error":str(e)}
 
 
 
@@ -696,6 +707,57 @@ def run_web(session, kill_switch, active_backend, port=7070):
     def api_departments():
         return jsonify({"departments":ASF_DEPARTMENTS,"count":len(ASF_DEPARTMENTS),"governed_by":"abigail.cp00"})
 
+    @flask_app.route("/api/agents")
+    def api_agents_list():
+        agents = _list_yaml_agents()
+        return jsonify({"agents":agents,"count":len(agents),
+                        "loader_ok":_AGENT_LOADER_OK,"governed_by":"abigail.cp00"})
+
+    @flask_app.route("/api/agents/dispatch", methods=["POST","OPTIONS"])
+    def api_agents_dispatch():
+        if request.method == "OPTIONS": return jsonify({}), 200
+        body       = request.get_json(force=True, silent=True) or {}
+        agent_id   = (body.get("agent_id") or "").strip()
+        task       = (body.get("task")     or "").strip()
+        if not agent_id: return jsonify({"ok":False,"error":"agent_id required."}), 400
+        if not task:     return jsonify({"ok":False,"error":"task required."}), 400
+
+        agent_def = _get_yaml_agent(agent_id)
+        if not agent_def:
+            return jsonify({"ok":False,"error":f"Agent '{agent_id}' not found."}), 404
+
+        try:
+            haap_gate(task, agent_drs_ceiling=80)
+        except HAAPViolation as e:
+            log_event("DISPATCH_BLOCKED", {"agent_id":agent_id,"reason":str(e)[:200]})
+            return jsonify({"ok":False,"error":str(e),"blocked":True}), 403
+
+        score, signals = drs_score(task)
+        mode, _, _     = drs_verdict(score)
+        system_prompt  = agent_def.get("system_prompt") or ABIGAIL_SYSTEM_PROMPT
+        agent_name     = agent_def.get("name", agent_id)
+
+        t = time.monotonic()
+        try:
+            text = BACKEND_DISPATCH.get(active_backend[0], call_groq)(
+                messages=[{"role":"user","content":task}],
+                system=system_prompt)
+        except Exception as exc:
+            log_event("DISPATCH_ERROR", {"agent_id":agent_id,"error_type":type(exc).__name__})
+            return jsonify({"ok":False,"error":_safe_error(agent_id, exc)}), 502
+
+        elapsed = round(time.monotonic() - t, 2)
+        session.record_turn(task, score, signals)
+        log_event("DISPATCH_COMPLETE", {
+            "agent_id":agent_id, "agent_name":agent_name,
+            "backend":active_backend[0], "drs":score, "mode":mode,
+            "elapsed":elapsed, "crsv":round(session.crsv(), 1)})
+
+        return jsonify({
+            "ok":True, "agent_id":agent_id, "agent_name":agent_name,
+            "text":text, "drs":score, "mode":mode,
+            "crsv":round(session.crsv(), 1)})
+
     @flask_app.route("/api/agents/spawn",methods=["POST","OPTIONS"])
     def api_agents_spawn():
         if request.method=="OPTIONS": return jsonify({}),200
@@ -718,12 +780,23 @@ def run_web(session, kill_switch, active_backend, port=7070):
         if not task: return jsonify({"error":"task required."}),400
         try: haap_gate(task,agent_drs_ceiling=60)
         except HAAPViolation as e: return jsonify({"error":str(e),"blocked":True}),403
+        # Pull YAML definition as defaults; request body overrides
+        agent_def = _get_yaml_agent(dept_id) or {}
+        agency_level = int(body.get("agency_level") or agent_def.get("agency_level", 2))
+        drs_ceiling  = int(body.get("drs_ceiling")  or agent_def.get("drs_ceiling",  40))
+        permitted    = body.get("permitted_resources") or agent_def.get("permitted_resources", ["/workspace"])
+        extra_env    = {}
+        sys_prompt   = agent_def.get("system_prompt", "")
+        if sys_prompt:
+            extra_env["AGENT_SYSTEM_PROMPT"] = sys_prompt
+        log_event("AGENT_DEF_RESOLVED",{"dept_id":dept_id,"yaml_found":bool(agent_def),
+                                         "has_system_prompt":bool(sys_prompt)})
         result=spawn_agent_container(
             dept_id=dept_id, task_prompt=task,
-            agency_level=int(body.get("agency_level",2)),
-            permitted=body.get("permitted_resources",["/workspace"]),
-            drs_ceiling=int(body.get("drs_ceiling",40)))
-        return jsonify({**result,"dept_id":dept_id,"governed":True})
+            agency_level=agency_level, permitted=permitted,
+            drs_ceiling=drs_ceiling, extra_env=extra_env)
+        return jsonify({**result,"dept_id":dept_id,"governed":True,
+                        "agent_def_loaded":bool(agent_def)})
 
     # ── Department lifecycle (kill/restart) ─────────────────────────────────
     import threading as _threading

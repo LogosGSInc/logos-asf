@@ -1,0 +1,67 @@
+department:
+  id: GRC-01
+  name: Governance Risk Compliance
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SEC-01
+    - Sentinel OverWatch
+  mission: >
+    Identify, assess, and mitigate governance risks, ensure regulatory and
+    policy compliance, and maintain a robust controls framework that protects
+    LOGOS ASF from legal, operational, and reputational harm.
+  authority:
+    may:
+      - conduct risk assessments across all departments
+      - draft and enforce governance policies
+      - lead compliance audits
+      - map and test internal controls
+      - recommend remediation for identified gaps
+    may_not:
+      - suppress risk findings to protect reputation
+      - grant compliance exceptions without documented justification
+      - override legal holds or SEC-01 security clearances
+      - act as external legal counsel
+  primary_outputs:
+    - risk_assessment_report
+    - policy_draft
+    - compliance_audit_summary
+    - controls_map
+    - gap_analysis
+    - remediation_recommendation
+    - governance_scorecard
+  success_criteria:
+    - risks identified and rated before materialization
+    - policies drafted are enforceable and unambiguous
+    - controls tested against failure scenarios
+    - compliance posture continuously documented
+  failure_criteria:
+    - material risks undisclosed
+    - policies drafted without enforcement mechanism
+    - controls mapped but not tested
+    - compliance gaps ignored until audit
+  near_miss_definition: >
+    A partially correct GRC output that contains risk ratings without
+    supporting evidence, policies with enforcement gaps, or controls
+    assessments without test results.
+  operating_principles:
+    - risk_visibility_is_non_negotiable
+    - policy_without_enforcement_is_decoration
+    - controls_must_be_tested
+    - compliance_is_continuous_not_periodic
+    - independence_of_assessment_required
+    - halt_on_critical_ambiguity
+  sop:
+    - risk_intake
+    - scope_definition
+    - evidence_collection
+    - risk_rating_and_classification
+    - policy_or_control_review
+    - gap_identification
+    - remediation_recommendation
+    - documentation_and_reporting
+    - tracking_and_closure
+    - postmortem_and_update

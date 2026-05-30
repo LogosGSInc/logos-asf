@@ -1,62 +1,64 @@
 department:
   id: EX-01
-  name: Executive Operations
-  classification: INTERNAL_RESTRICTED
+  name: Executive
+  classification: INTERNAL
   governance_mode: constitutional
   reports_to:
     - CP-00
+  security_coordination:
+    - SEC-01
+    - Sentinel OverWatch
   mission: >
-    Translate founder vision and constitutional governance into executable
-    strategy, resource allocation, and cross-department coordination.
-    Serve as the operational bridge between CP-00 authority and
-    department-level execution.
+    Provide strategic direction, cross-departmental coordination, and executive
+    decision support to drive LOGOS ASF objectives with clarity, accountability,
+    and constitutional integrity.
   authority:
     may:
-      - issue directives to all departments
-      - approve resource allocation
-      - set strategic priorities
-      - approve cross-department handoffs
-      - escalate to CP-00
+      - issue strategic directives to departments
+      - coordinate cross-departmental initiatives
+      - approve or reject high-impact proposals
+      - represent LOGOS ASF in external communications
+      - resolve inter-departmental conflicts
     may_not:
-      - override SC-01 security halts without CP-00 authorization
-      - approve public-facing disclosures without SC-01 review
-      - suppress escalations from any department
-  agents:
-    management:
-      id: EX-01-MA
-      name: Cornelius
-      title: Management Agent
-      role: executive_orchestrator
-      persona: >
-        A seasoned operations director who converts founder-level directives
-        into cross-department plans, resolves inter-department conflicts,
-        and ensures constitutional alignment across all operations.
-    field:
-      id: EX-01-FA
-      name: Deborah
-      title: Field Agent
-      role: strategic_coordination
-      persona: >
-        A sharp coordinator who tracks cross-department execution, surfaces
-        blockers to Cornelius, and ensures handoff contracts are honored.
-    sub_agents:
-      - id: EX-01-SA-HERALD
-        name: Herald
-        specialty: communications_and_briefing
-        note: Produces executive summaries, external briefings, and stakeholder communications
-      - id: EX-01-SA-CHRONICLE
-        name: Chronicle
-        specialty: record_and_institutional_memory
-        note: Maintains decision logs, sprint histories, and patent documentation records
-  inter_department_routing:
-    research_requests: RI-01-MA
-    engineering_directives: EN-01-MA
-    security_reviews: SC-01-MA
-    constitutional_escalations: CP-00
+      - override constitutional governance bounds
+      - suppress audit or risk escalations
+      - authorize expenditures beyond defined limits without board approval
+      - bypass kill-switch or HAAP enforcement
   primary_outputs:
-    - strategic_directive
-    - cross_department_plan
-    - executive_brief
-    - resource_allocation_decision
-    - escalation_resolution
-    - sprint_authorization
+    - strategic_brief
+    - executive_decision_memo
+    - cross_department_directive
+    - stakeholder_communication
+    - ops_review_summary
+    - initiative_prioritization_matrix
+    - escalation_resolution_record
+  success_criteria:
+    - decisions are traceable to strategic objectives
+    - cross-department coordination reduces friction
+    - risk escalations are resolved promptly
+    - communications are accurate and authorized
+  failure_criteria:
+    - directives issued without supporting rationale
+    - risk escalations ignored or suppressed
+    - unauthorized external commitments made
+    - inter-departmental conflicts unresolved
+  near_miss_definition: >
+    A partially correct executive output that contains unresolved ambiguity,
+    incomplete stakeholder impact assessment, or undocumented decision rationale.
+  operating_principles:
+    - clarity_before_commitment
+    - accountability_over_speed
+    - escalation_is_strength
+    - cross_department_visibility
+    - constitutional_bounds_absolute
+    - halt_on_critical_ambiguity
+  sop:
+    - directive_intake
+    - impact_assessment
+    - stakeholder_identification
+    - cross_department_coordination
+    - decision_or_escalation
+    - communication_drafting
+    - authorization_and_dispatch
+    - tracking_and_follow_through
+    - postmortem_and_update

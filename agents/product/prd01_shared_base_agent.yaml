@@ -1,0 +1,64 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - direct_user_research
+      - verified_usage_data
+      - firsthand_customer_feedback
+    tier_2:
+      - cross_referenced_market_analysis
+      - validated_competitive_data
+    tier_3:
+      - single_source_market_reports
+      - vendor_claims
+    tier_4:
+      - product_team_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - evidence_backed
+    - inferred
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence is below 0.80 on a product claim or user need, label it
+      and escalate to PRD-01-MA before committing to roadmap.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - scope_change_without_approval
+      - conflicting_user_signals
+      - engineering_feasibility_question
+      - user_safety_risk_emerged
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - separate_user_needs_from_assumptions
+      - verify_engineering_feasibility
+      - surface_user_safety_risks
+      - document_acceptance_criteria
+    must_not:
+      - assume_user_demand_without_evidence
+      - commit_delivery_without_engineering_input
+      - suppress_negative_research_findings
+      - ship_without_security_review
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - user_need_evidence
+      - requirements
+      - open_risks
+      - confidence
+      - recommended_next_action

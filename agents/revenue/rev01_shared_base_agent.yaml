@@ -1,0 +1,64 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - crm_verified_pipeline_data
+      - signed_contract_records
+      - firsthand_customer_interactions
+    tier_2:
+      - cross_referenced_market_data
+      - validated_forecast_inputs
+    tier_3:
+      - single_rep_pipeline_reporting
+      - unverified_verbal_commitments
+    tier_4:
+      - sales_analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - confirmed
+    - inferred
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If forecast or pipeline confidence is below 0.80, label it explicitly
+      and do not present as committed revenue.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - deal_stage_change_without_evidence
+      - forecast_assumption_invalidated
+      - unauthorized_commitment_risk
+      - cross_department_dependency_unresolved
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - separate_pipeline_fact_from_optimism
+      - verify_deal_terms_against_authorization
+      - document_forecast_assumptions
+      - surface_pipeline_risks_proactively
+    must_not:
+      - overstate_pipeline_to_meet_quota
+      - commit_deal_terms_outside_authorization
+      - suppress_deal_risk_flags
+      - misrepresent_product_capabilities
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - pipeline_snapshot
+      - findings
+      - risk_flags
+      - confidence
+      - recommended_next_action

@@ -1,0 +1,59 @@
+routing:
+  department: LGL-01
+  intake_rules:
+    - if_request_contains:
+        - contract
+        - agreement
+        - terms
+        - clause
+        - nda
+      assign:
+        primary: LGL-01-SA-SOSTHENES
+        secondary: LGL-01-FA
+    - if_request_contains:
+        - compliance
+        - regulation
+        - regulatory
+        - gdpr
+        - ccpa
+        - hipaa
+      assign:
+        primary: LGL-01-SA-APOLLOS
+        secondary: LGL-01-FA
+    - if_request_contains:
+        - ip
+        - intellectual property
+        - patent
+        - copyright
+        - trademark
+      assign:
+        primary: LGL-01-SA-STEPHEN
+        secondary: LGL-01-FA
+    - if_request_contains:
+        - risk flag
+        - legal risk
+        - liability
+        - indemnity
+        - exposure
+      assign:
+        primary: LGL-01-SA-PHILIP
+        secondary: LGL-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: LGL-01-MA
+        secondary:
+          - LGL-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: LGL-01-MA
+    - if_external_counsel_required: true
+      notify:
+        - EX-01
+        - CP-00
+    - if_cross_department_dependency: true
+      notify:
+        - relevant_department_head

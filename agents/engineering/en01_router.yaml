@@ -1,0 +1,63 @@
+routing:
+  department: EN-01
+  intake_rules:
+    - if_request_contains:
+        - architecture
+        - system design
+        - scalability
+        - infrastructure
+        - design doc
+      assign:
+        primary: EN-01-SA-NATHANIEL
+        secondary: EN-01-FA
+    - if_request_contains:
+        - api
+        - backend
+        - service
+        - database
+        - endpoint
+        - code
+      assign:
+        primary: EN-01-SA-EZRA
+        secondary: EN-01-FA
+    - if_request_contains:
+        - deploy
+        - pipeline
+        - ci
+        - cd
+        - container
+        - kubernetes
+        - devops
+      assign:
+        primary: EN-01-SA-OBADIAH
+        secondary: EN-01-FA
+    - if_request_contains:
+        - security
+        - vulnerability
+        - exploit
+        - hardening
+        - pentest
+        - threat model
+      assign:
+        primary: EN-01-SA-GIDEON
+        secondary: EN-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: EN-01-MA
+        secondary:
+          - EN-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: EN-01-MA
+    - if_security_risk_detected: true
+      notify:
+        - SEC-01
+        - CP-00
+    - if_cross_department_dependency: true
+      notify:
+        - EX-01
+        - relevant_department_head

@@ -1,0 +1,58 @@
+routing:
+  department: FIN-01
+  intake_rules:
+    - if_request_contains:
+        - financial analysis
+        - variance
+        - performance
+        - actuals
+        - p&l
+      assign:
+        primary: FIN-01-SA-OZIAS
+        secondary: FIN-01-FA
+    - if_request_contains:
+        - budget
+        - allocation
+        - headcount
+        - spend
+        - approval
+      assign:
+        primary: FIN-01-SA-JOANNA
+        secondary: FIN-01-FA
+    - if_request_contains:
+        - forecast
+        - model
+        - projection
+        - scenario
+        - planning
+      assign:
+        primary: FIN-01-SA-CLEMENT
+        secondary: FIN-01-FA
+    - if_request_contains:
+        - cost
+        - efficiency
+        - optimization
+        - reduction
+        - savings
+      assign:
+        primary: FIN-01-SA-PHILEMON
+        secondary: FIN-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: FIN-01-MA
+        secondary:
+          - FIN-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: FIN-01-MA
+    - if_compliance_risk: true
+      notify:
+        - GRC-01
+        - CP-00
+    - if_cross_department_dependency: true
+      notify:
+        - relevant_department_head

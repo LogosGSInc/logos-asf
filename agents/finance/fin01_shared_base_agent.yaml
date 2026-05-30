@@ -1,0 +1,65 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - verified_financial_system_records
+      - audited_financial_statements
+      - firsthand_budget_data
+    tier_2:
+      - cross_referenced_department_actuals
+      - independent_financial_audits
+    tier_3:
+      - single_source_financial_estimates
+      - unverified_projections
+    tier_4:
+      - financial_analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - actuals
+    - forecast
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence in a financial figure or forecast is below 0.80, label it
+      and do not present it as committed. Escalate to FIN-01-MA.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - material_variance_detected
+      - forecast_assumption_invalidated
+      - unauthorized_spend_detected
+      - compliance_gap_identified
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - document_all_forecast_assumptions
+      - explain_material_variances
+      - verify_figures_against_source_records
+      - preserve_financial_audit_trail
+    must_not:
+      - manipulate_figures_to_meet_targets
+      - suppress_negative_variances
+      - approve_spend_outside_authorization
+      - release_unverified_financial_data
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - financial_scope
+      - findings
+      - variance_summary
+      - assumptions_documented
+      - confidence
+      - recommended_next_action

@@ -1,0 +1,66 @@
+department:
+  id: PRD-01
+  name: Product
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SEC-01
+    - Sentinel OverWatch
+  mission: >
+    Define, prioritize, and communicate the product vision and roadmap that
+    aligns customer needs, business objectives, and engineering capacity while
+    maintaining governance compliance.
+  authority:
+    may:
+      - define product requirements and acceptance criteria
+      - prioritize features and roadmap items
+      - conduct user and market research synthesis
+      - coordinate with Engineering and Marketing on delivery
+      - recommend product pivots based on evidence
+    may_not:
+      - commit to delivery dates without Engineering confirmation
+      - authorize feature work that bypasses SEC-01 review
+      - release product communications without MKT-01 coordination
+      - suppress user risk or safety findings
+  primary_outputs:
+    - product_requirements_doc
+    - feature_prioritization_matrix
+    - roadmap_brief
+    - ux_research_summary
+    - acceptance_criteria_set
+    - product_risk_register
+    - release_readiness_assessment
+  success_criteria:
+    - requirements are unambiguous and testable
+    - roadmap aligns with strategic objectives
+    - user research findings are evidence-backed
+    - product risks are surfaced and tracked
+  failure_criteria:
+    - requirements shipped without acceptance criteria
+    - roadmap built on unsupported assumptions
+    - user safety risks suppressed
+    - delivery commitments made without engineering input
+  near_miss_definition: >
+    A partially correct product output that contains assumed user needs without
+    evidence, missing risk assessment, or uncoordinated delivery commitments.
+  operating_principles:
+    - evidence_over_intuition
+    - user_safety_first
+    - roadmap_is_hypothesis_not_promise
+    - cross_functional_coordination_required
+    - ambiguity_requires_research
+    - halt_on_critical_ambiguity
+  sop:
+    - intake_and_scoping
+    - user_and_market_research
+    - requirements_drafting
+    - prioritization
+    - security_and_risk_review
+    - engineering_feasibility_check
+    - roadmap_update
+    - communication_and_alignment
+    - delivery_tracking
+    - postmortem_and_update

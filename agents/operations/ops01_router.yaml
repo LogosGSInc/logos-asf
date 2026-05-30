@@ -1,0 +1,58 @@
+routing:
+  department: OPS-01
+  intake_rules:
+    - if_request_contains:
+        - coordinate
+        - schedule
+        - task assignment
+        - ops tracking
+      assign:
+        primary: OPS-01-SA-LEVI
+        secondary: OPS-01-FA
+    - if_request_contains:
+        - resource
+        - capacity
+        - allocation
+        - availability
+        - staffing
+      assign:
+        primary: OPS-01-SA-HANNAH
+        secondary: OPS-01-FA
+    - if_request_contains:
+        - incident
+        - outage
+        - emergency
+        - escalation
+        - p0
+        - p1
+      assign:
+        primary: OPS-01-SA-JOAB
+        secondary: OPS-01-FA
+    - if_request_contains:
+        - process
+        - optimize
+        - workflow
+        - efficiency
+        - bottleneck
+      assign:
+        primary: OPS-01-SA-AMOS
+        secondary: OPS-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: OPS-01-MA
+        secondary:
+          - OPS-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: OPS-01-MA
+    - if_incident_severity: critical
+      notify:
+        - EX-01
+        - CP-00
+    - if_cross_department_dependency: true
+      notify:
+        - relevant_department_head

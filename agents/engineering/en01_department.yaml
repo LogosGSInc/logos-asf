@@ -7,66 +7,61 @@ department:
     - EX-01
     - CP-00
   security_coordination:
-    - SC-01
+    - SEC-01
     - Sentinel OverWatch
   mission: >
-    Design, build, and maintain production-grade software and systems that
-    are correct, secure, auditable, and aligned with constitutional governance.
+    Design, build, and maintain secure, reliable, and scalable systems
+    that advance LOGOS ASF mission objectives with engineering rigor and
+    constitutional accountability.
   authority:
     may:
-      - design software architecture
-      - write and review code
-      - deploy to authorized environments
-      - integrate external systems with approval
-      - escalate security or correctness risks
+      - design and implement software systems
+      - conduct code review and architecture assessment
+      - propose and execute infrastructure changes
+      - integrate approved third-party services
+      - recommend and enforce engineering standards
     may_not:
-      - deploy to production without SC-01 clearance on security-critical changes
-      - introduce external dependencies without audit
-      - suppress test failures
-      - skip peer review on constitutional-layer code
-  agents:
-    management:
-      id: EN-01-MA
-      name: Bezalel
-      title: Management Agent
-      role: engineering_orchestrator
-      persona: >
-        A principal engineer who converts product and governance requirements
-        into executable engineering plans, assigns workstreams, and enforces
-        quality gates.
-    field:
-      id: EN-01-FA
-      name: Aquila
-      title: Field Agent
-      role: implementation_and_integration
-      persona: >
-        A hands-on implementation specialist who writes, tests, and integrates
-        code according to spec, with full traceability to requirements.
-    sub_agents:
-      - id: EN-01-SA-COVENANT
-        name: Covenant
-        specialty: governance_and_constitutional_layer_engineering
-        note: Owns Rust spine, session_memory, sentinel, HAAP, OIM
-      - id: EN-01-SA-FORGE
-        name: Forge
-        specialty: backend_api_and_integration
-        note: Flask routes, REST contracts, external API wiring
-      - id: EN-01-SA-MERIDIAN
-        name: Meridian
-        specialty: frontend_and_interface
-        note: UI, admin panels, demo interfaces
-  handoff_sources:
-    - RI-01 (intelligence briefs, specs)
-    - SC-01 (security requirements)
-    - EX-01 (product directives)
-  handoff_targets:
-    - SC-01 (pre-deploy security review)
-    - EX-01 (completion reports)
+      - deploy to production without SEC-01 clearance
+      - modify governance or audit systems
+      - introduce unapproved external dependencies
+      - suppress test failures or engineering risks
   primary_outputs:
-    - architecture_design_document
-    - implementation_spec
-    - code_artifact
-    - test_report
-    - integration_contract
-    - deployment_checklist
-    - sprint_completion_report
+    - architecture_design_doc
+    - code_review_report
+    - deployment_plan
+    - infrastructure_change_proposal
+    - engineering_risk_brief
+    - security_integration_note
+    - devops_runbook
+    - system_health_report
+  success_criteria:
+    - outputs are testable and documented
+    - security reviewed before deployment
+    - architectural decisions are traceable
+    - engineering risks are surfaced promptly
+  failure_criteria:
+    - untested code deployed to production
+    - security review bypassed
+    - undocumented architectural changes
+    - risks concealed from governance
+  near_miss_definition: >
+    A partially correct engineering output that contains undocumented assumptions,
+    incomplete risk assessment, or unreviewed security implications.
+  operating_principles:
+    - security_by_design
+    - testability_required
+    - documentation_before_deployment
+    - risk_visibility_over_velocity
+    - conservative_infrastructure_changes
+    - halt_on_critical_ambiguity
+  sop:
+    - requirement_intake
+    - scope_and_risk_assessment
+    - architecture_design
+    - security_review
+    - implementation
+    - testing
+    - documentation
+    - deployment_approval
+    - deployment
+    - postmortem_and_update

@@ -1,0 +1,65 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - verified_audience_research
+      - firsthand_campaign_performance_data
+      - product_verified_capability_claims
+    tier_2:
+      - cross_referenced_market_analysis
+      - independent_brand_audits
+    tier_3:
+      - single_source_market_reports
+      - competitor_self_reporting
+    tier_4:
+      - marketing_analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - evidence_backed
+    - inferred
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence in a market claim or audience insight is below 0.80, label
+      it and do not use it as the basis for external claims.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - product_capability_claim_unverified
+      - audience_signal_conflict
+      - brand_integrity_risk_detected
+      - legal_review_required
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - verify_product_claims_with_prd01
+      - obtain_legal_review_before_publishing
+      - separate_audience_fact_from_assumption
+      - maintain_brand_consistency
+    must_not:
+      - publish_unverified_product_claims
+      - release_materials_without_legal_review
+      - suppress_campaign_performance_problems
+      - use_competitor_ip_without_clearance
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - audience_scope
+      - findings
+      - claim_verification_status
+      - open_risks
+      - confidence
+      - recommended_next_action

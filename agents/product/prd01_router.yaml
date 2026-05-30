@@ -1,0 +1,58 @@
+routing:
+  department: PRD-01
+  intake_rules:
+    - if_request_contains:
+        - requirements
+        - user story
+        - acceptance criteria
+        - feature spec
+      assign:
+        primary: PRD-01-SA-TIMOTHY
+        secondary: PRD-01-FA
+    - if_request_contains:
+        - user research
+        - usability
+        - ux
+        - user journey
+        - persona
+      assign:
+        primary: PRD-01-SA-MIRIAM
+        secondary: PRD-01-FA
+    - if_request_contains:
+        - roadmap
+        - timeline
+        - milestone
+        - planning
+        - quarterly
+      assign:
+        primary: PRD-01-SA-CALEB
+        secondary: PRD-01-FA
+    - if_request_contains:
+        - prioritization
+        - backlog
+        - tradeoff
+        - impact vs effort
+        - ranking
+      assign:
+        primary: PRD-01-SA-ABNER
+        secondary: PRD-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: PRD-01-MA
+        secondary:
+          - PRD-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: PRD-01-MA
+    - if_user_safety_risk: true
+      notify:
+        - SEC-01
+        - CP-00
+    - if_cross_department_dependency: true
+      notify:
+        - EX-01
+        - relevant_department_head
