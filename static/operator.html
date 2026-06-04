@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- SECURITY: CSP mirrors dashboard.html — same-origin scripts only, trusted font CDN only -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://api.fontshare.com; font-src https://api.fontshare.com https://cdn.fontshare.com; connect-src 'self' https://*.app.github.dev https://*.preview.app.github.dev http://localhost:7070 http://localhost:9090 http://127.0.0.1:7070; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
+<title>Abigail Operator Cockpit — LOGOS Governance Systems</title>
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&f[]=cabinet-grotesk@700,800,900&display=swap" rel="stylesheet">
+<style>
+/* ── DESIGN TOKENS (shared with dashboard.html) ── */
+:root {
+  --bg:#0d0d0b; --surface:#141412; --surface-2:#1a1a18; --surface-3:#202020;
+  --border:rgba(255,255,255,0.07); --border-hi:rgba(255,255,255,0.16);
+  --text:#e6e4de; --muted:#8c8a84; --faint:#4a4845;
+  --primary:#4f98a3; --primary-h:#3a8390; --primary-glow:rgba(79,152,163,0.14);
+  --gold:#e8af34; --gold-glow:rgba(232,175,52,0.12);
+  --success:#6daa45; --success-glow:rgba(109,170,69,0.12);
+  --error:#dd6974; --error-glow:rgba(221,105,116,0.12);
+  --warning:#fdab43; --warning-glow:rgba(253,171,67,0.12);
+  --info:#5f9ec4; --info-glow:rgba(95,158,196,0.12);
+  --r-sm:4px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-pill:999px;
+  --font-d:"Cabinet Grotesk",sans-serif;
+  --font-b:"Satoshi",sans-serif;
+  --font-m:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  --ease:160ms cubic-bezier(0.16,1,0.3,1);
+  --sidebar-w:240px; --canvas-w:340px;
+  --header-h:52px; --ribbon-h:40px; --drawer-col:44px; --drawer-exp:280px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased}
+body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-family:var(--font-b);font-size:14px;color:var(--text);background:var(--bg)}
+
+/* ── HEADER ── */
+.ck-header{flex-shrink:0;height:var(--header-h);display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0 1rem;background:var(--surface);border-bottom:1px solid var(--border);z-index:100}
+.ck-brand{display:flex;align-items:center;gap:.625rem}
+.ck-brand svg{width:28px;height:28px;flex-shrink:0}
+.ck-brand-name{font-family:var(--font-d);font-size:.9375rem;font-weight:900;letter-spacing:-.02em}
+.ck-brand-name em{color:var(--primary);font-style:normal}
+.ck-brand-sub{font-size:.6rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.ck-header-right{display:flex;align-items:center;gap:.5rem}
+.ck-back{font-size:.75rem;color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:var(--r-md);padding:.3rem .65rem;transition:all var(--ease)}
+.ck-back:hover{color:var(--text);border-color:var(--border-hi)}
+
+/* ── COCKPIT BODY ── */
+.ck-body{flex:1;min-height:0;display:grid;grid-template-columns:var(--sidebar-w) 1fr var(--canvas-w)}
+
+/* ── SIDEBAR ── */
+.ck-sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.ck-sb-scroll{flex:1;overflow-y:auto;padding:.75rem;scrollbar-width:thin;scrollbar-color:var(--border-hi) transparent}
+.ck-sb-scroll::-webkit-scrollbar{width:4px}
+.ck-sb-scroll::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:2px}
+.sb-sec{margin-bottom:1.125rem}
+.sb-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:.5rem;padding:0 .25rem}
+.ws-chip{display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.45rem .75rem;cursor:pointer;font-size:.8125rem;font-weight:600;transition:all var(--ease);width:100%}
+.ws-chip:hover{border-color:var(--primary)}
+.proj-item{display:flex;align-items:center;gap:.45rem;padding:.35rem .5rem;border-radius:var(--r-md);font-size:.8125rem;cursor:pointer;transition:all var(--ease);border:1px solid transparent}
+.proj-item:hover{background:var(--surface-2)}
+.proj-item.active{background:var(--primary-glow);border-color:rgba(79,152,163,.3);color:var(--primary)}
+.proj-dot{width:6px;height:6px;border-radius:50%;background:var(--primary);flex-shrink:0}
+.proj-dot.dim{background:var(--faint)}
+
+/* ── MODE SELECTOR ── */
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:.35rem}
+.mode-btn{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.45rem .5rem;font-family:var(--font-b);font-size:.7rem;font-weight:700;color:var(--muted);cursor:pointer;transition:all var(--ease);text-align:center}
+.mode-btn:hover,.mode-btn.active{border-color:rgba(79,152,163,.4);color:var(--primary);background:var(--primary-glow)}
+.mode-btn.deploy{grid-column:1/-1}
+.mode-btn.redteam.active,.mode-btn.redteam:hover{border-color:rgba(221,105,116,.4);color:var(--error);background:var(--error-glow)}
+
+/* ── ENV + AUTHORITY ── */
+.env-row{display:flex;align-items:center;justify-content:space-between;font-size:.75rem;padding:.28rem .25rem;border-bottom:1px solid var(--border)}
+.env-row:last-child{border-bottom:none}
+.env-k{color:var(--muted)}
+.auth-list{display:flex;flex-direction:column;gap:.2rem}
+.auth-item{display:flex;align-items:center;gap:.4rem;font-size:.7rem;color:var(--muted);padding:.15rem .25rem}
+.auth-ic{font-size:.6rem;width:13px;flex-shrink:0}
+.auth-ic.gate{color:var(--warning)}
+.auth-ic.block{color:var(--error)}
+.dept-item{display:flex;align-items:center;gap:.5rem;font-size:.75rem;padding:.3rem .5rem;border-radius:var(--r-sm);cursor:pointer;transition:all var(--ease)}
+.dept-item:hover{background:var(--surface-2)}
+.dept-code{font-family:var(--font-m);font-size:.65rem;color:var(--gold);min-width:28px}
+
+/* ── CENTER ── */
+.ck-center{display:flex;flex-direction:column;min-height:0;overflow:hidden;background:var(--bg)}
+
+/* ── AGENT RIBBON ── */
+.agent-ribbon{flex-shrink:0;height:var(--ribbon-h);display:flex;align-items:center;gap:.45rem;padding:0 1rem;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:.75rem;overflow-x:auto;scrollbar-width:none}
+.agent-ribbon::-webkit-scrollbar{display:none}
+.rb-label{color:var(--muted);font-weight:700;flex-shrink:0}
+.rb-sep{color:var(--faint);flex-shrink:0}
+.rb-chip{background:var(--surface-3);border:1px solid var(--border);border-radius:var(--r-pill);padding:.18rem .5rem;font-size:.65rem;font-weight:700;white-space:nowrap;flex-shrink:0}
+.rb-chip.mode{color:var(--primary);border-color:rgba(79,152,163,.3)}
+.rb-chip.sim{color:var(--warning);border-color:rgba(253,171,67,.3)}
+.rb-chip.live{color:var(--success);border-color:rgba(109,170,69,.3)}
+.rb-chip.risk-low{color:var(--success)}
+.rb-chip.risk-med{color:var(--warning)}
+.rb-chip.risk-hi{color:var(--error)}
+.stream-state{font-size:.65rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.15rem .4rem;border-radius:var(--r-pill);margin-left:auto;flex-shrink:0}
+.stream-state.idle{color:var(--faint)}
+.stream-state.sending{color:var(--primary);background:var(--primary-glow)}
+.stream-state.receiving{color:var(--success);background:var(--success-glow)}
+.stream-state.interrupted{color:var(--warning);background:var(--warning-glow)}
+.stream-state.failed{color:var(--error);background:var(--error-glow)}
+.stream-state.complete{color:var(--faint)}
+
+/* ── CHAT STREAM ── */
+.ck-stream{flex:1;min-height:0;overflow-y:auto;padding:1rem 1.25rem;display:flex;flex-direction:column;gap:.875rem;scrollbar-width:thin;scrollbar-color:var(--border-hi) transparent}
+.ck-stream::-webkit-scrollbar{width:6px}
+.ck-stream::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:3px}
+
+/* ── TURNS ── */
+.turn{display:flex;flex-direction:column;gap:.3rem}
+.turn.user{align-items:flex-end}
+.turn.assistant,.turn.sys{align-items:flex-start;max-width:90%}
+.turn-meta{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+.turn-role{font-size:.65rem;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.turn-id{font-family:var(--font-m);font-size:.6rem;color:var(--faint)}
+.turn-timestamp{font-size:.6rem;color:var(--faint)}
+.turn-bubble{padding:.7rem 1rem;border-radius:var(--r-lg);font-size:.875rem;line-height:1.55;word-wrap:break-word}
+.turn.user .turn-bubble{background:var(--primary);color:#fff;border:1px solid var(--primary-h);border-radius:var(--r-lg) var(--r-lg) var(--r-sm) var(--r-lg)}
+.turn.assistant .turn-bubble{background:var(--surface);border:1px solid var(--border-hi);border-radius:var(--r-lg) var(--r-lg) var(--r-lg) var(--r-sm)}
+.turn.sys .turn-bubble{background:var(--surface-3);border:1px dashed var(--border-hi);color:var(--muted);font-size:.8125rem;font-style:italic;border-radius:var(--r-md)}
+.turn-why{font-size:.7rem;color:var(--muted);font-style:italic;padding:.2rem .5rem;border-left:2px solid var(--border-hi);margin-top:.2rem}
+.turn-bubble code{background:var(--surface-2);border:1px solid var(--border);padding:.1rem .3rem;border-radius:3px;font-family:var(--font-m);font-size:.8rem}
+.turn-bubble pre{background:var(--surface-2);border:1px solid var(--border);padding:.75rem;border-radius:var(--r-md);overflow-x:auto;margin:.5rem 0;font-family:var(--font-m);font-size:.8rem;line-height:1.4}
+
+/* ── POLICY CHIPS ── */
+.policy-row{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;margin-top:.35rem}
+.pc{display:inline-flex;align-items:center;gap:.3rem;font-size:.65rem;font-weight:700;padding:.18rem .45rem;border-radius:var(--r-pill);border:1px solid}
+.pc.allowed{color:var(--success);border-color:rgba(109,170,69,.4);background:var(--success-glow)}
+.pc.needs-approval{color:var(--warning);border-color:rgba(253,171,67,.4);background:var(--warning-glow)}
+.pc.simulate-only{color:var(--warning);border-color:rgba(253,171,67,.3);background:var(--warning-glow)}
+.pc.blocked{color:var(--error);border-color:rgba(221,105,116,.4);background:var(--error-glow)}
+.pc.info{color:var(--muted);border-color:var(--border);background:var(--surface-2)}
+
+/* ── ACTION + TURN CONTROLS ── */
+.action-row{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;margin-top:.45rem}
+.ac{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.28rem .6rem;font-family:var(--font-b);font-size:.7rem;font-weight:700;color:var(--muted);cursor:pointer;transition:all var(--ease)}
+.ac:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-glow)}
+.ac.approve:hover{border-color:var(--success);color:var(--success);background:var(--success-glow)}
+.ac.simulate:hover{border-color:var(--warning);color:var(--warning);background:var(--warning-glow)}
+.ac.rollback:hover{border-color:var(--error);color:var(--error);background:var(--error-glow)}
+.turn-controls{display:flex;align-items:center;gap:.35rem;margin-top:.35rem}
+.tc{background:transparent;border:1px solid var(--border);border-radius:var(--r-sm);padding:.18rem .45rem;font-family:var(--font-b);font-size:.65rem;font-weight:600;color:var(--faint);cursor:pointer;transition:all var(--ease)}
+.tc:hover{color:var(--muted);border-color:var(--border-hi)}
+
+/* ── STREAM INDICATOR ── */
+.stream-ind{display:none;align-items:center;gap:.5rem;font-size:.75rem;color:var(--muted);font-style:italic;padding:.5rem 0}
+.stream-dots{display:flex;gap:.25rem}
+.stream-dots span{width:5px;height:5px;border-radius:50%;background:var(--primary);animation:sdot 1.2s ease-in-out infinite}
+.stream-dots span:nth-child(2){animation-delay:.2s}
+.stream-dots span:nth-child(3){animation-delay:.4s}
+@keyframes sdot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+
+/* ── COMPOSER ── */
+.ck-composer{flex-shrink:0;padding:.75rem 1rem;background:var(--surface);border-top:1px solid var(--border)}
+.composer-label-text{display:block;font-size:.6rem;color:var(--faint);margin-bottom:.35rem;letter-spacing:.04em}
+.composer-row{display:flex;gap:.5rem;align-items:flex-end}
+.ck-input{flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.6rem .875rem;color:var(--text);font-family:var(--font-b);font-size:.875rem;resize:none;min-height:40px;max-height:120px;line-height:1.5;transition:border-color var(--ease),box-shadow var(--ease)}
+.ck-input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
+.ck-input::placeholder{color:var(--faint)}
+.ck-send{background:var(--primary);color:#fff;border:none;border-radius:var(--r-md);padding:.6rem 1rem;font-family:var(--font-b);font-size:.875rem;font-weight:700;cursor:pointer;transition:all var(--ease);min-height:40px;white-space:nowrap}
+.ck-send:hover:not(:disabled){background:var(--primary-h)}
+.ck-send:disabled{opacity:.5;cursor:not-allowed}
+.composer-rail{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-top:.45rem;flex-wrap:wrap}
+.slash-chips{display:flex;gap:.3rem;flex-wrap:wrap}
+.sc{background:var(--surface-3);border:1px solid var(--border);color:var(--muted);font-family:var(--font-m);font-size:.65rem;font-weight:700;padding:.22rem .45rem;border-radius:var(--r-sm);cursor:pointer;transition:all var(--ease)}
+.sc:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-glow)}
+.composer-hint{font-size:.65rem;color:var(--faint)}
+.composer-hint kbd{background:var(--surface-3);border:1px solid var(--border);border-radius:3px;padding:.05rem .3rem;font-family:var(--font-m);font-size:.65rem;color:var(--muted)}
+
+/* ── RIGHT CANVAS ── */
+.ck-canvas{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.canvas-hdr{flex-shrink:0;padding:.6rem .875rem;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.canvas-title{font-family:var(--font-d);font-size:.875rem;font-weight:800;margin-bottom:.15rem}
+.src-badge{display:inline-flex;align-items:center;font-size:.6rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.12rem .4rem;border-radius:var(--r-pill);border:1px solid}
+.src-badge.live{color:var(--success);border-color:rgba(109,170,69,.3)}
+.src-badge.mock{color:var(--gold);border-color:rgba(232,175,52,.3)}
+.src-badge.preview{color:var(--info);border-color:rgba(95,158,196,.3)}
+.canvas-tabs{flex-shrink:0;display:flex;border-bottom:1px solid var(--border);background:var(--surface-2);overflow-x:auto;scrollbar-width:none}
+.canvas-tabs::-webkit-scrollbar{display:none}
+.ctab{background:transparent;border:none;border-bottom:2px solid transparent;padding:.45rem .7rem;font-family:var(--font-b);font-size:.7rem;font-weight:700;color:var(--faint);cursor:pointer;transition:all var(--ease);white-space:nowrap;flex-shrink:0}
+.ctab:hover{color:var(--muted)}
+.ctab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.ctab:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
+.canvas-body{flex:1;min-height:0;overflow:hidden}
+.cpanel{display:none;height:100%;overflow-y:auto;padding:.875rem;font-size:.8125rem;scrollbar-width:thin;scrollbar-color:var(--border-hi) transparent}
+.cpanel.active{display:block}
+.cpanel::-webkit-scrollbar{width:6px}
+.cpanel::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:3px}
+.art-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-lg);padding:.875rem;margin-bottom:.75rem}
+.art-title{font-family:var(--font-d);font-size:.9375rem;font-weight:800;margin-bottom:.2rem}
+.art-meta{font-size:.7rem;color:var(--muted);margin-bottom:.75rem;line-height:1.5}
+.art-body{font-size:.8125rem;color:var(--text);line-height:1.6}
+.ws-row{display:flex;align-items:flex-start;justify-content:space-between;font-size:.75rem;padding:.28rem 0;border-bottom:1px solid var(--border)}
+.ws-row:last-child{border-bottom:none}
+.ws-k{color:var(--muted);font-weight:700;min-width:95px}
+.ws-v{color:var(--text);text-align:right;font-family:var(--font-m);font-size:.7rem}
+.ph-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:.5rem;color:var(--faint);font-size:.8125rem;text-align:center;padding:2rem}
+.ph-icon{font-size:1.75rem;opacity:.35}
+.deploy-gate{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-lg);padding:1.125rem;text-align:center}
+.deploy-gate-title{font-family:var(--font-d);font-size:.875rem;font-weight:800;color:var(--muted);margin-bottom:.5rem}
+.deploy-gate-body{font-size:.8125rem;color:var(--faint);line-height:1.6;text-align:left;margin-top:.5rem}
+.deploy-locked{display:inline-flex;align-items:center;gap:.375rem;background:var(--surface-3);border:1px solid var(--border);border-radius:var(--r-md);padding:.6rem 1.25rem;color:var(--faint);font-family:var(--font-b);font-size:.875rem;font-weight:700;cursor:not-allowed;margin-top:.875rem}
+
+/* ── TRACE DRAWER ── */
+.ck-drawer{flex-shrink:0;background:var(--surface);border-top:1px solid var(--border);transition:height var(--ease)}
+.ck-drawer.collapsed{height:var(--drawer-col);overflow:hidden}
+.ck-drawer.expanded{height:var(--drawer-exp)}
+.drawer-bar{height:var(--drawer-col);display:flex;align-items:center;justify-content:space-between;padding:0 1rem;cursor:pointer;user-select:none}
+.drawer-bar:hover{background:var(--surface-2)}
+.drawer-bar-l{display:flex;align-items:center;gap:.625rem}
+.drawer-title-txt{font-family:var(--font-d);font-size:.75rem;font-weight:800}
+.drawer-last{font-size:.7rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:420px}
+.drawer-arrow{font-size:.7rem;color:var(--faint);transition:transform var(--ease)}
+.ck-drawer.expanded .drawer-arrow{transform:rotate(180deg)}
+.drawer-body{height:calc(var(--drawer-exp) - var(--drawer-col));overflow-y:auto;padding:.5rem 1rem;scrollbar-width:thin;scrollbar-color:var(--border-hi) transparent}
+.drawer-body::-webkit-scrollbar{width:6px}
+.drawer-body::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:3px}
+.trace-row{display:grid;grid-template-columns:120px 170px 1fr auto;gap:.5rem;padding:.3rem .2rem;border-bottom:1px solid var(--border);font-size:.7rem;align-items:center}
+.trace-row:last-child{border-bottom:none}
+.trace-ts{font-family:var(--font-m);color:var(--faint)}
+.trace-type{font-weight:700;color:var(--primary)}
+.trace-detail{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{display:inline-flex;align-items:center;font-size:.6rem;font-weight:700;padding:.15rem .4rem;border-radius:var(--r-pill);border:1px solid}
+.badge.green{color:var(--success);border-color:rgba(109,170,69,.35);background:var(--success-glow)}
+.badge.yellow{color:var(--warning);border-color:rgba(253,171,67,.35);background:var(--warning-glow)}
+.badge.red{color:var(--error);border-color:rgba(221,105,116,.35);background:var(--error-glow)}
+.badge.teal{color:var(--primary);border-color:rgba(79,152,163,.35);background:var(--primary-glow)}
+.badge.blue{color:var(--info);border-color:rgba(95,158,196,.35);background:var(--info-glow)}
+.env-badge{font-size:.65rem;font-weight:700;padding:.2rem .55rem;border-radius:var(--r-pill);border:1px solid;letter-spacing:.06em;text-transform:uppercase}
+.env-badge.local{color:var(--success);border-color:rgba(109,170,69,.4);background:var(--success-glow)}
+.env-badge.sim{color:var(--warning);border-color:rgba(253,171,67,.4);background:var(--warning-glow)}
+
+/* ── FOCUS ── */
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+/* ── RESPONSIVE ── */
+@media(max-width:1100px){:root{--canvas-w:280px}}
+@media(max-width:820px){.ck-canvas{display:none};.ck-body{grid-template-columns:var(--sidebar-w) 1fr}}
+@media(max-width:600px){.ck-sidebar{display:none};.ck-body{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header class="ck-header">
+  <div class="ck-brand">
+    <svg viewBox="0 0 28 28" fill="none" aria-hidden="true">
+      <rect width="28" height="28" rx="7" fill="#141412"/>
+      <polygon points="14,2.5 25,8 25,20 14,25.5 3,20 3,8" fill="none" stroke="#4f98a3" stroke-width="1.5"/>
+      <polygon points="14,7 21,11 21,17 14,21 7,17 7,11" fill="none" stroke="#4f98a3" stroke-width=".7" opacity=".4"/>
+      <circle cx="14" cy="14" r="2.5" fill="#4f98a3"/>
+    </svg>
+    <div>
+      <div class="ck-brand-name">LOGOS <em>ASF</em> · Operator Cockpit</div>
+      <div class="ck-brand-sub">Abigail CP-00 · Governed Execution Surface · Preview</div>
+    </div>
+  </div>
+  <div class="ck-header-right">
+    <span id="envBadge" class="env-badge sim">Simulation</span>
+    <span id="ckStatus" class="badge blue">Connecting…</span>
+    <a href="dashboard.html" class="ck-back">← Operator Console</a>
+  </div>
+</header>
+
+<!-- ── COCKPIT BODY ── -->
+<div class="ck-body">
+
+  <!-- ── LEFT SIDEBAR ── -->
+  <nav class="ck-sidebar" aria-label="Workspace navigation">
+    <div class="ck-sb-scroll">
+
+      <div class="sb-sec">
+        <div class="sb-label">Workspace</div>
+        <button class="ws-chip" aria-label="Switch workspace">
+          LOGOS ASF <span style="color:var(--faint);font-size:.7rem">▾</span>
+        </button>
+      </div>
+
+      <div class="sb-sec">
+        <div class="sb-label">Projects</div>
+        <div class="proj-item active" role="button" tabindex="0" aria-current="true">
+          <span class="proj-dot"></span>Abigail UI Foundation
+        </div>
+        <div class="proj-item" role="button" tabindex="0">
+          <span class="proj-dot dim"></span><span style="color:var(--faint)">Assurance AI Extract</span>
+        </div>
+        <div class="proj-item" role="button" tabindex="0">
+          <span class="proj-dot dim"></span><span style="color:var(--faint)">Governance Spine v2</span>
+        </div>
+      </div>
+
+      <div class="sb-sec">
+        <div class="sb-label">Sessions</div>
+        <div class="proj-item active" role="button" tabindex="0">Sprint 4B · UI Shell</div>
+        <div class="proj-item" role="button" tabindex="0">
+          <span style="color:var(--faint)">Sprint 4A · Extraction</span>
+        </div>
+      </div>
+
+      <div class="sb-sec">
+        <div class="sb-label">Mode</div>
+        <div class="mode-grid" role="group" aria-label="Execution mode">
+          <button class="mode-btn active" data-mode="plan" aria-pressed="true">Plan</button>
+          <button class="mode-btn" data-mode="build" aria-pressed="false">Build</button>
+          <button class="mode-btn" data-mode="review" aria-pressed="false">Review</button>
+          <button class="mode-btn redteam" data-mode="redteam" aria-pressed="false">Red Team</button>
+          <button class="mode-btn deploy" data-mode="deploy" aria-pressed="false">Deploy</button>
+        </div>
+      </div>
+
+      <div class="sb-sec">
+        <div class="sb-label">Departments <span id="deptCount" style="color:var(--faint)"></span></div>
+        <div id="deptNav">
+          <div style="font-size:.7rem;color:var(--faint);padding:.35rem .25rem">Loading…</div>
+        </div>
+      </div>
+
+      <div class="sb-sec">
+        <div class="sb-label">Environment</div>
+        <div class="env-row"><span class="env-k">Backend</span><span id="sbBackend" class="badge blue">—</span></div>
+        <div class="env-row"><span class="env-k">Kill Switch</span><span id="sbKs" class="badge green">Armed</span></div>
+        <div class="env-row"><span class="env-k">CRSV</span><span id="sbCrsv" style="font-family:var(--font-m);font-size:.75rem;color:var(--gold)">—</span></div>
+        <div class="env-row"><span class="env-k">Turns</span><span id="sbTurns" style="font-family:var(--font-m);font-size:.75rem">—</span></div>
+      </div>
+
+      <div class="sb-sec">
+        <div class="sb-label">Authority Limits · Require Approval</div>
+        <div class="auth-list">
+          <div class="auth-item"><span class="auth-ic gate">⚠</span>file write</div>
+          <div class="auth-item"><span class="auth-ic gate">⚠</span>file delete</div>
+          <div class="auth-item"><span class="auth-ic gate">⚠</span>shell/tool execution</div>
+          <div class="auth-item"><span class="auth-ic block">✕</span>secret access</div>
+          <div class="auth-item"><span class="auth-ic gate">⚠</span>dependency install</div>
+          <div class="auth-item"><span class="auth-ic gate">⚠</span>git commit</div>
+          <div class="auth-item"><span class="auth-ic block">✕</span>git push</div>
+          <div class="auth-item"><span class="auth-ic block">✕</span>deployment</div>
+          <div class="auth-item"><span class="auth-ic block">✕</span>kill-switch / e-brake</div>
+          <div class="auth-item"><span class="auth-ic block">✕</span>external network action</div>
+        </div>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- ── CENTER PANE ── -->
+  <main class="ck-center">
+
+    <!-- Agent Ribbon -->
+    <div class="agent-ribbon" id="agentRibbon" aria-label="Active agent status">
+      <span class="rb-label">Abigail</span>
+      <span class="rb-sep">·</span>
+      <span class="rb-chip mode" id="rbMode">Plan Mode</span>
+      <span class="rb-sep">·</span>
+      <span class="rb-chip sim" id="rbAuth">Simulate Only</span>
+      <span class="rb-sep">·</span>
+      <span class="rb-chip" id="rbDept">Governance active</span>
+      <span class="rb-sep">·</span>
+      <span class="rb-chip risk-low" id="rbRisk">Risk: Low</span>
+      <span class="rb-sep">·</span>
+      <span class="rb-chip" id="rbState">Awaiting input</span>
+      <span class="stream-state idle" id="streamState">idle</span>
+    </div>
+
+    <!-- Chat Thread -->
+    <div class="ck-stream" id="chatStream" role="log" aria-live="polite" aria-label="Conversation thread" aria-atomic="false">
+
+      <!-- System init turn -->
+      <div class="turn sys">
+        <div class="turn-meta">
+          <span class="turn-role">System</span>
+          <span class="turn-timestamp">2026-06-04T14:20:00Z</span>
+          <span class="turn-id">turn-sys-init</span>
+        </div>
+        <div class="turn-bubble">
+          Operator Cockpit ready. Mode: Plan. Authority: Simulate Only.
+          All actions require explicit approval before execution.
+          Governance: HAAP-gated · audit-logged · rollback available.
+        </div>
+      </div>
+
+      <!-- User turn 1 -->
+      <div class="turn user">
+        <div class="turn-meta">
+          <span class="turn-role">Operator</span>
+          <span class="turn-timestamp">2026-06-04T14:22:18Z</span>
+          <span class="turn-id">turn-001</span>
+        </div>
+        <div class="turn-bubble">
+          Build the Abigail operator cockpit shell — 4-pane layout with mode selector, agent ribbon, right canvas, and Governance Trace drawer.
+        </div>
+      </div>
+
+      <!-- Assistant response turn 1 -->
+      <div class="turn assistant" id="resp-001">
+        <div class="turn-meta">
+          <span class="turn-role">Abigail CP-00</span>
+          <span class="turn-timestamp">2026-06-04T14:22:31Z</span>
+          <span class="turn-id">turn-001-resp</span>
+          <span class="badge teal" style="font-size:.6rem">Plan Mode</span>
+        </div>
+        <div class="turn-bubble">
+          Understood. Here is the governed build plan for the Operator Cockpit shell.
+          <br><br>
+          <strong>Scope:</strong> Static HTML/CSS/JS — no framework, no new backend routes, inline for Phase 1.
+          <br><br>
+          <strong>Layout:</strong><br>
+          · Left sidebar — workspace, projects, sessions, mode selector, dept nav, authority limits<br>
+          · Center — agent ribbon, chat thread with timestamps and turn IDs, composer<br>
+          · Right canvas — primary artifact + 8 tabs (Preview / Files / Diff / Spec / JSON IR / Logs / Tests / Deploy)<br>
+          · Bottom — Governance Trace drawer, collapsed by default
+          <br><br>
+          <strong>Live reads:</strong> <code>/api/status</code>, <code>/api/audit-tail</code>, <code>/api/agents/departments</code><br>
+          <strong>Mock only:</strong> project list, session history, artifact content, diff data
+          <br><br>
+          <strong>Governance states rendered:</strong> Allowed · Needs Approval · Simulate Only · Blocked
+          <br><br>
+          <strong>Phase 1 acceptance:</strong> Cockpit renders, chat sends to <code>/api/chat</code>, trace drawer shows live or mocked audit events, mode selector updates ribbon and request payload, right canvas shows artifact with correct tab structure.
+          <br><br>
+          This plan requires your approval before file writes proceed. Risk: Low. No destructive actions in scope.
+        </div>
+        <div class="turn-why">Why Abigail responded this way: routed to Governance + Engineering because this is a UI planning task. Policy gate passed. No file writes until explicitly approved.</div>
+        <div class="policy-row">
+          <span class="pc allowed" title="Policy: Allowed">✓ Allowed</span>
+          <span class="pc info" title="Risk level">Risk: Low</span>
+          <span class="pc simulate-only" title="Authority: Simulate Only">⊙ Simulate Only</span>
+          <span class="pc info" title="Policy decision">Policy: Plan Gate Passed</span>
+        </div>
+        <div class="action-row">
+          <button class="ac approve" onclick="handleChip('approve','resp-001')">✓ Approve</button>
+          <button class="ac" onclick="handleChip('revise','resp-001')">✎ Revise</button>
+          <button class="ac simulate" onclick="handleChip('simulate','resp-001')">⊙ Simulate</button>
+          <button class="ac" onclick="handleChip('run','resp-001')">▶ Run</button>
+          <button class="ac" onclick="handleChip('diff','resp-001')">⊞ Diff</button>
+          <button class="ac rollback" onclick="handleChip('rollback','resp-001')">↩ Rollback</button>
+        </div>
+        <div class="turn-controls">
+          <button class="tc" onclick="handleBranch('resp-001')">⎇ Branch here</button>
+          <button class="tc" onclick="handleRerun('resp-001')">↺ Rerun from here</button>
+        </div>
+      </div>
+
+      <!-- Streaming indicator — shown while chatBusy -->
+      <div class="stream-ind" id="streamInd" aria-live="polite">
+        <div class="stream-dots"><span></span><span></span><span></span></div>
+        <span>Abigail is responding…</span>
+      </div>
+
+    </div>
+
+    <!-- Composer -->
+    <div class="ck-composer">
+      <label class="composer-label-text" for="ckInput">Command Abigail — natural language or slash command</label>
+      <div class="composer-row">
+        <textarea id="ckInput" class="ck-input" rows="1"
+          placeholder="Message Abigail · /plan · /build · /review · /redteam · /deploy · /diff · /rollback · /audit · /help"
+          aria-label="Message Abigail"></textarea>
+        <button id="ckSend" class="ck-send" aria-label="Send message">Send</button>
+      </div>
+      <div class="composer-rail">
+        <div class="slash-chips" role="group" aria-label="Slash command shortcuts">
+          <button class="sc" data-cmd="/plan">/plan</button>
+          <button class="sc" data-cmd="/build">/build</button>
+          <button class="sc" data-cmd="/review">/review</button>
+          <button class="sc" data-cmd="/diff">/diff</button>
+          <button class="sc" data-cmd="/rollback">/rollback</button>
+          <button class="sc" data-cmd="/audit">/audit</button>
+          <button class="sc" data-cmd="/help">/help</button>
+        </div>
+        <span class="composer-hint"><kbd>Enter</kbd> send · <kbd>Shift</kbd>+<kbd>Enter</kbd> newline</span>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── RIGHT CANVAS ── -->
+  <aside class="ck-canvas" aria-label="Artifact and output canvas">
+    <div class="canvas-hdr">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+        <div class="canvas-title" id="canvasTitle">Operator Cockpit Shell Spec</div>
+        <span class="src-badge mock" id="canvasSrc">MOCK</span>
+      </div>
+    </div>
+
+    <div class="canvas-tabs" role="tablist" aria-label="Artifact views">
+      <button class="ctab active" role="tab" aria-selected="true"  aria-controls="cp-preview" data-panel="preview"  id="ct-preview">Preview</button>
+      <button class="ctab"        role="tab" aria-selected="false" aria-controls="cp-files"   data-panel="files"    id="ct-files">Files</button>
+      <button class="ctab"        role="tab" aria-selected="false" aria-controls="cp-diff"    data-panel="diff"     id="ct-diff">Diff</button>
+      <button class="ctab"        role="tab" aria-selected="false" aria-controls="cp-spec"    data-panel="spec"     id="ct-spec">Spec</button>
+      <button class="ctab"        role="tab" aria-selected="false" aria-controls="cp-jsonir"  data-panel="jsonir"   id="ct-jsonir">JSON IR</button>
+      <button class="ctab"        role="tab" aria-selected="false" aria-controls="cp-logs"    data-panel="logs"     id="ct-logs">Logs</button>
+      <button class="ctab"        role="tab" aria-selected="false" aria-controls="cp-tests"   data-panel="tests"    id="ct-tests">Tests</button>
+      <button class="ctab"        role="tab" aria-selected="false" aria-controls="cp-deploy"  data-panel="deploy"   id="ct-deploy">Deploy</button>
+    </div>
+
+    <div class="canvas-body">
+
+      <!-- Preview -->
+      <div class="cpanel active" role="tabpanel" id="cp-preview" aria-labelledby="ct-preview">
+        <div class="art-card">
+          <div class="art-title">Operator Cockpit Shell Spec</div>
+          <div class="art-meta">Turn: turn-001-resp · Mode: Plan · Agent: Abigail CP-00 · timestamp: 2026-06-04T14:22:31Z</div>
+          <div class="art-body">
+            <p><strong>Phase 1 deliverable:</strong> Static 4-pane operator cockpit — <code>static/operator.html</code></p><br>
+            <p><strong>Panes:</strong> Left sidebar (240px) · Center chat (flex) · Right canvas (340px) · Bottom Governance Trace drawer</p><br>
+            <p><strong>Governance states rendered:</strong><br>Allowed · Needs Approval · Simulate Only · Blocked</p><br>
+            <p><strong>Live endpoints:</strong><br>
+              <code>/api/status</code> → ribbon + sidebar env<br>
+              <code>/api/audit-tail</code> → trace drawer + Logs tab<br>
+              <code>/api/agents/departments</code> → dept nav<br>
+              <code>/api/chat</code> → composer send</p><br>
+            <p><strong>Mock only:</strong> project list, session history, artifact content, diff data</p>
+          </div>
+        </div>
+        <div class="art-card">
+          <div style="font-size:.75rem;font-weight:700;color:var(--muted);margin-bottom:.625rem">Working Set · turn-001-resp</div>
+          <div>
+            <div class="ws-row"><span class="ws-k">Files touched</span><span class="ws-v">operator.html, index.html</span></div>
+            <div class="ws-row"><span class="ws-k">Agents active</span><span class="ws-v">Abigail CP-00</span></div>
+            <div class="ws-row"><span class="ws-k">Departments</span><span class="ws-v">Governance · Engineering</span></div>
+            <div class="ws-row"><span class="ws-k">Policy applied</span><span class="ws-v">Plan Gate Passed</span></div>
+            <div class="ws-row"><span class="ws-k">Risk state</span><span class="ws-v" style="color:var(--success)">Low</span></div>
+            <div class="ws-row"><span class="ws-k">Approval state</span><span class="ws-v" style="color:var(--warning)">Pending</span></div>
+            <div class="ws-row"><span class="ws-k">Source</span><span class="ws-v" style="color:var(--gold)">MOCK · Preview</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Files -->
+      <div class="cpanel" role="tabpanel" id="cp-files" aria-labelledby="ct-files">
+        <div class="art-card">
+          <div class="art-title">File Tree</div>
+          <div class="art-meta" style="color:var(--gold)">MOCK — no repo read in Plan mode. Repo read requires Build mode + approval.</div>
+          <div style="font-family:var(--font-m);font-size:.75rem;line-height:2;margin-top:.5rem">
+            <div style="color:var(--muted)">logos-asf/</div>
+            <div style="padding-left:1rem;color:var(--muted)">static/</div>
+            <div style="padding-left:2rem;color:var(--primary)">operator.html <span style="color:var(--success)">← new</span></div>
+            <div style="padding-left:2rem;color:var(--gold)">index.html <span style="color:var(--warning)">← modified</span></div>
+            <div style="padding-left:2rem;color:var(--muted)">dashboard.html</div>
+            <div style="padding-left:1rem;color:var(--muted)">abigail/</div>
+            <div style="padding-left:2rem;color:var(--muted)">abigail_hardened_enhanced.py</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Diff -->
+      <div class="cpanel" role="tabpanel" id="cp-diff" aria-labelledby="ct-diff">
+        <div class="ph-panel">
+          <div class="ph-icon">⊞</div>
+          <div>Diff viewer</div>
+          <div style="font-size:.75rem;color:var(--faint);margin-top:.25rem">Available after Build mode execution and operator approval.</div>
+        </div>
+      </div>
+
+      <!-- Spec -->
+      <div class="cpanel" role="tabpanel" id="cp-spec" aria-labelledby="ct-spec">
+        <div class="art-card">
+          <div class="art-title">Sprint 4B Spec</div>
+          <div class="art-meta">Source: Abigail UI Comprehensive Product Plan · Section 24 (MVP Build Sequence)</div>
+          <div class="art-body" style="font-size:.775rem;line-height:1.7">
+            <strong>Phase 1 — Static Operator Shell</strong><br>
+            Build 4-pane layout, mock project sidebar, mock chat thread, mock right canvas, mock Governance Trace drawer, mock agent ribbon. Goal: prove the product visually.<br><br>
+            <strong>Phase 2 — Basic Chat Wiring</strong><br>
+            Composer sends prompt, backend returns response, UI shows response, trace drawer records event, mode selector affects payload. Goal: prove interaction loop.<br><br>
+            <strong>Phase 3 — Project Context</strong><br>
+            Project selector, project metadata, active project state, session history, attached files. Goal: make Abigail project-centric.
+          </div>
+        </div>
+      </div>
+
+      <!-- JSON IR -->
+      <div class="cpanel" role="tabpanel" id="cp-jsonir" aria-labelledby="ct-jsonir">
+        <div class="art-card">
+          <div class="art-title">JSON IR Task Plan</div>
+          <div class="art-meta" style="color:var(--gold)">MOCK · Plan mode — no execution has occurred</div>
+          <pre style="font-family:var(--font-m);font-size:.7rem;line-height:1.6;color:var(--text);white-space:pre-wrap;word-break:break-word;margin-top:.5rem">{
+  "ir_version": "LOGOS-IR/4.2",
+  "sprint": "Sprint 4B",
+  "task_group": "operator_cockpit_static_shell",
+  "mode": "PLAN",
+  "tasks": [
+    {
+      "id": "S4B-T003",
+      "type": "create_operator_static_shell",
+      "target": "static/operator.html",
+      "status": "pending_approval"
+    },
+    {
+      "id": "S4B-T004",
+      "type": "add_operator_nav_link",
+      "target": "static/index.html",
+      "status": "pending_approval"
+    }
+  ],
+  "approval_required": true,
+  "risk": "low",
+  "policy": "plan_gate_passed"
+}</pre>
+        </div>
+      </div>
+
+      <!-- Logs -->
+      <div class="cpanel" role="tabpanel" id="cp-logs" aria-labelledby="ct-logs">
+        <div class="art-card">
+          <div class="art-title">Audit Tail</div>
+          <div class="art-meta" id="logsSrc">Source: loading…</div>
+          <div id="logsBody" style="font-family:var(--font-m);font-size:.7rem;line-height:1.6;margin-top:.5rem">
+            Loading…
+          </div>
+        </div>
+      </div>
+
+      <!-- Tests -->
+      <div class="cpanel" role="tabpanel" id="cp-tests" aria-labelledby="ct-tests">
+        <div class="ph-panel">
+          <div class="ph-icon">✓</div>
+          <div>Test Runner</div>
+          <div style="font-size:.75rem;color:var(--faint);margin-top:.25rem">No test run yet. Tests execute in Build or Review mode after operator approval.</div>
+        </div>
+      </div>
+
+      <!-- Deploy -->
+      <div class="cpanel" role="tabpanel" id="cp-deploy" aria-labelledby="ct-deploy">
+        <div class="deploy-gate">
+          <div class="deploy-gate-title">🔒 Deploy Gate</div>
+          <div style="font-size:.8125rem;color:var(--muted);margin-top:.25rem">
+            <strong>deployment</strong> is a gated action requiring explicit approval.
+          </div>
+          <div class="deploy-gate-body">
+            Before a deployment can proceed, all of the following must be satisfied:<br><br>
+            □ Build completed and artifact verified<br>
+            □ Tests passed<br>
+            □ Security check completed<br>
+            □ Dependency attestation recorded<br>
+            □ Rollback plan documented<br>
+            □ Approval recorded in audit log<br>
+            □ Target environment confirmed<br>
+            □ Production access requires separate escalation approval
+          </div>
+          <div style="margin-top:.875rem">
+            <div class="deploy-locked" aria-disabled="true" role="button" tabindex="-1">
+              🔒 Deploy · Locked — approval required
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+</div><!-- end .ck-body -->
+
+<!-- ── GOVERNANCE TRACE DRAWER ── -->
+<footer class="ck-drawer collapsed" id="traceDrawer" role="complementary" aria-label="Governance Trace">
+  <div class="drawer-bar" onclick="toggleDrawer()" role="button" tabindex="0"
+       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDrawer()}"
+       aria-expanded="false" id="drawerBarBtn">
+    <div class="drawer-bar-l">
+      <span class="drawer-title-txt">Governance Trace</span>
+      <span class="drawer-last" id="drawerLast">—</span>
+    </div>
+    <span class="drawer-arrow" aria-hidden="true">▲</span>
+  </div>
+  <div class="drawer-body" id="drawerBody" aria-live="polite">
+    <!-- populated by JS -->
+  </div>
+</footer>
+
+<script>
+'use strict';
+
+/* ── GOVERNED STATE ── */
+const ck = {
+  mode: 'plan',
+  chatBusy: false,
+  drawerOpen: false,
+  streamState: 'idle',
+  mockTrace: [
+    { ts:'2026-06-04T14:22:18Z', type:'INTENT_RECEIVED',   detail:'User: build operator cockpit shell', policy:'Allowed' },
+    { ts:'2026-06-04T14:22:19Z', type:'POLICY_ALLOWED',    detail:'Plan Gate passed · no file writes in scope', policy:'Allowed' },
+    { ts:'2026-06-04T14:22:20Z', type:'AGENT_ROUTED',      detail:'Governance + Engineering departments activated', policy:'Allowed' },
+    { ts:'2026-06-04T14:22:31Z', type:'ARTIFACT_READY',    detail:'Operator Cockpit Shell Spec produced · turn-001-resp', policy:'Allowed' }
+  ]
+};
+
+/* ── API RESOLVER (mirrors dashboard.html) ── */
+function abigailApiBase() {
+  const saved = localStorage.getItem('ABIGAIL_API_BASE');
+  if (saved) return saved.replace(/\/$/, '');
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ||
+      location.hostname.endsWith('.app.github.dev'))
+    return `${location.protocol}//${location.hostname}${location.port ? ':'+location.port : ''}`;
+  if (location.hostname.endsWith('github.io')) {
+    const url = prompt('Abigail backend URL not set.\n\nEnter backend URL:', 'http://localhost:7070');
+    if (url) { localStorage.setItem('ABIGAIL_API_BASE', url.replace(/\/$/,'')); return url.replace(/\/$/,''); }
+  }
+  return 'http://localhost:7070';
+}
+function apiUrl(path) { return `${abigailApiBase()}${path}`; }
+
+/* ── SECURITY: HTML escape ── */
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+}
+
+/* ── SECURITY: XSS-safe markdown bubble (matches dashboard.html) ── */
+function renderBubble(text) {
+  let s = esc(text);
+  s = s.replace(/```([a-zA-Z0-9]*)\n?([\s\S]*?)```/g,
+    (_, lang, body) => `<pre><code>${body.replace(/^\n+|\n+$/g,'')}</code></pre>`);
+  s = s.replace(/`([^`\n]+?)`/g, (_,b) => `<code>${b}</code>`);
+  return s;
+}
+
+/* ── STREAM STATE ── */
+function setStreamState(s) {
+  ck.streamState = s;
+  const el = document.getElementById('streamState');
+  if (el) { el.className = `stream-state ${s}`; el.textContent = s; }
+  const ind = document.getElementById('streamInd');
+  if (ind) ind.style.display = (s === 'receiving' || s === 'sending') ? 'flex' : 'none';
+}
+
+/* ── LIVE: /api/status ── */
+async function fetchStatus() {
+  try {
+    const r = await fetch(apiUrl('/api/status'));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    applyStatus(await r.json());
+  } catch { applyStatus(null); }
+}
+
+function applyStatus(d) {
+  const envBadge   = document.getElementById('envBadge');
+  const ckStatus   = document.getElementById('ckStatus');
+  const sbBackend  = document.getElementById('sbBackend');
+  const sbKs       = document.getElementById('sbKs');
+  const sbCrsv     = document.getElementById('sbCrsv');
+  const sbTurns    = document.getElementById('sbTurns');
+  const rbState    = document.getElementById('rbState');
+  const rbAuth     = document.getElementById('rbAuth');
+
+  if (!d || d.error) {
+    if (envBadge) { envBadge.className = 'env-badge sim'; envBadge.textContent = 'Simulation'; }
+    if (ckStatus) { ckStatus.className = 'badge yellow'; ckStatus.textContent = 'Backend offline'; }
+    if (sbBackend){ sbBackend.className = 'badge yellow'; sbBackend.textContent = 'Offline'; }
+    if (rbState)  rbState.textContent = 'Simulated · no backend';
+    if (rbAuth)   { rbAuth.className = 'rb-chip sim'; rbAuth.textContent = 'Simulate Only'; }
+    return;
+  }
+  if (envBadge) { envBadge.className = 'env-badge local'; envBadge.textContent = 'Local · Live'; }
+  if (ckStatus) { ckStatus.className = 'badge green'; ckStatus.textContent = `${d.backend} · Live`; }
+  if (sbBackend){ sbBackend.className = 'badge green'; sbBackend.textContent = d.backend || 'Connected'; }
+  if (sbKs)     { sbKs.className = d.kill_switch ? 'badge red' : 'badge green'; sbKs.textContent = d.kill_switch ? 'ACTIVE' : 'Armed'; }
+  if (sbCrsv)   sbCrsv.textContent = typeof d.crsv === 'number' ? d.crsv.toFixed(1) : (d.crsv || '—');
+  if (sbTurns)  sbTurns.textContent = d.turns ?? '—';
+  if (rbState)  rbState.textContent = d.kill_switch ? 'Kill Switch Active' : 'Live · Ready';
+  if (rbAuth)   { rbAuth.className = 'rb-chip live'; rbAuth.textContent = 'Live · HAAP-gated'; }
+}
+
+/* ── LIVE: /api/audit-tail ── */
+async function fetchAuditTail() {
+  try {
+    const token = localStorage.getItem('ABIGAIL_ADMIN_TOKEN') || '';
+    const r = await fetch(apiUrl('/api/audit-tail?n=20'), {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    const entries = Array.isArray(d.entries) ? d.entries : (Array.isArray(d.events) ? d.events : []);
+    renderTrace(entries, false);
+    renderLogsTab(entries, false);
+  } catch {
+    renderTrace(ck.mockTrace, true);
+    renderLogsTab(null, true);
+  }
+}
+
+/* ── LIVE: /api/agents/departments ── */
+async function fetchDepartments() {
+  try {
+    const r = await fetch(apiUrl('/api/agents/departments'));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    renderDeptNav(await r.json(), false);
+  } catch {
+    renderDeptNav(null, true);
+  }
+}
+
+/* ── RENDER: Dept Nav ── */
+const MOCK_DEPTS = [
+  {code:'EXE',name:'Executive'},{code:'ENG',name:'Engineering'},{code:'PRD',name:'Product'},
+  {code:'SEC',name:'Security'}, {code:'LGL',name:'Legal'},      {code:'FIN',name:'Finance'},
+  {code:'OPS',name:'Operations'},{code:'GRC',name:'GRC'}
+];
+function renderDeptNav(data, isMock) {
+  const el    = document.getElementById('deptNav');
+  const cntEl = document.getElementById('deptCount');
+  const depts = (isMock || !Array.isArray(data)) ? MOCK_DEPTS : data;
+  if (cntEl) cntEl.textContent = `(${depts.length}${isMock?' · mock':' · live'})`;
+  if (!el) return;
+  el.innerHTML = depts.slice(0,10).map(d =>
+    `<div class="dept-item" tabindex="0" role="button" aria-label="${esc(d.name||d.code)}">
+       <span class="dept-code">${esc(d.code||'')}</span>
+       <span style="font-size:.75rem">${esc(d.name||d.code||'')}</span>
+     </div>`
+  ).join('');
+}
+
+/* ── RENDER: Trace Drawer ── */
+function fmtTs(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toISOString().replace('T',' ').slice(5,19)+'Z'; } catch { return String(iso); }
+}
+function policyBadge(p) {
+  const map = {'Allowed':'teal','Needs Approval':'yellow','Simulate Only':'yellow','Blocked':'red'};
+  const cls = map[p] || 'blue';
+  return p ? `<span class="badge ${cls}" style="font-size:.58rem">${esc(p)}</span>` : '';
+}
+
+function renderTrace(events, isMock) {
+  const body    = document.getElementById('drawerBody');
+  const lastEl  = document.getElementById('drawerLast');
+  if (!body) return;
+  const rows = (events||ck.mockTrace).slice().reverse().slice(0,30);
+  if (rows.length && lastEl) {
+    const l = rows[0];
+    lastEl.textContent = `${l.type||l.event_type||'—'} · ${fmtTs(l.ts)}${isMock?' · MOCK':' · LIVE'}`;
+  }
+  body.innerHTML =
+    (isMock
+      ? `<div style="font-size:.65rem;color:var(--warning);padding:.2rem;margin-bottom:.35rem">⚠ Simulated trace — backend offline or audit-tail unavailable</div>`
+      : `<div style="font-size:.65rem;color:var(--success);padding:.2rem;margin-bottom:.35rem">● Live events from /api/audit-tail</div>`)
+    + rows.map(e => {
+        const type   = esc(e.event_type || e.type || '—');
+        const detail = esc(String(e.detail || (e.data ? JSON.stringify(e.data).slice(0,60) : '—')));
+        return `<div class="trace-row">
+          <span class="trace-ts">${esc(fmtTs(e.ts))}</span>
+          <span class="trace-type">${type}</span>
+          <span class="trace-detail" title="${detail}">${detail.slice(0,55)}</span>
+          <span>${policyBadge(e.policy||'')}</span>
+        </div>`;
+      }).join('');
+}
+
+/* ── RENDER: Logs Tab ── */
+function renderLogsTab(entries, isMock) {
+  const el    = document.getElementById('logsBody');
+  const srcEl = document.getElementById('logsSrc');
+  if (!el) return;
+  if (srcEl) srcEl.textContent = isMock ? 'Source: MOCK — backend offline' : 'Source: LIVE — /api/audit-tail';
+  const rows = (entries||ck.mockTrace).slice(-12).reverse();
+  el.innerHTML = rows.map(e => {
+    const type   = esc(e.event_type||e.type||'—');
+    const detail = esc(String(e.detail||(e.data ? JSON.stringify(e.data).slice(0,100) : '—')));
+    return `<div style="display:flex;gap:.5rem;padding:.25rem 0;border-bottom:1px solid var(--border);align-items:baseline">
+      <span style="color:var(--faint);min-width:105px;flex-shrink:0">${esc(fmtTs(e.ts))}</span>
+      <span style="color:var(--primary);font-weight:700;min-width:145px;flex-shrink:0">${type}</span>
+      <span style="color:var(--text)">${detail}</span>
+    </div>`;
+  }).join('') || `<div style="color:var(--faint);padding:.5rem">No events</div>`;
+}
+
+/* ── DRAWER ── */
+function toggleDrawer() {
+  ck.drawerOpen = !ck.drawerOpen;
+  const drawer = document.getElementById('traceDrawer');
+  const btn    = document.getElementById('drawerBarBtn');
+  if (drawer) drawer.className = `ck-drawer ${ck.drawerOpen ? 'expanded' : 'collapsed'}`;
+  if (btn)    btn.setAttribute('aria-expanded', String(ck.drawerOpen));
+}
+
+/* ── CANVAS TABS ── */
+function switchCanvasTab(panelId) {
+  document.querySelectorAll('.ctab').forEach(t => {
+    const on = t.dataset.panel === panelId;
+    t.classList.toggle('active', on);
+    t.setAttribute('aria-selected', String(on));
+  });
+  document.querySelectorAll('.cpanel').forEach(p =>
+    p.classList.toggle('active', p.id === `cp-${panelId}`)
+  );
+}
+
+/* ── MODE SELECTOR ── */
+function initModeSelector() {
+  const modeLabels = { plan:'Plan Mode', build:'Build Mode', review:'Review Mode', redteam:'Red Team Mode', deploy:'Deploy Mode' };
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mode-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); });
+      btn.classList.add('active');
+      btn.setAttribute('aria-pressed','true');
+      ck.mode = btn.dataset.mode;
+      const rbMode = document.getElementById('rbMode');
+      if (rbMode) rbMode.textContent = modeLabels[ck.mode] || ck.mode;
+    });
+  });
+}
+
+/* ── ACTION CHIPS ── */
+function handleChip(action, turnId) {
+  const msgs = {
+    approve:  `✓ Approved ${esc(turnId)}. Ready to proceed to Build phase — issue your next command.`,
+    revise:   `✎ Revision requested for ${esc(turnId)}. Describe what to change.`,
+    simulate: `⊙ Simulation mode set. Actions from this point forward will be simulated, not executed. No file writes, shell commands, or git operations will occur.`,
+    run:      `▶ Run requested for ${esc(turnId)}. Run requires Build mode and an explicit approval gate. Current mode: ${esc(ck.mode)}.`,
+    diff:     `⊞ Diff requested. No file changes have been written yet — diff available after Build execution and approval.`,
+    rollback: `↩ Rollback requested for ${esc(turnId)}. No commits have been made in this session — nothing to roll back.`
+  };
+  appendSysMsg(msgs[action] || `Action: ${esc(action)}`);
+}
+
+function handleBranch(turnId) {
+  appendSysMsg(`⎇ Branch created from ${esc(turnId)}. Type an alternate prompt to explore a different direction. (Phase 1 preview — full execution branching wires in Phase 3.)`);
+}
+function handleRerun(turnId) {
+  appendSysMsg(`↺ Rerun from ${esc(turnId)} requested. (Phase 1 preview — rerun with repo-aware build loop wires in Phase 3.)`);
+}
+
+function appendSysMsg(html) {
+  const stream = document.getElementById('chatStream');
+  const ind    = document.getElementById('streamInd');
+  if (!stream) return;
+  const el = document.createElement('div');
+  el.className = 'turn sys';
+  el.innerHTML = `
+    <div class="turn-meta">
+      <span class="turn-role">System</span>
+      <span class="turn-timestamp">${esc(new Date().toISOString())}</span>
+    </div>
+    <div class="turn-bubble">${html}</div>`;
+  stream.insertBefore(el, ind);
+  stream.scrollTop = stream.scrollHeight;
+}
+
+/* ── CHAT SEND ── */
+async function sendChat(text) {
+  if (ck.chatBusy || !text.trim()) return;
+  ck.chatBusy = true;
+  const inputEl = document.getElementById('ckInput');
+  const sendBtn = document.getElementById('ckSend');
+  if (inputEl) { inputEl.disabled = true; inputEl.value = ''; inputEl.style.height = 'auto'; }
+  if (sendBtn) sendBtn.disabled = true;
+
+  /* user bubble */
+  appendTurn('user', esc(text), null, null, null);
+  setStreamState('sending');
+
+  try {
+    setStreamState('receiving');
+    const r = await fetch(apiUrl('/api/chat'), {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
+      body: JSON.stringify({ message: text, mode: ck.mode })
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+    const d = await r.json();
+    setStreamState('complete');
+
+    const whyText = `Why Abigail responded: mode=${d.mode||ck.mode} · DRS=${d.drs||'—'} · CRSV=${d.crsv||'—'}${d.drift?' · ⚠ Drift: '+d.drift:''}`;
+    const policyState = d.ok ? 'allowed' : 'blocked';
+    const policyLabel = d.ok ? 'Allowed' : 'Blocked';
+    const riskLevel   = (d.drs > 70) ? 'High' : (d.drs > 40) ? 'Medium' : 'Low';
+    appendTurn('assistant', renderBubble(d.text || '(no response)'), whyText, policyState, policyLabel, riskLevel, d.mode||ck.mode);
+    fetchAuditTail();
+
+  } catch(e) {
+    setStreamState('failed');
+    appendTurn('assistant',
+      `<span style="color:var(--error)">⚠ ${esc(String(e))} — backend may be offline. Operating in simulation mode.</span>`,
+      null, null, null);
+  } finally {
+    ck.chatBusy = false;
+    if (inputEl) { inputEl.disabled = false; setTimeout(() => inputEl.focus(), 30); }
+    if (sendBtn) sendBtn.disabled = false;
+    setTimeout(() => setStreamState('idle'), 1500);
+  }
+}
+
+function appendTurn(role, html, whyText, policyState, policyLabel, riskLevel, modeLabel) {
+  const stream = document.getElementById('chatStream');
+  const ind    = document.getElementById('streamInd');
+  if (!stream) return;
+  const now   = new Date().toISOString();
+  const tId   = `turn-${Date.now().toString(36)}`;
+  const isUser = role === 'user';
+  const el = document.createElement('div');
+  el.className = `turn ${role}`;
+  el.id = tId;
+  let inner = `
+    <div class="turn-meta">
+      <span class="turn-role">${isUser ? 'Operator' : 'Abigail CP-00'}</span>
+      <span class="turn-timestamp">${esc(now)}</span>
+      <span class="turn-id">${esc(tId)}</span>
+    </div>
+    <div class="turn-bubble">${html}</div>`;
+  if (whyText) inner += `<div class="turn-why">${esc(whyText)}</div>`;
+  if (policyState) {
+    inner += `<div class="policy-row">
+      <span class="pc ${policyState}" title="Policy: ${esc(policyLabel)}">${policyLabel==='Allowed'?'✓':'✕'} ${esc(policyLabel)}</span>
+      <span class="pc info">Risk: ${esc(riskLevel||'—')}</span>
+      <span class="pc simulate-only">Mode: ${esc(modeLabel||ck.mode)}</span>
+    </div>
+    <div class="action-row">
+      <button class="ac approve"  onclick="handleChip('approve','${esc(tId)}')">✓ Approve</button>
+      <button class="ac"          onclick="handleChip('revise','${esc(tId)}')">✎ Revise</button>
+      <button class="ac simulate" onclick="handleChip('simulate','${esc(tId)}')">⊙ Simulate</button>
+      <button class="ac"          onclick="handleChip('diff','${esc(tId)}')">⊞ Diff</button>
+      <button class="ac rollback" onclick="handleChip('rollback','${esc(tId)}')">↩ Rollback</button>
+    </div>
+    <div class="turn-controls">
+      <button class="tc" onclick="handleBranch('${esc(tId)}')">⎇ Branch here</button>
+      <button class="tc" onclick="handleRerun('${esc(tId)}')">↺ Rerun from here</button>
+    </div>`;
+  }
+  el.innerHTML = inner;
+  stream.insertBefore(el, ind);
+  stream.scrollTop = stream.scrollHeight;
+  return el;
+}
+
+/* ── COMPOSER ── */
+function initComposer() {
+  const input = document.getElementById('ckInput');
+  const btn   = document.getElementById('ckSend');
+  if (!input || !btn) return;
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(input.value); }
+  });
+  btn.addEventListener('click', () => sendChat(input.value));
+  document.querySelectorAll('.sc').forEach(chip => {
+    chip.addEventListener('click', () => {
+      input.value = chip.dataset.cmd + ' ';
+      input.focus();
+      input.dispatchEvent(new Event('input'));
+    });
+  });
+}
+
+/* ── CANVAS TAB EVENTS ── */
+function initCanvasTabs() {
+  document.querySelectorAll('.ctab').forEach(tab => {
+    tab.addEventListener('click', () => switchCanvasTab(tab.dataset.panel));
+    tab.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchCanvasTab(tab.dataset.panel); }
+    });
+  });
+}
+
+/* ── BOOT ── */
+window.addEventListener('DOMContentLoaded', () => {
+  initCanvasTabs();
+  initModeSelector();
+  initComposer();
+
+  /* render mock trace immediately so drawer is not empty */
+  renderTrace(ck.mockTrace, true);
+  renderLogsTab(null, true);
+  renderDeptNav(null, true);
+
+  /* live reads — graceful fallback if backend offline */
+  fetchStatus();
+  fetchAuditTail();
+  fetchDepartments();
+
+  /* poll every 30s */
+  setInterval(() => { fetchStatus(); fetchAuditTail(); }, 30000);
+
+  /* focus composer */
+  setTimeout(() => document.getElementById('ckInput')?.focus(), 100);
+});
+</script>
+
+</body>
+</html>
