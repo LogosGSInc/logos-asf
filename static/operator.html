@@ -272,29 +272,29 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
     <div class="ck-sb-scroll">
 
       <div class="sb-sec">
-        <div class="sb-label">Workspace</div>
-        <button class="ws-chip" aria-label="Switch workspace">
+        <div class="sb-label">Workspace <span class="src-badge mock" style="font-size:.55rem;vertical-align:middle">PREVIEW</span></div>
+        <button class="ws-chip" disabled aria-disabled="true" aria-label="Workspace preview — not yet interactive" title="Workspace switching is planned for Phase 3">
           LOGOS ASF <span style="color:var(--faint);font-size:.7rem">▾</span>
         </button>
       </div>
 
       <div class="sb-sec">
-        <div class="sb-label">Projects</div>
-        <div class="proj-item active" role="button" tabindex="0" aria-current="true">
+        <div class="sb-label">Projects <span class="src-badge mock" style="font-size:.55rem;vertical-align:middle">PREVIEW</span></div>
+        <div class="proj-item active" aria-disabled="true" title="Project switching is planned for Phase 3">
           <span class="proj-dot"></span>Abigail UI Foundation
         </div>
-        <div class="proj-item" role="button" tabindex="0">
+        <div class="proj-item" aria-disabled="true" title="Project switching is planned for Phase 3">
           <span class="proj-dot dim"></span><span style="color:var(--faint)">Assurance AI Extract</span>
         </div>
-        <div class="proj-item" role="button" tabindex="0">
+        <div class="proj-item" aria-disabled="true" title="Project switching is planned for Phase 3">
           <span class="proj-dot dim"></span><span style="color:var(--faint)">Governance Spine v2</span>
         </div>
       </div>
 
       <div class="sb-sec">
-        <div class="sb-label">Sessions</div>
-        <div class="proj-item active" role="button" tabindex="0">Sprint 4B · UI Shell</div>
-        <div class="proj-item" role="button" tabindex="0">
+        <div class="sb-label">Sessions <span class="src-badge mock" style="font-size:.55rem;vertical-align:middle">PREVIEW</span></div>
+        <div class="proj-item active" aria-disabled="true" title="Session history is planned for Phase 3">Sprint 4B · UI Shell</div>
+        <div class="proj-item" aria-disabled="true" title="Session history is planned for Phase 3">
           <span style="color:var(--faint)">Sprint 4A · Extraction</span>
         </div>
       </div>
@@ -302,12 +302,13 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
       <div class="sb-sec">
         <div class="sb-label">Mode</div>
         <div class="mode-grid" role="group" aria-label="Execution mode">
-          <button class="mode-btn active" data-mode="plan" aria-pressed="true">Plan</button>
-          <button class="mode-btn" data-mode="build" aria-pressed="false">Build</button>
-          <button class="mode-btn" data-mode="review" aria-pressed="false">Review</button>
-          <button class="mode-btn redteam" data-mode="redteam" aria-pressed="false">Red Team</button>
-          <button class="mode-btn deploy" data-mode="deploy" aria-pressed="false">Deploy</button>
+          <button class="mode-btn active" data-mode="plan" aria-pressed="true" title="Sets mode for the next message · server enforces policy independently">Plan</button>
+          <button class="mode-btn" data-mode="build" aria-pressed="false" title="Sets mode for the next message · server enforces policy independently">Build</button>
+          <button class="mode-btn" data-mode="review" aria-pressed="false" title="Sets mode for the next message · server enforces policy independently">Review</button>
+          <button class="mode-btn redteam" data-mode="redteam" aria-pressed="false" title="Sets mode for the next message · server enforces policy independently">Red Team</button>
+          <button class="mode-btn deploy" data-mode="deploy" aria-pressed="false" title="Sets mode for the next message · server enforces policy independently">Deploy</button>
         </div>
+        <div style="font-size:.65rem;color:var(--faint);padding:.3rem .25rem 0">Mode applies to the next message · server enforces policy independently</div>
       </div>
 
       <div class="sb-sec">
@@ -327,6 +328,7 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
 
       <div class="sb-sec">
         <div class="sb-label">Authority Limits · Require Approval</div>
+        <div style="font-size:.65rem;color:var(--faint);padding:.1rem .25rem .35rem">Policy display · enforcement occurs server-side</div>
         <div class="auth-list">
           <div class="auth-item"><span class="auth-ic gate">⚠</span>file write</div>
           <div class="auth-item"><span class="auth-ic gate">⚠</span>file delete</div>
@@ -393,12 +395,13 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
       </div>
 
       <!-- Assistant response turn 1 -->
-      <div class="turn assistant" id="resp-001">
+      <div class="turn assistant" id="resp-001" data-sample="true">
         <div class="turn-meta">
           <span class="turn-role">Abigail CP-00</span>
           <span class="turn-timestamp">2026-06-04T14:22:31Z</span>
           <span class="turn-id">turn-001-resp</span>
           <span class="badge teal" style="font-size:.6rem">Plan Mode</span>
+          <span class="src-badge mock" style="font-size:.58rem">SAMPLE · preview only</span>
         </div>
         <div class="turn-bubble">
           Understood. Here is the governed build plan for the Operator Cockpit shell.
@@ -427,17 +430,18 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
           <span class="pc simulate-only" title="Authority: Simulate Only">⊙ Simulate Only</span>
           <span class="pc info" title="Policy decision">Policy: Plan Gate Passed</span>
         </div>
+        <div style="font-size:.65rem;color:var(--faint);padding:.2rem 0 .15rem">Preview controls — no backend requests are made by these buttons.</div>
         <div class="action-row">
-          <button class="ac approve" onclick="handleChip('approve','resp-001')">✓ Approve</button>
-          <button class="ac" onclick="handleChip('revise','resp-001')">✎ Revise</button>
-          <button class="ac simulate" onclick="handleChip('simulate','resp-001')">⊙ Simulate</button>
-          <button class="ac" onclick="handleChip('run','resp-001')">▶ Run</button>
-          <button class="ac" onclick="handleChip('diff','resp-001')">⊞ Diff</button>
-          <button class="ac rollback" onclick="handleChip('rollback','resp-001')">↩ Rollback</button>
+          <button class="ac approve" onclick="handleChip('approve','resp-001')" title="Preview only — no backend approval was recorded. Approval wiring is planned for Phase 2.">✓ Approve</button>
+          <button class="ac" onclick="handleChip('revise','resp-001')" title="Preview — describe what to change in your next message">✎ Revise</button>
+          <button class="ac simulate" onclick="handleChip('simulate','resp-001')" title="Preview — sets local simulation context only">⊙ Simulate</button>
+          <button class="ac" onclick="handleChip('run','resp-001')" title="Preview only — governed execution wiring is planned for Phase 2">▶ Run</button>
+          <button class="ac" onclick="handleChip('diff','resp-001')" title="Preview — diff available after Build mode execution and approval">⊞ Diff</button>
+          <button class="ac rollback" disabled aria-disabled="true" title="Preview — rollback unavailable until a governed checkpoint exists">↩ Rollback</button>
         </div>
         <div class="turn-controls">
-          <button class="tc" onclick="handleBranch('resp-001')">⎇ Branch here</button>
-          <button class="tc" onclick="handleRerun('resp-001')">↺ Rerun from here</button>
+          <button class="tc" onclick="handleBranch('resp-001')" title="Preview only — execution branching wires in Phase 3">⎇ Branch here</button>
+          <button class="tc" onclick="handleRerun('resp-001')" title="Preview only — rerun wiring is planned for Phase 3">↺ Rerun from here</button>
         </div>
       </div>
 
@@ -902,9 +906,9 @@ function initModeSelector() {
 /* ── ACTION CHIPS ── */
 function handleChip(action, turnId) {
   const msgs = {
-    approve:  `✓ Approved ${esc(turnId)}. Ready to proceed to Build phase — issue your next command.`,
+    approve:  `✓ Approve clicked for ${esc(turnId)}. Preview only — no backend approval was recorded. Approval wiring is planned for Phase 2.`,
     revise:   `✎ Revision requested for ${esc(turnId)}. Describe what to change.`,
-    simulate: `⊙ Simulation mode set. Actions from this point forward will be simulated, not executed. No file writes, shell commands, or git operations will occur.`,
+    simulate: `⊙ Preview only — simulation mode was not changed or recorded. Select a mode for the next message; server policy remains authoritative.`,
     run:      `▶ Run requested for ${esc(turnId)}. Run requires Build mode and an explicit approval gate. Current mode: ${esc(ck.mode)}.`,
     diff:     `⊞ Diff requested. No file changes have been written yet — diff available after Build execution and approval.`,
     rollback: `↩ Rollback requested for ${esc(turnId)}. No commits have been made in this session — nothing to roll back.`
@@ -1003,16 +1007,17 @@ function appendTurn(role, html, whyText, policyState, policyLabel, riskLevel, mo
       <span class="pc info">Risk: ${esc(riskLevel||'—')}</span>
       <span class="pc simulate-only">Mode: ${esc(modeLabel||ck.mode)}</span>
     </div>
+    <div style="font-size:.65rem;color:var(--faint);padding:.2rem 0 .15rem">Preview controls — no backend requests are made by these buttons.</div>
     <div class="action-row">
-      <button class="ac approve"  onclick="handleChip('approve','${esc(tId)}')">✓ Approve</button>
-      <button class="ac"          onclick="handleChip('revise','${esc(tId)}')">✎ Revise</button>
-      <button class="ac simulate" onclick="handleChip('simulate','${esc(tId)}')">⊙ Simulate</button>
-      <button class="ac"          onclick="handleChip('diff','${esc(tId)}')">⊞ Diff</button>
-      <button class="ac rollback" onclick="handleChip('rollback','${esc(tId)}')">↩ Rollback</button>
+      <button class="ac approve"  onclick="handleChip('approve','${esc(tId)}')"  title="Preview only — no backend approval was recorded. Approval wiring is planned for Phase 2.">✓ Approve</button>
+      <button class="ac"          onclick="handleChip('revise','${esc(tId)}')"   title="Preview — describe what to change in your next message">✎ Revise</button>
+      <button class="ac simulate" onclick="handleChip('simulate','${esc(tId)}')" title="Preview — sets local simulation context only">⊙ Simulate</button>
+      <button class="ac"          onclick="handleChip('diff','${esc(tId)}')"     title="Preview — diff available after Build mode execution and approval">⊞ Diff</button>
+      <button class="ac rollback" disabled aria-disabled="true" title="Preview — rollback unavailable until a governed checkpoint exists">↩ Rollback</button>
     </div>
     <div class="turn-controls">
-      <button class="tc" onclick="handleBranch('${esc(tId)}')">⎇ Branch here</button>
-      <button class="tc" onclick="handleRerun('${esc(tId)}')">↺ Rerun from here</button>
+      <button class="tc" onclick="handleBranch('${esc(tId)}')" title="Preview only — execution branching wires in Phase 3">⎇ Branch here</button>
+      <button class="tc" onclick="handleRerun('${esc(tId)}')"  title="Preview only — rerun wiring is planned for Phase 3">↺ Rerun from here</button>
     </div>`;
   }
   el.innerHTML = inner;
