@@ -680,6 +680,8 @@ const ck = {
   chatBusy: false,
   drawerOpen: false,
   streamState: 'idle',
+  activePanel: 'preview',
+  logsIsMock: true,
   mockTrace: [
     { ts:'2026-06-04T14:22:18Z', type:'INTENT_RECEIVED',   detail:'User: build operator cockpit shell', policy:'Allowed' },
     { ts:'2026-06-04T14:22:19Z', type:'POLICY_ALLOWED',    detail:'Plan Gate passed · no file writes in scope', policy:'Allowed' },
@@ -855,6 +857,8 @@ function renderLogsTab(entries, isMock) {
   const srcEl = document.getElementById('logsSrc');
   if (!el) return;
   if (srcEl) srcEl.textContent = isMock ? 'Source: MOCK — backend offline' : 'Source: LIVE — /api/audit-tail';
+  ck.logsIsMock = isMock;
+  applyCanvasSrc(ck.activePanel);
   const rows = (entries||ck.mockTrace).slice(-12).reverse();
   el.innerHTML = rows.map(e => {
     const type   = esc(e.event_type||e.type||'—');
@@ -876,6 +880,25 @@ function toggleDrawer() {
   if (btn)    btn.setAttribute('aria-expanded', String(ck.drawerOpen));
 }
 
+/* ── CANVAS SOURCE BADGE ── */
+function applyCanvasSrc(panelId) {
+  const el = document.getElementById('canvasSrc');
+  if (!el) return;
+  const map = {
+    'preview': { cls: 'src-badge preview', text: 'PREVIEW' },
+    'files':   { cls: 'src-badge mock',    text: 'MOCK'    },
+    'diff':    { cls: 'src-badge mock',    text: 'GATED'   },
+    'spec':    { cls: 'src-badge preview', text: 'PREVIEW' },
+    'jsonir':  { cls: 'src-badge mock',    text: 'MOCK'    },
+    'logs':    ck.logsIsMock ? { cls: 'src-badge mock', text: 'MOCK' } : { cls: 'src-badge live', text: 'LIVE' },
+    'tests':   { cls: 'src-badge mock',    text: 'GATED'   },
+    'deploy':  { cls: 'src-badge mock',    text: 'GATED'   },
+  };
+  const s = map[panelId] || { cls: 'src-badge mock', text: 'MOCK' };
+  el.className = s.cls;
+  el.textContent = s.text;
+}
+
 /* ── CANVAS TABS ── */
 function switchCanvasTab(panelId) {
   document.querySelectorAll('.ctab').forEach(t => {
@@ -886,6 +909,8 @@ function switchCanvasTab(panelId) {
   document.querySelectorAll('.cpanel').forEach(p =>
     p.classList.toggle('active', p.id === `cp-${panelId}`)
   );
+  ck.activePanel = panelId;
+  applyCanvasSrc(panelId);
 }
 
 /* ── MODE SELECTOR ── */
