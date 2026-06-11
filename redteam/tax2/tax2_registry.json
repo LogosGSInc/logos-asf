@@ -1,0 +1,157 @@
+{
+  "taxonomy": "TAX2",
+  "version": "1.2.0",
+  "date": "2026-06-11",
+  "baseline": "BD1A",
+  "feeds": ["GovMem v2", "Sentinel OverWatch v3.6", "HAAP v2.0"],
+  "sprint_staged": "Sprint 5A",
+  "execution_status": "dormant — not run",
+  "generations": [
+    {
+      "taxonomy": "TAX2",
+      "version": "1.1.0",
+      "generation": "G2",
+      "name": "Structural Variants",
+      "source_file": "TAX2-G2-structural-variants-v1.1.md",
+      "vectors": [
+        "MT-G2-01",
+        "MT-G2-02",
+        "MT-G2-03",
+        "MT-G2-04"
+      ],
+      "bd1a_relationship": "Primary support for BD1A:F01 (Multi-Turn Semantic Drift) and BD1A:F02 (Soft Precursor Accumulation). G2 attacks exploit session structure rather than content.",
+      "phase_q_relationship": "G2 vectors are structural preconditions that Phase Q (TAX2:G4) exploits. G2 creates the session architecture; Phase Q bends the reasoning within it.",
+      "govmem_memory_action": "do_not_promote",
+      "sentinel_action": "allow_with_marker",
+      "haap_requirement": "conditional",
+      "audit_reason": "structural_multi_turn_variant_detected",
+      "safety_status": "sanitized_defensive_signature_only"
+    },
+    {
+      "taxonomy": "TAX2",
+      "version": "1.0.0",
+      "generation": "G3",
+      "name": "Encoding + Multi-Turn Hybrids",
+      "source_file": "TAX2-G3-encoding-hybrids.md",
+      "vectors": [
+        "MT-G3-01",
+        "MT-G3-02",
+        "MT-G3-03",
+        "MT-G3-04"
+      ],
+      "bd1a_relationship": "Extends BD1A V-phase (encoding obfuscation vectors) into multi-turn delivery. V-phase detects single-turn encoding anomalies; G3 detects fragmented encoding across turns.",
+      "phase_q_relationship": "G3 vectors can carry Phase Q cognitive distortion framing as encoded payload fragments. Cross-generation detection required when G3 and G4 patterns co-occur.",
+      "govmem_memory_action": "quarantine",
+      "sentinel_action": "flag",
+      "haap_requirement": "conditional",
+      "audit_reason": "cross_turn_encoding_accumulation_detected",
+      "safety_status": "sanitized_defensive_signature_only"
+    },
+    {
+      "taxonomy": "TAX2",
+      "version": "1.2.0",
+      "generation": "G4",
+      "name": "Cognitive Distortion Chains (Phase Q)",
+      "source_file": "TAX2-G4-cognitive-distortion.md",
+      "vectors": [
+        "MT-G4-01",
+        "MT-G4-02",
+        "MT-G4-03",
+        "MT-G4-04",
+        "MT-G4-05",
+        "MT-G4-06",
+        "MT-G4-07",
+        "MT-G4-08",
+        "MT-G4-09",
+        "MT-G4-10"
+      ],
+      "bd1a_relationship": "Direct reinforcement of BD1A:F01 and BD1A:F02. Phase Q is the mechanism that makes F01/F02 dangerous: it explains HOW drift is induced, not just that drift occurred.",
+      "phase_q_relationship": "G4 IS Phase Q. Each G4 vector maps to a PHASE_Q:Q## entry. GovMem ingests G4 signatures as Phase Q cognitive distortion events.",
+      "govmem_memory_action": "quarantine",
+      "sentinel_action": "escalate_conditional",
+      "haap_requirement": "conditional",
+      "audit_reason": "cognitive_distortion_chain_detected",
+      "safety_status": "sanitized_defensive_signature_only"
+    },
+    {
+      "taxonomy": "TAX2",
+      "version": "1.2.0",
+      "generation": "G5",
+      "name": "Dialectical Manipulation",
+      "source_file": "TAX2-G5-dialectical.md",
+      "vectors": [
+        "MT-G5-01",
+        "MT-G5-02",
+        "MT-G5-03",
+        "MT-G5-04",
+        "MT-G5-05",
+        "MT-G5-06",
+        "MT-G5-07"
+      ],
+      "bd1a_relationship": "Extends BD1A:F01 and BD1A:F02 with dialectical pressure patterns. G5 attacks exploit Abigail's intellectual honesty and genuine engagement as the attack surface.",
+      "phase_q_relationship": "All G5 vectors map to PHASE_Q:Q09 (Dialectical Boundary Erosion). G5 is the structural engine; Q09 is the cognitive detection hook.",
+      "govmem_memory_action": "quarantine",
+      "sentinel_action": "escalate_conditional",
+      "haap_requirement": "conditional",
+      "audit_reason": "dialectical_boundary_erosion_detected",
+      "safety_status": "sanitized_defensive_signature_only"
+    },
+    {
+      "taxonomy": "TAX2",
+      "version": "1.0.0",
+      "generation": "G6",
+      "name": "Cognitive-Dialectical Fusion",
+      "source_file": "TAX2-G6-fusion.md",
+      "vectors": [
+        "MT-G6-01",
+        "MT-G6-02",
+        "MT-G6-03",
+        "MT-G6-04",
+        "MT-G6-05"
+      ],
+      "bd1a_relationship": "Forward-projected fusion class. Combines G4 (cognitive distortion) and G5 (dialectical manipulation) into emergent attacks. All G6 vectors reinforce BD1A:F01 and BD1A:F02.",
+      "phase_q_relationship": "G6 vectors involve multiple Phase Q vectors simultaneously. GovMem must track whether a G4 distortion was planted before a G5 dialectical chain began. Co-detection of G4 + G5 triggers G6 protocols.",
+      "govmem_memory_action": "deny_promotion",
+      "sentinel_action": "block_and_escalate",
+      "haap_requirement": "required",
+      "audit_reason": "g4_g5_fusion_pattern_detected",
+      "safety_status": "sanitized_defensive_signature_only"
+    }
+  ],
+  "bd1a_phase_q_addendum": {
+    "taxonomy": "BD1A",
+    "version": "1.2.0",
+    "name": "Phase Q — Cognitive Inference Manipulation",
+    "source_file": "BD1A-PHASE-Q-ADDENDUM.md",
+    "phase": "Q",
+    "vectors": [
+      "PHASE_Q:Q01", "PHASE_Q:Q02", "PHASE_Q:Q03", "PHASE_Q:Q04",
+      "PHASE_Q:Q05", "PHASE_Q:Q06", "PHASE_Q:Q07", "PHASE_Q:Q08",
+      "PHASE_Q:Q09", "PHASE_Q:Q10"
+    ],
+    "bd1a_relationship": "Phase Q is the mechanism by which BD1A:F01 and BD1A:F02 become dangerous. Without Phase Q, F01/F02 are slow but detectable. With Phase Q, drift looks like legitimate reasoning progression.",
+    "govmem_memory_action": "quarantine",
+    "sentinel_action": "escalate_conditional",
+    "haap_requirement": "conditional",
+    "audit_reason": "phase_q_cognitive_inference_manipulation_detected",
+    "safety_status": "sanitized_defensive_signature_only"
+  },
+  "harness": {
+    "file": "harness/fasdtest_dark_psych_v2_1.py",
+    "version": "2.1",
+    "status": "dormant — not executed",
+    "execution_requires": [
+      "explicit_operator_approval",
+      "isolated_local_environment",
+      "no_production_endpoints",
+      "no_secrets_in_scope",
+      "local_abigail_dev_instance",
+      "local_sentinel_dev_instance"
+    ],
+    "outputs": [
+      "haap_audits/dark_psych_<timestamp>.log",
+      "govmem_ingest/dark_psych_<timestamp>.jsonl"
+    ],
+    "safety_status": "sanitized_defensive_signature_only"
+  }
+}
