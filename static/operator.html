@@ -166,6 +166,8 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
 .slash-chips{display:flex;gap:.3rem;flex-wrap:wrap}
 .sc{background:var(--surface-3);border:1px solid var(--border);color:var(--muted);font-family:var(--font-m);font-size:.65rem;font-weight:700;padding:.22rem .45rem;border-radius:var(--r-sm);cursor:pointer;transition:all var(--ease)}
 .sc:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-glow)}
+.sc:disabled,.sc[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.sc:disabled:hover,.sc[aria-disabled="true"]:hover{border-color:var(--border);color:var(--muted);background:transparent}
 .composer-hint{font-size:.65rem;color:var(--faint)}
 .composer-hint kbd{background:var(--surface-3);border:1px solid var(--border);border-radius:3px;padding:.05rem .3rem;font-family:var(--font-m);font-size:.65rem;color:var(--muted)}
 
@@ -179,7 +181,7 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
 .src-badge.preview{color:var(--info);border-color:rgba(95,158,196,.3)}
 .canvas-tabs{flex-shrink:0;display:flex;border-bottom:1px solid var(--border);background:var(--surface-2);overflow-x:auto;scrollbar-width:none}
 .canvas-tabs::-webkit-scrollbar{display:none}
-.ctab{background:transparent;border:none;border-bottom:2px solid transparent;padding:.45rem .7rem;font-family:var(--font-b);font-size:.7rem;font-weight:700;color:var(--faint);cursor:pointer;transition:all var(--ease);white-space:nowrap;flex-shrink:0}
+.ctab{background:transparent;border:none;border-bottom:2px solid transparent;padding:.3rem .5rem;font-family:var(--font-b);font-size:.7rem;font-weight:700;color:var(--faint);cursor:pointer;transition:all var(--ease);white-space:nowrap;flex-shrink:0}
 .ctab:hover{color:var(--muted)}
 .ctab.active{color:var(--primary);border-bottom-color:var(--primary)}
 .ctab:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
@@ -378,7 +380,7 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
         <div class="turn-bubble">
           Operator Cockpit ready. Mode: Plan. Authority: Simulate Only.
           All actions require explicit approval before execution.
-          Governance: HAAP-gated · audit-logged · rollback available.
+          Governance: HAAP-gated · audit-logged · rollback unavailable until a governed checkpoint exists.
         </div>
       </div>
 
@@ -468,7 +470,7 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
           <button class="sc" data-cmd="/build">/build</button>
           <button class="sc" data-cmd="/review">/review</button>
           <button class="sc" data-cmd="/diff">/diff</button>
-          <button class="sc" data-cmd="/rollback">/rollback</button>
+          <button class="sc" data-cmd="/rollback" disabled aria-disabled="true" title="Gated — rollback unavailable until a governed checkpoint exists">/rollback</button>
           <button class="sc" data-cmd="/audit">/audit</button>
           <button class="sc" data-cmd="/help">/help</button>
         </div>
@@ -520,7 +522,7 @@ body{height:100dvh;overflow:hidden;display:flex;flex-direction:column;font-famil
         <div class="art-card">
           <div style="font-size:.75rem;font-weight:700;color:var(--muted);margin-bottom:.625rem">Working Set · turn-001-resp</div>
           <div>
-            <div class="ws-row"><span class="ws-k">Files touched</span><span class="ws-v">operator.html, index.html</span></div>
+            <div class="ws-row"><span class="ws-k">Sample files in scope</span><span class="ws-v">operator.html, index.html</span></div>
             <div class="ws-row"><span class="ws-k">Agents active</span><span class="ws-v">Abigail CP-00</span></div>
             <div class="ws-row"><span class="ws-k">Departments</span><span class="ws-v">Governance · Engineering</span></div>
             <div class="ws-row"><span class="ws-k">Policy applied</span><span class="ws-v">Plan Gate Passed</span></div>
@@ -752,6 +754,7 @@ function applyStatus(d) {
     if (envBadge) { envBadge.className = 'env-badge sim'; envBadge.textContent = 'Simulation'; }
     if (ckStatus) { ckStatus.className = 'badge yellow'; ckStatus.textContent = 'Backend offline'; }
     if (sbBackend){ sbBackend.className = 'badge yellow'; sbBackend.textContent = 'Offline'; }
+    if (sbKs)     { sbKs.className = 'badge yellow'; sbKs.textContent = 'Simulated · Armed'; }
     if (rbState)  rbState.textContent = 'Simulated · no backend';
     if (rbAuth)   { rbAuth.className = 'rb-chip sim'; rbAuth.textContent = 'Simulate Only'; }
     return;
