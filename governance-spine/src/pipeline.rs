@@ -68,6 +68,10 @@ pub struct GovernancePipeline {
 
     /// GovMem V2: RL-enhanced multi-turn detection
     govmem: Arc<GovMem>,
+
+    // GovMem V2: runtime identity metadata (populated from env vars, metadata only)
+    govmem_agent_id: String,
+    govmem_department_id: String,
 }
 
 impl GovernancePipeline {
@@ -108,6 +112,13 @@ impl GovernancePipeline {
         };
         let govmem = Arc::new(GovMem::new(mode));
 
+        // Runtime identity metadata — populated from env vars, metadata only.
+        // Do not pass these into should_block(); threshold behavior must not change.
+        let govmem_agent_id = std::env::var("GOVMEM_AGENT_ID")
+            .unwrap_or_else(|_| "abigail".to_string());
+        let govmem_department_id = std::env::var("GOVMEM_DEPARTMENT_ID")
+            .unwrap_or_else(|_| "governance".to_string());
+
         Ok(Self {
             sentinel,
             corridor,
@@ -121,6 +132,8 @@ impl GovernancePipeline {
             strategic_memory: Arc::new(RwLock::new(StrategicMemory::new())),
             memory_config: MemoryConfig::default(),
             govmem,
+            govmem_agent_id,
+            govmem_department_id,
         })
     }
 
@@ -164,8 +177,8 @@ impl GovernancePipeline {
             user_input,
             MessageDirection::UserToSystem,
             s_signal.severity >= Severity::High,
-            None, // department_id
-            None, // agent_id
+            Some(&self.govmem_department_id), // department_id — metadata only
+            Some(&self.govmem_agent_id),      // agent_id — metadata only
         );
         self.govmem.record_layer_signal(session_id, "sentinel", &s_signal);
         self.track_highest(&s_signal, &mut highest_signal);
