@@ -88,6 +88,7 @@ impl GovernancePipeline {
             drift_threshold: 0.65,
             session_turn_limit: 200,
             client_model_api: None,
+            q09_threshold: 2,
         };
 
         let overwatch = Arc::new(RwLock::new(

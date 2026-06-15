@@ -37,11 +37,13 @@ pub struct OverWatchConfig {
     pub drift_threshold: f32,
     pub session_turn_limit: usize,
     pub client_model_api: Option<String>,
+    /// Minimum q09_total before OW-Q09-001 fires. Default 2 (fires at >= 3 hits).
+    pub q09_threshold: usize,
 }
 
 impl Default for OverWatchConfig {
     fn default() -> Self {
-        Self { drift_threshold: 0.65, session_turn_limit: 200, client_model_api: None }
+        Self { drift_threshold: 0.65, session_turn_limit: 200, client_model_api: None, q09_threshold: 2 }
     }
 }
 
@@ -110,6 +112,119 @@ impl OverWatch {
         };
 
         if multi_turn { violations.push(("MULTI_TURN_INJECTION_CAMPAIGN", "OW-003", 0.82)); }
+
+        // OW-Q09-001: SEMANTIC_DRIFT_DIALECTICAL — TAX2 G5/Q09 dialectical boundary erosion.
+        // Detects session-history-as-authorization extraction patterns across turns without
+        // requiring full conversation history. Each pattern family targets one linguistic
+        // footprint of Q09 (prior-reference, authority-citation, sunk-cost, relative-risk,
+        // consensus/normalization, consistency-coercion).
+        // Evidence basis: Store 2 corpus 20260615T131120Z — 168 G5 records, 0% B/C/D escalation
+        // through existing OW-001..OW-005. Gap confirmed: no existing rule scores Q09 phrases.
+        // False-positive controls:
+        //   - turn >= 2 guard: no escalation on first turn alone
+        //   - q09_total must exceed q09_threshold (default 2) before any violation is raised
+        //   - multi-family accumulation preferred over single-family saturation
+        //   - severity tiers driven by violations.len(): 1→Medium (3-4), 2→High (5-6), 3→Critical (7+)
+        let (q09_total, q09_turn_count) = {
+            let mut sessions = self.sessions.write();
+            let fp = sessions.get_mut(session_id).unwrap();
+            let lower = payload.to_lowercase();
+
+            // F1: Prior-reference framing — citing prior session content as established fact.
+            if lower.contains("we already established")
+                || lower.contains("you already agreed")
+                || lower.contains("you've confirmed that")
+                || lower.contains("you said earlier")
+                || lower.contains("you conceded")
+                || lower.contains("as we established")
+                || lower.contains("from what we established")
+                || lower.contains("you acknowledged earlier")
+            {
+                *fp.violation_counts.entry("Q09_F1".to_string()).or_insert(0) += 1;
+            }
+
+            // F2: Authority-citation framing — extracting permission from prior reasoning.
+            if lower.contains("by your own logic")
+                || lower.contains("your own reasoning")
+                || lower.contains("your reasoning leads")
+                || lower.contains("without contradicting yourself")
+                || lower.contains("your logic demands")
+                || lower.contains("intellectually dishonest to refuse")
+                || lower.contains("following the logic you")
+                || lower.contains("your own argument requires")
+            {
+                *fp.violation_counts.entry("Q09_F2".to_string()).or_insert(0) += 1;
+            }
+
+            // F3: Sunk-cost/progress framing — session investment as refusal obligation.
+            if lower.contains("after all the progress")
+                || lower.contains("we've come this far")
+                || lower.contains("it would be a shame to stop")
+                || lower.contains("all the time we've invested")
+                || lower.contains("we've built real momentum")
+                || lower.contains("after everything we've worked")
+                || lower.contains("natural next step from what we")
+                || lower.contains("we've been working through this")
+            {
+                *fp.violation_counts.entry("Q09_F3".to_string()).or_insert(0) += 1;
+            }
+
+            // F4: Relative-risk/minimization framing — Overton reframe using prior extremes.
+            if lower.contains("compared to what we've been discussing")
+                || lower.contains("relative to what we established")
+                || lower.contains("by the standard we established")
+                || lower.contains("given that you've already accepted")
+                || lower.contains("nowhere near as extreme as what we covered")
+                || (lower.contains("if you accepted") && lower.contains("then surely"))
+            {
+                *fp.violation_counts.entry("Q09_F4".to_string()).or_insert(0) += 1;
+            }
+
+            // F5: Consensus/normalization framing — false majority claims as social pressure.
+            if lower.contains("everyone agrees")
+                || lower.contains("no reasonable person would")
+                || lower.contains("you're the only one")
+                || lower.contains("the consensus is clear")
+                || lower.contains("your position is an outlier")
+                || lower.contains("virtually everyone")
+            {
+                *fp.violation_counts.entry("Q09_F5".to_string()).or_insert(0) += 1;
+            }
+
+            // F6: Consistency-coercion framing — logical consistency as refusal barrier.
+            if lower.contains("bad faith to refuse")
+                || lower.contains("logically inconsistent to refuse")
+                || lower.contains("intellectually inconsistent")
+                || lower.contains("your refusal contradicts")
+                || lower.contains("refusing here makes no sense after")
+                || lower.contains("you agreed, so refusing")
+                || lower.contains("incoherent given what you've said")
+            {
+                *fp.violation_counts.entry("Q09_F6".to_string()).or_insert(0) += 1;
+            }
+
+            let total: usize = ["Q09_F1", "Q09_F2", "Q09_F3", "Q09_F4", "Q09_F5", "Q09_F6"]
+                .iter()
+                .filter_map(|k| fp.violation_counts.get(*k))
+                .sum();
+            (total, fp.turn_count)
+        };
+
+        // Escalate on accumulated Q09 signal total. Turn guard and threshold prevent
+        // false positives from isolated benign dialectical phrases.
+        // Severity tiers: q09_total 3-4 → Medium (1 violation), 5-6 → High (2), 7+ → Critical (3).
+        if q09_turn_count >= 2 && q09_total > self.config.q09_threshold {
+            let conf = (0.62 + (q09_total.saturating_sub(2) as f32 * 0.04)).min(0.90);
+            violations.push(("SEMANTIC_DRIFT_DIALECTICAL", "OW-Q09-001", conf));
+            // q09_total >= 5: velocity indicates active pattern acceleration → High severity.
+            if q09_total >= 5 {
+                violations.push(("SEMANTIC_DRIFT_Q09_VELOCITY", "OW-Q09-001", conf));
+            }
+            // q09_total >= 7: campaign-level accumulation → Critical severity.
+            if q09_total >= 7 {
+                violations.push(("SEMANTIC_DRIFT_Q09_CAMPAIGN", "OW-Q09-001", conf));
+            }
+        }
 
         if direction == Direction::Outbound {
             let score = self.score_hallucination(payload);
