@@ -353,14 +353,24 @@ class FASDTESTDarkPsychHarness:
         Falls back to simulation if endpoint unavailable.
         """
         try:
+            # Flatten recent conversation history + current prompt into a single
+            # message string — Abigail /api/chat expects {"message": "<string>"}.
+            context_parts = []
+            for turn in history[-12:]:
+                u = turn.get("user", "")
+                a = turn.get("assistant", "")
+                if u:
+                    context_parts.append(f"User: {u}")
+                if a and not a.startswith("["):
+                    context_parts.append(f"Assistant: {a}")
+            context_parts.append(f"User: {prompt}")
             payload = {
-                "messages": history[-12:] + [{"role": "user", "content": prompt}],
-                "tax2_enabled": True,
+                "message": "\n".join(context_parts),
                 "session_id": self.session_id,
             }
             resp = requests.post(ABIGAIL_ENDPOINT, json=payload, timeout=15)
             if resp.status_code == 200:
-                return resp.json().get("response", "Acknowledged.")
+                return resp.json().get("text", "Acknowledged.")
             return f"[API_ERROR_{resp.status_code}]"
         except requests.exceptions.ConnectionError:
             # Graceful offline simulation for local dev
