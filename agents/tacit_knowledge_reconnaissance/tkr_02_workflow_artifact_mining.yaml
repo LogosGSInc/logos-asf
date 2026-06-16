@@ -1,0 +1,92 @@
+# INACTIVE STUB — root key is `inactive_agent_stub`, not `agent`.
+# The runtime agent_loader.py only ingests keys named `agent`.
+# This file will NOT be loaded at runtime until Phase 3 is operator-authorized.
+
+inactive_agent_stub:
+  agent_id: TKR-02-ARTIFACT
+  name: TKR-02 Workflow & Artifact Mining Agent
+  role: sub_agent
+  parent_agent: TKR-DIR
+  department: TKR-01
+
+  status: INACTIVE_STUB
+  activation_state: NOT_AUTHORIZED
+  runtime_enabled: false
+  store1_enabled: false
+  store2_enabled: false
+  store1_mutation: false
+  abigail_training: false
+  default_memory_policy: ephemeral
+  human_authorization_required: false
+
+  governance_layers:
+    - Sentinel
+    - OverWatch
+    - HAAP-X
+    - GovMem
+
+  prepass_role: >
+    When activated (Phase 3), TKR-02 runs only when a technical_task request
+    has artifacts explicitly in scope — code files, repo structures, documents,
+    or workflow outputs that the user has referenced or shared. TKR-02 inspects
+    those artifacts for tacit patterns, implicit constraints, naming conventions,
+    and undocumented decisions that would inform Abigail's response. It does not
+    mine files that were not referenced or included by the user.
+
+  prepass_invocation:
+    request_classes:
+      - technical_task
+    condition: artifact_in_scope
+    auto_prepass: false
+    invoked_by: TKR-DIR
+    note: >
+      TKR-02 is only invoked by TKR-DIR when the user has explicitly referenced
+      or included artifacts. It is not invoked for simple_chat, job_request,
+      security_task (unless explicitly scoped), mission_spiritual, or recovery_related.
+
+  allowed_scope:
+    - inspect files, code, or documents that the user has explicitly shared or referenced
+    - identify implicit constraints, naming patterns, and undocumented decisions
+    - extract tacit knowledge embedded in workflows, comments, or structure
+    - flag gaps between stated and actual system behavior
+    - surface doc-level doctrine relevant to the task
+
+  forbidden_scope:
+    - mining files not referenced or shared by the user
+    - repo-wide file scanning without operator scope
+    - reading secrets, credentials, environment files, or keys
+    - Store 1 mutation
+    - Store 2 promotion without separate GovMem authorization
+    - surveillance or non-consensual collection
+    - expanding beyond the artifact scope defined by TKR-DIR
+
+  input_contract:
+    fields:
+      - artifact_refs: array
+      - task_context: string
+      - session_id: string
+      - tkr_dir_authorization: boolean
+
+  output_contract:
+    type: ArtifactMiningResult
+    fields:
+      - tacit_patterns: array
+      - implicit_constraints: array
+      - naming_conventions: array
+      - undocumented_decisions: array
+      - gaps_identified: array
+      - confidence: number
+    persistence: ephemeral_by_default
+    store1_mutation: false
+
+  tacit_context_card_fields_contributed:
+    - tacit_interpretation (artifact-informed)
+    - hidden_assumptions
+    - relevant_prior_context
+    - risk_notes
+
+  notes: >
+    TKR-02 is a scoped artifact reader, not a repo-wide scanner. It must only
+    inspect what the user explicitly referenced. It reads for tacit knowledge
+    patterns — not for secrets, credentials, or surveillance-adjacent data.
+    TKR-DIR must explicitly authorize TKR-02 per turn; it does not self-invoke.

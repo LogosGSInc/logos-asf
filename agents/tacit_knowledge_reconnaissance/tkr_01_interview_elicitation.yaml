@@ -1,0 +1,101 @@
+# INACTIVE STUB — root key is `inactive_agent_stub`, not `agent`.
+# The runtime agent_loader.py only ingests keys named `agent`.
+# This file will NOT be loaded at runtime until Phase 5 is operator-authorized.
+# TKR-01 additionally requires explicit per-session operator authorization even after Phase 5.
+
+inactive_agent_stub:
+  agent_id: TKR-01-INTERVIEW
+  name: TKR-01 Interview & Elicitation Agent
+  role: sub_agent
+  parent_agent: TKR-DIR
+  department: TKR-01
+
+  status: INACTIVE_STUB
+  activation_state: OPERATOR_AUTH_REQUIRED_PER_SESSION
+  runtime_enabled: false
+  store1_enabled: false
+  store2_enabled: false
+  store1_mutation: false
+  abigail_training: false
+  default_memory_policy: ephemeral
+  human_authorization_required: true
+
+  governance_layers:
+    - Sentinel
+    - OverWatch
+    - HAAP-X
+    - GovMem
+
+  prepass_role: >
+    TKR-01 is NEVER invoked by the automatic pre-pass. It is always
+    operator-initiated with an explicit per-session scope and authorization.
+    When authorized, it conducts structured elicitation with a human subject
+    to surface tacit knowledge they have not articulated. It is the agent
+    equivalent of a skilled knowledge interview. It is not used for surveillance,
+    coercion, or collection without consent.
+
+  prepass_invocation:
+    request_classes: []
+    auto_prepass: false
+    note: >
+      TKR-01 is NEVER added to `allowed_agents` by the automatic pre-pass.
+      It appears in `forbidden_agents` by default in every Tacit Context Card.
+      Activation requires: operator_authorized=true, explicit session scope,
+      defined elicitation target and time window.
+
+  activation_requirements:
+    - operator_authorized: true (per session, not blanket)
+    - scope_defined: true (what to elicit, from whom, for how long)
+    - subject_consent: required
+    - sentinel_gate_cleared: true
+    - haap_x_approved: true
+    - session_scoped_only: true
+
+  allowed_scope:
+    - structured conversational elicitation with consenting human subject
+    - surfacing unarticulated know-how, constraints, and preferences
+    - generating tacit knowledge drafts for operator review
+    - producing elicitation transcripts for Store 2 review (if authorized)
+
+  forbidden_scope:
+    - autonomous pre-pass invocation
+    - coercive, deceptive, or manipulative elicitation
+    - surveillance or monitoring without consent
+    - identity resolution or non-public data collection
+    - elicitation beyond the operator-defined session scope
+    - Store 1 mutation
+    - persistent cross-session memory without GovMem authorization
+    - doxxing or unauthorized personal data collection
+
+  input_contract:
+    fields:
+      - operator_authorization_token: string
+      - session_scope: object
+      - subject_id: string
+      - elicitation_objective: string
+      - time_window_minutes: integer
+
+  output_contract:
+    type: ElicitationTranscript
+    fields:
+      - session_id: string
+      - elicitation_turns: array
+      - tacit_knowledge_drafts: array
+      - confidence_per_draft: number
+      - gaps_identified: array
+      - store2_eligible: boolean
+    persistence: ephemeral_by_default
+    store1_mutation: false
+
+  tacit_context_card_fields_contributed:
+    - tacit_interpretation (enriched)
+    - hidden_assumptions (enriched)
+    - relevant_prior_context (enriched)
+
+  notes: >
+    TKR-01 is the highest-restriction agent in the swarm. Its forbidden_agents
+    listing in every auto-generated Tacit Context Card is a hard constraint, not
+    a recommendation. It requires subject consent, operator scope, and per-session
+    authorization every time. No blanket authorization is valid. Phase 5 must be
+    operator-authorized before this agent can be registered in the runtime loader,
+    and even then each session requires explicit per-session approval.

@@ -1,0 +1,116 @@
+# INACTIVE STUB — root key is `inactive_agent_stub`, not `agent`.
+# The runtime agent_loader.py only ingests keys named `agent`.
+# This file will NOT be loaded at runtime until Phase 3 is operator-authorized.
+
+inactive_agent_stub:
+  agent_id: TKR-DIR
+  name: Tacit Knowledge Reconnaissance Director
+  role: parent_agent
+  department: TKR-01
+  reports_to:
+    - CP-00
+  supervises:
+    - TKR-01-INTERVIEW
+    - TKR-02-ARTIFACT
+
+  status: INACTIVE_STUB
+  activation_state: NOT_AUTHORIZED
+  runtime_enabled: false
+  store1_enabled: false
+  store2_enabled: false
+  store1_mutation: false
+  abigail_training: false
+  default_memory_policy: ephemeral
+  human_authorization_required: false
+
+  governance_layers:
+    - Sentinel
+    - OverWatch
+    - HAAP-X
+    - GovMem
+
+  prepass_role: >
+    When activated (Phase 3), TKR-DIR runs as the lightweight interpretive
+    director of the Tacit Swarm Pre-Pass. It classifies the incoming request,
+    identifies what the user is actually asking, surfaces relevant prior
+    doctrine or context, and produces the Tacit Context Card for Abigail's
+    response planner. It does not conduct elicitation, file mining, or external
+    research on its own.
+
+  prepass_invocation:
+    request_classes:
+      - simple_chat
+      - technical_task
+      - job_request
+      - security_task
+      - mission_spiritual
+      - operational
+      - recovery_related
+      - memory_query
+    mode_by_class:
+      simple_chat: classify_only
+      mission_spiritual: classify_only
+      recovery_related: classify_only
+      technical_task: lightweight
+      security_task: lightweight
+      operational: lightweight
+      memory_query: lightweight
+      job_request: standard
+    latency_target_ms: 500
+
+  allowed_scope:
+    - classify request type and intent
+    - identify relevant doctrine and prior context
+    - surface hidden assumptions
+    - flag missing scope
+    - produce Tacit Context Card
+    - authorize TKR-02 when technical artifact context is in scope
+    - coordinate with EIR-DIR on job_request class
+
+  forbidden_scope:
+    - human elicitation or structured interviews (requires TKR-01)
+    - file mining or artifact inspection (requires TKR-02 authorization)
+    - external OSINT or live lookups (requires EIR-01 authorization)
+    - Store 1 mutation
+    - Store 2 promotion without separate GovMem authorization
+    - overriding Sentinel/OverWatch/HAAP-X verdicts
+    - expanding sub-agent invocation beyond prepass tier
+    - persistent cross-session memory writes
+
+  input_contract:
+    fields:
+      - user_message: string
+      - session_id: string
+      - turn: integer
+      - sentinel_verdict: object
+      - conversation_context: array
+
+  output_contract:
+    type: TacticContextCard
+    schema_ref: docs/agents/tacit-knowledge/TACIT_CONTEXT_CARD.schema.json
+    persistence: ephemeral_by_default
+    store1_mutation: false
+
+  tacit_context_card_fields_populated:
+    - request_type
+    - tacit_interpretation
+    - relevant_prior_context
+    - hidden_assumptions
+    - missing_scope
+    - risk_notes
+    - recommended_route
+    - allowed_agents
+    - forbidden_agents
+    - memory_policy
+    - response_guidance
+    - confidence
+    - escalation_required
+    - prepass_tier
+    - agents_invoked
+
+  notes: >
+    TKR-DIR is the always-on interpretive director. When Phase 3 runtime wiring
+    is authorized, it runs before every Abigail response. It must complete within
+    500ms. Failure is non-blocking — Abigail responds directly if TKR-DIR times
+    out or errors. TKR-DIR does not execute TKR-01 automatically; that requires
+    separate per-session operator authorization.

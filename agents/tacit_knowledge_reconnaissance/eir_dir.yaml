@@ -1,0 +1,96 @@
+# INACTIVE STUB — root key is `inactive_agent_stub`, not `agent`.
+# The runtime agent_loader.py only ingests keys named `agent`.
+# This file will NOT be loaded at runtime until Phase 3 is operator-authorized.
+
+inactive_agent_stub:
+  agent_id: EIR-DIR
+  name: Ethical Intelligence Reconnaissance Director
+  role: parent_agent
+  department: TKR-01
+  reports_to:
+    - CP-00
+    - TKR-DIR
+  supervises:
+    - EIR-01-PUBLIC
+    - EIR-02-TRIANGULATION
+
+  status: INACTIVE_STUB
+  activation_state: NOT_AUTHORIZED
+  runtime_enabled: false
+  store1_enabled: false
+  store2_enabled: false
+  store1_mutation: false
+  abigail_training: false
+  default_memory_policy: ephemeral
+  human_authorization_required: false
+
+  governance_layers:
+    - Sentinel
+    - OverWatch
+    - HAAP-X
+    - GovMem
+
+  prepass_role: >
+    When activated (Phase 3), EIR-DIR runs only for `job_request` class requests
+    in the standard pre-pass tier. It determines whether a live external lookup is
+    warranted, frames what kind of current-source data is needed, and authorizes
+    EIR-01 accordingly. EIR-DIR does not collect external data itself — it directs
+    and scopes EIR-01. For all other request classes, EIR-DIR is not invoked.
+
+  prepass_invocation:
+    request_classes:
+      - job_request
+    mode_by_class:
+      job_request: scope_and_authorize_eir01_only
+    latency_target_ms: 300
+    note: >
+      EIR-DIR is not invoked for simple_chat, technical_task, security_task,
+      mission_spiritual, recovery_related, operational, or memory_query classes.
+
+  allowed_scope:
+    - determine whether current external data is needed for job_request
+    - define lookup scope for EIR-01 (job type, geography, stack, constraints)
+    - authorize EIR-01 for lawful public job board lookup
+    - frame what should be verified before recommending a job match
+    - identify fit criteria from tacit context (veteran path, recovery, mission alignment, income target)
+    - flag missing_scope when live data cannot be sourced
+
+  forbidden_scope:
+    - autonomous OSINT or surveillance without operator scope
+    - non-public data collection
+    - collection beyond job_request class
+    - doxxing, identity resolution, or coercive data gathering
+    - Store 1 mutation
+    - Store 2 promotion without separate GovMem authorization
+    - overriding Sentinel/OverWatch/HAAP-X verdicts
+    - inventing job listings when live data is unavailable
+
+  input_contract:
+    fields:
+      - tacit_context_card_partial: object
+      - request_type: job_request
+      - session_id: string
+
+  output_contract:
+    type: EIRDirectorScope
+    fields:
+      - eir01_authorized: boolean
+      - lookup_scope: object
+      - fit_criteria: array
+      - missing_scope: array
+      - risk_notes: array
+    persistence: ephemeral_by_default
+    store1_mutation: false
+
+  tacit_context_card_fields_contributed:
+    - allowed_agents
+    - missing_scope
+    - risk_notes
+    - recommended_route
+
+  notes: >
+    EIR-DIR governs lawful external intelligence use. It is not a search engine
+    and does not call external APIs directly. It scopes and authorizes EIR-01
+    for one bounded lookup per job_request turn. It must not expand scope beyond
+    what the operator's authorized context permits. It is explicitly prohibited
+    from conducting surveillance, non-public collection, or identity resolution.

@@ -1,0 +1,94 @@
+# INACTIVE STUB — root key is `inactive_agent_stub`, not `agent`.
+# The runtime agent_loader.py only ingests keys named `agent`.
+# This file will NOT be loaded at runtime until Phase 4 is operator-authorized.
+
+inactive_agent_stub:
+  agent_id: EIR-02-TRIANGULATION
+  name: EIR-02 Pattern Triangulation & Risk Agent
+  role: sub_agent
+  parent_agent: EIR-DIR
+  department: TKR-01
+
+  status: INACTIVE_STUB
+  activation_state: NOT_AUTHORIZED
+  runtime_enabled: false
+  store1_enabled: false
+  store2_enabled: false
+  store1_mutation: false
+  abigail_training: false
+  default_memory_policy: ephemeral
+  human_authorization_required: false
+
+  governance_layers:
+    - Sentinel
+    - OverWatch
+    - HAAP-X
+    - GovMem
+
+  prepass_role: >
+    When activated (Phase 4), EIR-02 triangulates across internal tacit signals
+    (from TKR-DIR) and external public signals (from EIR-01) to rank options,
+    identify risk patterns, and produce a synthesized fit assessment. It runs only
+    after both TKR-DIR and EIR-01 have produced outputs. It is a synthesis agent,
+    not a collection agent — it does not access new external sources beyond what
+    EIR-01 already retrieved. Its output is a risk-ranked interpretation, not a
+    decision. Abigail decides.
+
+  prepass_invocation:
+    request_classes:
+      - job_request
+    condition: tkr_dir_output_present and eir01_output_present
+    auto_prepass: false
+    invoked_by: EIR-DIR
+    phase_required: Phase 4
+    note: >
+      EIR-02 requires both internal (TKR-DIR) and external (EIR-01) signal sets
+      to be present before it runs. It is not invoked when only one signal set
+      is available. Phase 4 authorization required.
+
+  allowed_scope:
+    - triangulate tacit signals from TKR-DIR against external results from EIR-01
+    - rank job options by fit criteria (veteran path, recovery constraints, mission alignment, income target, work style)
+    - identify risk patterns across options (role stability, employer red flags, fit mismatches)
+    - produce a ranked, risk-annotated fit assessment for Abigail's response planner
+    - flag uncertainty and confidence gaps
+
+  forbidden_scope:
+    - accessing new external sources beyond EIR-01 output
+    - conducting surveillance or non-public data collection
+    - making decisions on behalf of Abigail or the operator
+    - Store 1 mutation
+    - Store 2 promotion without separate GovMem authorization
+    - fabricating or inflating confidence beyond evidence
+    - identity resolution or non-public data use
+
+  input_contract:
+    fields:
+      - tkr_dir_tacit_context_card: object
+      - eir01_public_signal_result: object
+      - fit_criteria: array
+      - session_id: string
+
+  output_contract:
+    type: TriangulationResult
+    fields:
+      - ranked_options: array
+      - fit_scores: object
+      - risk_flags: array
+      - confidence: number
+      - synthesis_gaps: array
+      - fabrication_guard: boolean
+    persistence: ephemeral_by_default
+    store1_mutation: false
+    fabrication_guard: true
+
+  tacit_context_card_fields_contributed:
+    - recommended_route (ranked fit result)
+    - risk_notes (risk-ranked flags)
+    - response_guidance (fit-informed framing for Abigail)
+
+  notes: >
+    EIR-02 is a synthesis-only agent. It does not collect — it reasons over what
+    TKR-DIR and EIR-01 have already retrieved. Its output is advisory to Abigail,
+    not authoritative. Abigail retains decision authority. Phase 4 activation
+    required before this agent can be registered in any runtime path.
