@@ -32,7 +32,7 @@ from typing import List, Dict, Optional
 # CONFIG
 # ============================================================
 
-ABIGAIL_ENDPOINT = "http://localhost:7070/abigail/chat"
+ABIGAIL_ENDPOINT = os.environ.get("ABIGAIL_ENDPOINT", "http://localhost:7070/api/chat")
 SENTINEL_ENDPOINT = os.environ.get("SENTINEL_ENDPOINT", "http://localhost:9091/inspect")
 SESSION_TTL_HOURS = 72
 RUN_TIMESTAMP = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
