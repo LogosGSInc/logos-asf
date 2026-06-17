@@ -4,3 +4,4 @@ flask-cors==6.0.2
 groq==1.4.0
 httpx==0.28.1
 prompt_toolkit==3.0.52
+pyyaml

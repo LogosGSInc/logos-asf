@@ -1,0 +1,77 @@
+routing_policy:
+  technical_task:
+    selected_provider: openai
+    fallback_provider: current_backend
+    latency_need: normal
+    cost_ceiling: medium
+    output_contract: markdown
+    tool_required: code
+    review_required: false
+    reviewer_provider: null
+    memory_policy: ephemeral
+
+  tacit_knowledge:
+    selected_provider: local
+    fallback_provider: current_backend
+    latency_need: deep
+    cost_ceiling: high
+    output_contract: json_schema
+    tool_required: none
+    review_required: true
+    reviewer_provider: anthropic
+    memory_policy: store2_candidate
+
+  ethical_intelligence:
+    selected_provider: openai
+    fallback_provider: xai
+    latency_need: deep
+    cost_ceiling: high
+    output_contract: markdown
+    tool_required: web
+    review_required: false
+    reviewer_provider: null
+    memory_policy: store1_candidate
+
+  doctrine:
+    selected_provider: openai
+    fallback_provider: anthropic
+    latency_need: deep
+    cost_ceiling: high
+    output_contract: doctrine_card
+    tool_required: none
+    review_required: true
+    reviewer_provider: anthropic
+    memory_policy: doctrine_candidate
+
+  private_memory:
+    selected_provider: local
+    fallback_provider: null
+    latency_need: normal
+    cost_ceiling: low
+    output_contract: freeform
+    tool_required: none
+    review_required: false
+    reviewer_provider: null
+    memory_policy: ephemeral
+
+  normal_chat:
+    selected_provider: current_backend
+    fallback_provider: null
+    latency_need: instant
+    cost_ceiling: low
+    output_contract: freeform
+    tool_required: none
+    review_required: false
+    reviewer_provider: null
+    memory_policy: ephemeral
+
+  blocked:
+    selected_provider: current_backend
+    fallback_provider: null
+    latency_need: instant
+    cost_ceiling: low
+    output_contract: freeform
+    tool_required: none
+    review_required: false
+    reviewer_provider: null
+    memory_policy: reject

@@ -39,6 +39,16 @@ except ImportError:
     _TACIT_PREPASS_OK = False
     def _build_tacit_card(raw, score, signals, session): return None
 
+# ── Model Router Shadow Pass (MR-01, non-mutating, observation + logging only)
+try:
+    from model_router import route_request as _route_request
+    from model_router.audit import safe_route_fields as _safe_route_fields
+    _MODEL_ROUTER_OK = True
+except ImportError:
+    _MODEL_ROUTER_OK = False
+    def _route_request(*a, **kw): return None
+    def _safe_route_fields(c): return {}
+
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
 LOG_FILE     = HOME / ".abigail_audit.jsonl"
@@ -356,6 +366,14 @@ def process_message(raw, session, kill_switch, active_backend):
     _system = ABIGAIL_SYSTEM_PROMPT
     if _card and _card.get("response_guidance"):
         _system = ABIGAIL_SYSTEM_PROMPT + "\n\n[TACIT GUIDANCE]\n" + _card["response_guidance"]
+    # Model Router Shadow Pass — MR-01: observe, score, log. Does not alter dispatch.
+    if _MODEL_ROUTER_OK:
+        try:
+            _route_card = _route_request(raw, score, signals, _card)
+            if _route_card:
+                log_event("MODEL_ROUTE_CARD", _safe_route_fields(_route_card))
+        except Exception as _rte:
+            log_event("MODEL_ROUTER_ERROR", {"error_type": type(_rte).__name__})
     session.messages.append({"role":"user","content":raw})
     t=time.monotonic()
     try:

@@ -1,0 +1,49 @@
+provider_roles:
+  current_backend:
+    role: existing_runtime_fallback
+    allowed_for:
+      - normal_chat
+      - default_response
+
+  local:
+    role: privacy_firewall
+    allowed_for:
+      - private_memory
+      - sensitive_summary
+      - pre_classification
+
+  openai:
+    role: structured_reasoning_and_tool_control
+    allowed_for:
+      - json_schema
+      - doctrine_card
+      - code_plan
+      - model_route_decision
+      - governance_trace
+
+  anthropic:
+    role: critic_and_review
+    allowed_for:
+      - doctrine_review
+      - code_review
+      - manipulation_check
+      - high_stakes_second_opinion
+
+  gemini:
+    role: long_context_multimodal
+    allowed_for:
+      - large_documents
+      - pdf_analysis
+      - multimodal_review
+
+  groq:
+    role: fast_scout
+    allowed_for:
+      - low_risk_classification
+      - quick_summary
+
+  xai:
+    role: social_terrain_scout
+    allowed_for:
+      - x_search
+      - public_narrative_scan
