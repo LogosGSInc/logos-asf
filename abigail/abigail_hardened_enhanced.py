@@ -31,6 +31,14 @@ except ImportError:
     def _get_yaml_agent(_id): return None
     def _list_yaml_agents(): return []
 
+# ── Tacit Pre-Pass (ephemeral, non-mutating) ──────────────────────────────────
+try:
+    from tacit_prepass import build_tacit_context_card as _build_tacit_card
+    _TACIT_PREPASS_OK = True
+except ImportError:
+    _TACIT_PREPASS_OK = False
+    def _build_tacit_card(raw, score, signals, session): return None
+
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
 LOG_FILE     = HOME / ".abigail_audit.jsonl"
@@ -336,11 +344,23 @@ def process_message(raw, session, kill_switch, active_backend):
     drift=session.drift_warning()
     if drift: log_event("OVERWATCH_DRIFT",{"crsv":session.crsv(),"warning":drift})
     mode,_,_=drs_verdict(score)
+    # Tacit Pre-Pass — ephemeral Tacit Context Card, non-blocking, non-mutating
+    _card = _build_tacit_card(raw, score, signals, session) if _TACIT_PREPASS_OK else None
+    if _card:
+        log_event("TACIT_PREPASS_CARD", {
+            k: _card[k] for k in (
+                "card_id", "request_type", "confidence",
+                "escalation_required", "memory_policy", "store1_mutation",
+            )
+        })
+    _system = ABIGAIL_SYSTEM_PROMPT
+    if _card and _card.get("response_guidance"):
+        _system = ABIGAIL_SYSTEM_PROMPT + "\n\n[TACIT GUIDANCE]\n" + _card["response_guidance"]
     session.messages.append({"role":"user","content":raw})
     t=time.monotonic()
     try:
         response=BACKEND_DISPATCH.get(active_backend[0],call_groq)(
-            messages=session.messages,system=ABIGAIL_SYSTEM_PROMPT)
+            messages=session.messages,system=_system)
     except Exception as exc:
         response=_safe_error(active_backend[0],exc)
         log_event("BACKEND_ERROR",{"backend":active_backend[0],"error_type":type(exc).__name__})
