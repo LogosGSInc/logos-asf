@@ -49,6 +49,17 @@ except ImportError:
     def _route_request(*a, **kw): return None
     def _safe_route_fields(c): return {}
 
+# ── Provider Adapter Dry Run (MR-02, dry-run only, no provider calls, no key reads)
+try:
+    from model_router.adapters.registry import ProviderRegistry as _ProviderRegistry
+    from model_router.provider_audit import safe_provider_fields as _safe_provider_fields
+    _provider_registry = _ProviderRegistry()
+    _PROVIDER_ADAPTER_OK = True
+except ImportError:
+    _PROVIDER_ADAPTER_OK = False
+    _provider_registry = None
+    def _safe_provider_fields(e): return {}
+
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
 LOG_FILE     = HOME / ".abigail_audit.jsonl"
@@ -367,6 +378,7 @@ def process_message(raw, session, kill_switch, active_backend):
     if _card and _card.get("response_guidance"):
         _system = ABIGAIL_SYSTEM_PROMPT + "\n\n[TACIT GUIDANCE]\n" + _card["response_guidance"]
     # Model Router Shadow Pass — MR-01: observe, score, log. Does not alter dispatch.
+    _route_card = None
     if _MODEL_ROUTER_OK:
         try:
             _route_card = _route_request(raw, score, signals, _card)
@@ -374,6 +386,17 @@ def process_message(raw, session, kill_switch, active_backend):
                 log_event("MODEL_ROUTE_CARD", _safe_route_fields(_route_card))
         except Exception as _rte:
             log_event("MODEL_ROUTER_ERROR", {"error_type": type(_rte).__name__})
+    # Provider Adapter Dry Run — MR-02: envelope + log only. No provider call. No dispatch change.
+    if _PROVIDER_ADAPTER_OK and _route_card:
+        try:
+            _adapter = _provider_registry.get(
+                _route_card.get("selected_provider", "current_backend")
+            )
+            _req_env = _adapter.build_request(_route_card, session)
+            _adapter.execute(_req_env)  # dry run only — output never returned to user
+            log_event("PROVIDER_DRY_RUN_CARD", _safe_provider_fields(_req_env.model_dump()))
+        except Exception as _pae:
+            log_event("PROVIDER_ADAPTER_ERROR", {"error_type": type(_pae).__name__})
     session.messages.append({"role":"user","content":raw})
     t=time.monotonic()
     try:
