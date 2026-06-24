@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:data-contract:v1.0.0",
+  "title": "LOGOS ASF — Training Data Contract",
+  "description": "Schema for governed training candidate records. All candidates begin with training_allowed=false and operator_review_required=true. No automated process may set training_allowed=true.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-24",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "candidate_id",
+    "schema_version",
+    "provenance",
+    "task_type",
+    "input",
+    "desired_output",
+    "safety_labels",
+    "redactions",
+    "confidence",
+    "training_allowed",
+    "operator_review_required",
+    "created_at",
+    "created_by_tool"
+  ],
+
+  "properties": {
+
+    "candidate_id": {
+      "type": "string",
+      "description": "Unique identifier for this training candidate. Format: TC-<YYYYMMDD>-<sha256[:8]>.",
+      "pattern": "^TC-[0-9]{8}-[0-9a-f]{8}$"
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "provenance": {
+      "type": "object",
+      "description": "Complete, auditable lineage for this candidate record.",
+      "required": [
+        "source_event_ids",
+        "source_session",
+        "sentinel_source",
+        "candidate_created_at",
+        "candidate_created_by"
+      ],
+      "properties": {
+        "source_event_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "IDs of the TAX2, BD1A, or operational audit records this candidate derives from."
+        },
+        "source_session": {
+          "type": "string",
+          "description": "Session timestamp or ID that produced the source evidence."
+        },
+        "store2_record_id": {
+          "type": ["string", "null"],
+          "description": "Store 2 record this candidate derives from, if applicable."
+        },
+        "store2_signature_id": {
+          "type": ["string", "null"],
+          "description": "Corresponding TAX2 signature_id in Store 2, if applicable."
+        },
+        "sentinel_source": {
+          "type": "string",
+          "enum": ["sentinel_overwatch"],
+          "description": "Only sentinel_overwatch is eligible. Heuristic simulation is forbidden as a training source."
+        },
+        "sentinel_action": {
+          "type": "string",
+          "description": "The Sentinel verdict that produced this evidence record."
+        },
+        "candidate_created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "candidate_created_by": {
+          "type": "string",
+          "description": "Tool name and version that generated this candidate. Format: <tool_name>:<version>."
+        },
+        "operator_approved_by": {
+          "type": ["string", "null"],
+          "description": "Operator ID who approved this record. Null until approved."
+        },
+        "operator_approved_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Timestamp of operator approval. Null until approved."
+        },
+        "operator_review_decision": {
+          "type": ["string", "null"],
+          "enum": ["approved", "rejected", "redacted", "rewritten", "merged", "experimental", "deferred", null],
+          "description": "Final operator decision from TR-02 review queue."
+        },
+        "dataset_version": {
+          "type": ["string", "null"],
+          "description": "The versioned dataset this record appears in, once promoted. Format: abigail_training_v<NNNN>."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "refusal_correct",
+        "refusal_with_explanation",
+        "benign_response",
+        "governed_escalation",
+        "policy_boundary",
+        "tool_use_safe",
+        "memory_boundary",
+        "provider_routing",
+        "tacit_prepass_compatible",
+        "operator_defined"
+      ],
+      "description": "The behavioral category this candidate is intended to reinforce."
+    },
+
+    "input": {
+      "type": "string",
+      "description": "The input to the model for this training example. Must be redacted per doctrine Section 5 before this field is populated.",
+      "minLength": 1
+    },
+
+    "desired_output": {
+      "type": "string",
+      "description": "The target response. Must reflect correct governed behavior — refusal, governed escalation, or safe response.",
+      "minLength": 1
+    },
+
+    "negative_example": {
+      "type": ["string", "null"],
+      "description": "An example of the undesired response for contrastive training, if applicable. Null if not used."
+    },
+
+    "safety_labels": {
+      "type": "object",
+      "description": "Safety classification of this candidate record.",
+      "required": [
+        "is_refusal_example",
+        "is_harmful_content",
+        "contains_pii",
+        "contains_credentials",
+        "contains_injection_residue",
+        "contains_evaluation_instrument_content",
+        "is_heuristic_provenance"
+      ],
+      "properties": {
+        "is_refusal_example": {
+          "type": "boolean",
+          "description": "True if the desired_output is a refusal or governed deflection."
+        },
+        "is_harmful_content": {
+          "type": "boolean",
+          "description": "True if the desired_output contains harmful, unsafe, or policy-violating content. Must be false for training_allowed to become true."
+        },
+        "contains_pii": {
+          "type": "boolean",
+          "description": "True if any field contains unredacted PII. Must be false for training_allowed to become true."
+        },
+        "contains_credentials": {
+          "type": "boolean",
+          "description": "True if any field contains unredacted credentials or secrets. Must be false for training_allowed to become true."
+        },
+        "contains_injection_residue": {
+          "type": "boolean",
+          "description": "True if the input contains prompt injection patterns. Must be false for training_allowed to become true."
+        },
+        "contains_evaluation_instrument_content": {
+          "type": "boolean",
+          "description": "True if any field contains TAX2, BD1A, or other evaluation instrument content. Must be false for training_allowed to become true."
+        },
+        "is_heuristic_provenance": {
+          "type": "boolean",
+          "description": "True if the source evidence came from heuristic_simulation rather than sentinel_overwatch. Must be false for training_allowed to become true."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "redactions": {
+      "type": "array",
+      "description": "Log of all redactions applied to this record. Empty array if no redactions were required.",
+      "items": {
+        "type": "object",
+        "required": ["field", "category", "position", "redacted_at"],
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": ["input", "desired_output", "negative_example"],
+            "description": "Which field was redacted."
+          },
+          "category": {
+            "type": "string",
+            "enum": ["CREDENTIAL", "PII:name", "PII:email", "PII:phone", "PII:address", "PII:other", "SYSTEM_PROMPT", "EVALUATION_VECTOR", "OTHER"],
+            "description": "Category of redacted content."
+          },
+          "position": {
+            "type": "string",
+            "description": "Human-readable position description, e.g. 'chars 42-78' or 'second paragraph'."
+          },
+          "redacted_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Confidence score from the source evidence event. Must be >= 0.80 for training_allowed to become true."
+    },
+
+    "contained_turns_ratio": {
+      "type": ["number", "null"],
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "For multi-turn evidence, the ratio of turns that were policy-contained. Must be >= 0.667 (4/6) for training_allowed to become true. Null for single-turn candidates."
+    },
+
+    "training_allowed": {
+      "type": "boolean",
+      "description": "Whether this candidate may be included in a training dataset. ALWAYS initialized to false. May only be set to true by the operator review gate (TR-02) after all safety_labels checks pass.",
+      "default": false
+    },
+
+    "operator_review_required": {
+      "type": "boolean",
+      "description": "Whether operator review is required before training_allowed may be set to true. ALWAYS initialized to true.",
+      "default": true
+    },
+
+    "rejection_reason": {
+      "type": ["string", "null"],
+      "description": "Reason this candidate was rejected at generation time or by operator review. Null if not rejected."
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of candidate record creation."
+    },
+
+    "created_by_tool": {
+      "type": "string",
+      "description": "Candidate builder tool name and version. Format: <tool_name>:<version>. Example: tr01_candidate_builder:1.0.0"
+    },
+
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Optional operator notes from the TR-02 review decision."
+    }
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "training_allowed_default": "training_allowed MUST be false on creation. A candidate builder that sets training_allowed=true on creation is in violation of TRAINING_DOCTRINE Section 2.4.",
+    "sentinel_overwatch_only": "provenance.sentinel_source MUST be sentinel_overwatch. Records with heuristic_simulation provenance must be rejected before this schema is populated.",
+    "no_harmful_training": "safety_labels.is_harmful_content MUST be false for training_allowed to be set to true at any stage.",
+    "no_eval_contamination": "safety_labels.contains_evaluation_instrument_content MUST be false for training_allowed to be set to true at any stage.",
+    "redaction_irreversible": "Once a field is redacted, the original content may not be recovered from this record. Redactions are permanent.",
+    "confidence_floor": "confidence MUST be >= 0.80 for training_allowed to be set to true.",
+    "multi_turn_containment_floor": "For multi-turn records, contained_turns_ratio MUST be >= 0.667 for training_allowed to be set to true."
+  }
+}
