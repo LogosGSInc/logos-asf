@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:review-decision:v1.0.0",
+  "title": "LOGOS ASF — Operator Review Decision",
+  "description": "Schema for all operator review decisions made against TR-01 improvement candidates. Every decision is attributable, timestamped, hashed, and append-only. No decision promotes, deploys, or trains anything automatically.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-25",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "schema_version",
+    "decision_id",
+    "candidate_id",
+    "candidate_version",
+    "operator_id",
+    "operator_role",
+    "action",
+    "reason",
+    "evidence_reviewed",
+    "redactions",
+    "rewritten_fields",
+    "previous_lane",
+    "new_lane",
+    "source_candidate_ids",
+    "resulting_status",
+    "training_allowed",
+    "store1_write_allowed",
+    "runtime_deployment_allowed",
+    "timestamp",
+    "queue_version",
+    "decision_hash"
+  ],
+
+  "properties": {
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "decision_id": {
+      "type": "string",
+      "description": "Unique deterministic ID derived from candidate_id, action, operator_id, and timestamp. Format: RD-YYYYMMDD-<sha256[:8]>.",
+      "pattern": "^RD-[0-9]{8}-[0-9a-f]{8}$"
+    },
+
+    "candidate_id": {
+      "type": "string",
+      "description": "The TR-01 candidate this decision applies to.",
+      "minLength": 1
+    },
+
+    "candidate_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Which version of the candidate this decision applies to. Version 1 is the original TR-01 output. Redact/rewrite increments to v2, v3, etc."
+    },
+
+    "operator_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the operator making the decision. Must not be empty."
+    },
+
+    "operator_role": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Role of the operator making the decision. Must not be empty."
+    },
+
+    "action": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "reject",
+        "redact",
+        "rewrite",
+        "reclassify",
+        "merge",
+        "request_more_evidence"
+      ],
+      "description": "The review action taken."
+    },
+
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Operator-provided reason for this decision. Required for all actions."
+    },
+
+    "evidence_reviewed": {
+      "type": "boolean",
+      "description": "Operator attests that all source evidence was reviewed before making this decision."
+    },
+
+    "redactions": {
+      "type": "array",
+      "description": "Log of fields redacted in this decision. Empty for non-redact actions.",
+      "items": {
+        "type": "object",
+        "required": ["field", "category", "redacted_at"],
+        "properties": {
+          "field":        { "type": "string" },
+          "category":     { "type": "string" },
+          "redacted_at":  { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "rewritten_fields": {
+      "type": "array",
+      "description": "Log of fields rewritten in this decision. Empty for non-rewrite actions.",
+      "items": {
+        "type": "object",
+        "required": ["field", "previous_value", "new_value"],
+        "properties": {
+          "field":          { "type": "string" },
+          "previous_value": {},
+          "new_value":      {}
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "previous_lane": {
+      "type": ["string", "null"],
+      "description": "Original lane before reclassification. Null for non-reclassify actions."
+    },
+
+    "new_lane": {
+      "type": ["string", "null"],
+      "description": "Target lane for reclassification. Null for non-reclassify actions."
+    },
+
+    "source_candidate_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "For merge: all candidate IDs being merged. Empty for other actions."
+    },
+
+    "resulting_status": {
+      "type": "string",
+      "enum": [
+        "operator_rejected",
+        "changes_requested",
+        "evidence_required",
+        "dataset_promotion_pending",
+        "skill_design_pending",
+        "tool_design_pending",
+        "evaluator_design_pending",
+        "doctrine_review_pending"
+      ],
+      "description": "The candidate's new promotion_status after this decision. Approve uses the lane-specific pending state; no action produces a final training dataset or deployment."
+    },
+
+    "training_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Always false. No decision authorizes training."
+    },
+
+    "store1_write_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Always false. No decision authorizes Store 1 writes."
+    },
+
+    "runtime_deployment_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Always false. No decision authorizes runtime deployment."
+    },
+
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp of the decision in ISO 8601 format."
+    },
+
+    "queue_version": {
+      "type": "string",
+      "description": "Review queue tool version. Format: review_queue:<version>."
+    },
+
+    "decision_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the full decision record minus this field (sort_keys=True, compact JSON). Provides tamper detection for the append-only log."
+    }
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "no_auto_promotion": "No action in this schema promotes a candidate to a training dataset, deployed skill, tool, evaluator, or model.",
+    "training_allowed_const_false": "training_allowed is const:false. No operator decision may authorize training.",
+    "store1_write_allowed_const_false": "store1_write_allowed is const:false.",
+    "runtime_deployment_allowed_const_false": "runtime_deployment_allowed is const:false.",
+    "append_only_log": "The decisions.jsonl file is append-only. No decision modifies or deletes prior decisions.",
+    "original_immutable": "Original TR-01 candidate files are never modified by any action.",
+    "hash_verified_on_load": "Every decision record is hash-verified on load. Tampered records cause immediate abort."
+  }
+}
