@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:improvement-candidate:v1.0.0",
+  "title": "LOGOS ASF — Improvement Candidate",
+  "description": "Schema for all five governed improvement candidate lanes. Every candidate is inactive on creation. No lane auto-promotes. Operator review required for all.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-25",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "candidate_id",
+    "schema_version",
+    "candidate_lane",
+    "source_store2_ids",
+    "source_session_ids",
+    "source_signature_ids",
+    "source_provenance",
+    "source_hashes",
+    "task_type",
+    "title",
+    "summary",
+    "problem_observed",
+    "proposed_improvement",
+    "evidence",
+    "confidence",
+    "safety_labels",
+    "privacy_labels",
+    "redaction_log",
+    "duplicate_group",
+    "operator_review_required",
+    "promotion_status",
+    "training_allowed",
+    "store1_write_allowed",
+    "runtime_deployment_allowed",
+    "created_at",
+    "builder_version"
+  ],
+
+  "properties": {
+
+    "candidate_id": {
+      "type": "string",
+      "description": "Unique deterministic ID. Format: <LANE_PREFIX>-YYYYMMDD-<sha256[:8]>. Prefix: TC training, SC skill, TL tooling, EC evaluator, DC doctrine.",
+      "pattern": "^(TC|SC|TL|EC|DC)-[0-9]{8}-[0-9a-f]{8}$"
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "candidate_lane": {
+      "type": "string",
+      "enum": [
+        "training_candidate",
+        "skill_candidate",
+        "tooling_candidate",
+        "evaluator_candidate",
+        "doctrine_candidate"
+      ],
+      "description": "The improvement lane this candidate belongs to. Determines which review gate must approve it before promotion."
+    },
+
+    "source_store2_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Store 2 run_ids this candidate derives from."
+    },
+
+    "source_session_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "TAX2 session IDs (fragment of signature_id) from which this candidate's evidence comes."
+    },
+
+    "source_signature_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Exact signature_ids from the Store 2 records. Each is one TAX2 test-level group."
+    },
+
+    "source_provenance": {
+      "type": "string",
+      "enum": ["sentinel_overwatch"],
+      "description": "Provenance of the source evidence. Must be sentinel_overwatch. Heuristic candidates are never eligible."
+    },
+
+    "source_hashes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["signature_id", "sha256"],
+        "properties": {
+          "signature_id": { "type": "string" },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "SHA-256 hashes of each source Store 2 record group (hash of concatenated turn records). Provides immutable traceability."
+    },
+
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "refusal_correct",
+        "refusal_with_explanation",
+        "safety_negative_example",
+        "governed_escalation",
+        "policy_boundary",
+        "dialectical_detection_skill",
+        "sentinel_escalation_rule",
+        "evaluator_consistency_test",
+        "doctrine_update",
+        "operator_defined"
+      ]
+    },
+
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Short human-readable title for the review queue."
+    },
+
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-paragraph summary of the candidate for the operator review queue."
+    },
+
+    "problem_observed": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the evidence shows — the specific pattern, verdict, or gap this candidate addresses."
+    },
+
+    "proposed_improvement": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the operator would need to do to act on this candidate. For training_candidate: operator-authored desired output required. For skill/tooling/evaluator/doctrine: description of the recommended change."
+    },
+
+    "evidence": {
+      "type": "object",
+      "description": "Structured evidence from the source Store 2 records.",
+      "required": [
+        "generation",
+        "vector_id",
+        "vector_name",
+        "level",
+        "stage",
+        "distortion_type",
+        "sentinel_action",
+        "sentinel_reason",
+        "haap_requirement",
+        "memory_action",
+        "bd1a_vectors",
+        "phase_q_vectors",
+        "turn_count",
+        "source_taxonomy"
+      ],
+      "properties": {
+        "generation": { "type": "string" },
+        "vector_id": { "type": "string" },
+        "vector_name": { "type": "string" },
+        "level": { "type": "string" },
+        "stage": { "type": "string" },
+        "distortion_type": { "type": "string" },
+        "sentinel_action": { "type": "string" },
+        "sentinel_reason": { "type": "string" },
+        "haap_requirement": { "type": "string" },
+        "memory_action": { "type": "string" },
+        "bd1a_vectors": { "type": "array", "items": { "type": "string" } },
+        "phase_q_vectors": { "type": "array", "items": { "type": "string" } },
+        "turn_count": { "type": "integer", "minimum": 1 },
+        "source_taxonomy": { "type": "string" },
+        "audit_reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Mean confidence across source evidence turns. Must be >= 0.80 for all lanes."
+    },
+
+    "safety_labels": {
+      "type": "object",
+      "required": [
+        "is_harmful_content",
+        "contains_adversarial_payload",
+        "contains_credentials",
+        "contains_evaluation_instrument_content",
+        "sentinel_source_verified"
+      ],
+      "properties": {
+        "is_harmful_content": {
+          "type": "boolean",
+          "description": "True if any proposed output contains harmful content. Must be false for any candidate to be approvable."
+        },
+        "contains_adversarial_payload": {
+          "type": "boolean",
+          "description": "True if the adversarial prompt text was copied into this candidate. Must be false — payloads are never reproduced in candidates."
+        },
+        "contains_credentials": {
+          "type": "boolean",
+          "description": "Must be false."
+        },
+        "contains_evaluation_instrument_content": {
+          "type": "boolean",
+          "description": "True if this candidate references TAX2/BD1A vector content as training material. Must be false for training candidates."
+        },
+        "sentinel_source_verified": {
+          "type": "boolean",
+          "description": "True if all source records have sentinel_source=sentinel_overwatch. Must be true."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "privacy_labels": {
+      "type": "object",
+      "required": [
+        "contains_pii",
+        "contains_user_derived_data",
+        "redaction_required"
+      ],
+      "properties": {
+        "contains_pii": { "type": "boolean" },
+        "contains_user_derived_data": { "type": "boolean" },
+        "redaction_required": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+
+    "redaction_log": {
+      "type": "array",
+      "description": "Log of any redactions applied. Empty array if none required.",
+      "items": {
+        "type": "object",
+        "required": ["field", "category", "redacted_at"],
+        "properties": {
+          "field": { "type": "string" },
+          "category": { "type": "string" },
+          "redacted_at": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "duplicate_group": {
+      "type": ["string", "null"],
+      "description": "Deduplication group key. Null if no near-duplicate exists in this run. Same key indicates near-identical evidence that should be reviewed together."
+    },
+
+    "operator_review_required": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true. Every candidate requires operator review before promotion."
+    },
+
+    "promotion_status": {
+      "type": "string",
+      "const": "candidate_only",
+      "description": "Always candidate_only on creation. Changed only by operator review gate."
+    },
+
+    "training_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Always false on creation. May only be set true by TR-02 operator review gate after all safety checks pass."
+    },
+
+    "store1_write_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Always false. Store 1 writes require the separate Store 1 delta tool and operator approval."
+    },
+
+    "runtime_deployment_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Always false. Skills, tools, evaluators, and doctrine updates require separate deployment approval."
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "builder_version": {
+      "type": "string",
+      "description": "Candidate builder tool version. Format: candidate_builder:<version>."
+    }
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "no_auto_promotion": "promotion_status is const:candidate_only. No automated process may change this field.",
+    "no_training_without_review": "training_allowed is const:false. TR-02 review gate is the only path to training_allowed=true.",
+    "no_store1_write": "store1_write_allowed is const:false. This is enforced by schema, not just convention.",
+    "no_runtime_deployment": "runtime_deployment_allowed is const:false. Skills, tools, evaluators, and doctrine updates are inactive until separately approved.",
+    "sentinel_overwatch_only": "source_provenance must be sentinel_overwatch. Heuristic candidates are never generated.",
+    "no_harmful_content": "safety_labels.is_harmful_content must be false. A builder that emits harmful content into candidate output is in violation of TRAINING_DOCTRINE.",
+    "no_payload_reproduction": "safety_labels.contains_adversarial_payload must be false. Adversarial prompt text is never reproduced in candidate records.",
+    "confidence_floor": "confidence must be >= 0.80. Records below this threshold are rejected before candidate generation."
+  }
+}
