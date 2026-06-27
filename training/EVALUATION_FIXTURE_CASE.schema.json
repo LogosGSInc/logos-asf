@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:evaluation-fixture-case:v1.0.0",
+  "title": "LOGOS ASF — TR-06B Evaluation Fixture Case",
+  "description": "Contract for a single deterministic metadata evaluation fixture case. Fixture cases prove that specific candidate states produce expected TR-06A gate results (pass/fail/block/not_evaluated) or are rejected by the harness before gate execution. All fixture cases are metadata-only; no live inference occurs.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-27",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "fixture_case_id",
+    "schema_version",
+    "created_at",
+    "case_type",
+    "candidate_artifact_id",
+    "candidate_mutations",
+    "lineage_mutations",
+    "expected_gate_results",
+    "expected_harness_rejection",
+    "requires_live_inference",
+    "metadata_only",
+    "notes"
+  ],
+
+  "properties": {
+
+    "fixture_case_id": {
+      "type": "string",
+      "description": "Deterministic identifier. Format: FC-<sha256[:16]>. Stable for same case_type.",
+      "minLength": 1
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "case_type": {
+      "type": "string",
+      "description": "Classification of this fixture case. Determines which candidate state is under test.",
+      "enum": [
+        "valid_complete_metadata",
+        "missing_dep_keystone_refs",
+        "missing_source_registry_refs",
+        "missing_clearance_ledger_refs",
+        "missing_dry_run_refs",
+        "missing_synthetic_provenance",
+        "non_synthetic_candidate",
+        "tampered_lineage_hash",
+        "promotion_status_violation",
+        "model_weights_present_violation",
+        "runtime_deployment_violation",
+        "store1_write_violation",
+        "external_calls_violation",
+        "adapter_checkpoint_path_violation",
+        "raw_prompt_leak_violation"
+      ]
+    },
+
+    "candidate_artifact_id": {
+      "type": "string",
+      "description": "The model_artifact_id of the candidate exercised by this case.",
+      "minLength": 1
+    },
+
+    "candidate_mutations": {
+      "type": "object",
+      "description": "Description of mutations applied to the base valid candidate to produce this case. Empty for valid_complete_metadata."
+    },
+
+    "lineage_mutations": {
+      "type": "object",
+      "description": "Description of mutations applied to the base lineage record to produce this case. Empty for valid_complete_metadata."
+    },
+
+    "expected_gate_results": {
+      "type": "object",
+      "description": "Mapping of evaluation_gate → expected result for gates that this case exercises. Gates not listed may return any valid result.",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["pass", "fail", "block", "not_evaluated"]
+      }
+    },
+
+    "expected_harness_rejection": {
+      "type": "boolean",
+      "description": "Whether the TR-06A harness should reject this candidate before gate execution (due to unsafe flags, forbidden fields, or wrong promotion_status)."
+    },
+
+    "requires_live_inference": {
+      "type": "boolean",
+      "description": "Always false for TR-06B fixture cases. TR-06B exercises metadata-only gates.",
+      "const": false
+    },
+
+    "metadata_only": {
+      "type": "boolean",
+      "description": "Always true for TR-06B fixture cases.",
+      "const": true
+    },
+
+    "notes": {
+      "type": "string",
+      "description": "Human-readable explanation of what this fixture case proves."
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "metadata_only_const":            "metadata_only is const:true. TR-06B fixture cases never test live inference.",
+    "requires_live_inference_const":  "requires_live_inference is const:false. TR-06B fixtures are pure metadata.",
+    "no_promotion":                   "No fixture case emits a promotion decision or sets promotion_blocked=false.",
+    "no_model_weights":               "No fixture case creates or references real model weight files.",
+    "no_training":                    "No fixture case triggers real model training.",
+    "no_tr06c":                       "TR-06C live behavioral eval interface was not started here.",
+    "no_tr07":                        "TR-07 shadow/canary was not started here."
+  }
+}

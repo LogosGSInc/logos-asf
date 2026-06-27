@@ -127,6 +127,24 @@ def _evaluation_report_id(artifact_id: str, gate_name: str, gate_result: dict) -
     return "ER-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
+def compute_lineage_hash(lineage_record: dict) -> str:
+    """Compute the expected lineage_hash for a lineage record.
+
+    Mirrors model_registry._compute_lineage_hash. Used by audit_safe_json_ir_output
+    to verify stored lineage_hash against the current provenance ref state.
+    """
+    data = {k: lineage_record.get(k) for k in (
+        "artifact_id", "artifact_type",
+        "dep_keystone_ingress_refs",
+        "dep_keystone_evidence_sha256_refs",
+        "dep_keystone_verification_report_refs",
+        "source_registry_refs", "clearance_ledger_refs",
+        "dataset_manifest_refs", "dry_run_envelope_refs",
+    )}
+    raw = json.dumps(data, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 def _assert_candidate_safe(candidate: dict) -> None:
     artifact_id = candidate.get("model_artifact_id", "<unknown>")
 
@@ -325,6 +343,14 @@ def _gate_audit_safe_json_ir_output(candidate, lineage_record=None, context=None
     evidence["lineage_hash_present"] = bool(lineage_hash)
     if not lineage_hash:
         issues.append("lineage.lineage_hash is missing")
+    else:
+        expected_hash = compute_lineage_hash(lin)
+        evidence["lineage_hash_verified"] = (lineage_hash == expected_hash)
+        if lineage_hash != expected_hash:
+            issues.append(
+                f"lineage_hash mismatch: stored={lineage_hash[:16]}... "
+                f"expected={expected_hash[:16]}..."
+            )
 
     notes_text = candidate.get("notes") or ""
     evidence["notes_length"] = len(notes_text)

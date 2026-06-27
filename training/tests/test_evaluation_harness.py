@@ -22,6 +22,7 @@ from training.evaluation_harness import (
     EvaluationHarnessError,
     EvaluationReportError,
     build_evaluation_report,
+    compute_lineage_hash,
     load_lineage_record_from_candidate,
     load_registry_candidate,
     run_all_metadata_gates,
@@ -87,7 +88,7 @@ def _valid_candidate(**overrides) -> dict:
             "training_job_contract_refs":         [],
             "evaluation_refs":                    [],
             "promotion_decision_refs":            [],
-            "lineage_hash":                       "a" * 64,
+            "lineage_hash":                       None,   # computed below
             "previous_lineage_hash":              "0" * 64,
             "governance_flags": {
                 "training_allowed":           False,
@@ -110,6 +111,9 @@ def _valid_candidate(**overrides) -> dict:
         "notes": "Test candidate for TR-06A evaluation harness.",
     }
     base.update(overrides)
+    # Compute real lineage hash so audit_safe_json_ir_output gate passes
+    if isinstance(base.get("lineage"), dict):
+        base["lineage"]["lineage_hash"] = compute_lineage_hash(base["lineage"])
     return base
 
 
