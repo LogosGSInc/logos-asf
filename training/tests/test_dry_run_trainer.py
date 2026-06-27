@@ -23,6 +23,15 @@ from dry_run_trainer import (
 )
 from dataset_builder import build_dataset
 from review_queue import _decision_id, _decision_hash as rdh
+from clearance_ledger import (
+    create_empty_ledger as _cl_create,
+    append_decision as _cl_append,
+    save_ledger as _cl_save,
+)
+
+FIXTURE_LEDGER_PATH = (
+    Path(__file__).parent / "fixtures" / "clearance_ledger_valid_fixture.json"
+)
 
 
 # ── synthetic TR-03 fixtures ──────────────────────────────────────────────────
@@ -164,6 +173,47 @@ def _rechecksum(dataset_dir: Path):
             sha = hashlib.sha256(p.read_bytes()).hexdigest()
             lines.append(f"{sha}  {f}")
     (dataset_dir / "checksums.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _build_valid_ledger(tmp_path: Path) -> Path:
+    """
+    Build and save a hash-chain-valid clearance ledger with:
+      L1-001 hp_approve (sft_candidate and all other approved uses)
+      L1-007 hp_approve (sft_candidate, evaluation_reference)
+    Returns the Path to the saved ledger file.
+    """
+    ledger = _cl_create(
+        {"human_principal_id": "DWS-001", "display_name": "David Warren Smith Jr."},
+        ledger_id="test-fixture-ledger",
+        created_at="2026-06-26T09:00:00Z",
+    )
+    _cl_append(ledger, {
+        "source_id": "L1-001",
+        "decision_type": "hp_approve",
+        "from_status": "hp_pending",
+        "to_status": "approved",
+        "actor_id": "DWS-001",
+        "actor_role": "human_principal",
+        "decision_status": "recorded",
+        "decision_reason": "HP approved L1-001 for all approved uses.",
+        "hp_decision_status": "approved",
+        "timestamp": "2026-06-26T09:00:01Z",
+    })
+    _cl_append(ledger, {
+        "source_id": "L1-007",
+        "decision_type": "hp_approve",
+        "from_status": "hp_pending",
+        "to_status": "approved",
+        "actor_id": "DWS-001",
+        "actor_role": "human_principal",
+        "decision_status": "recorded",
+        "decision_reason": "HP approved L1-007 synthetic instruction data.",
+        "hp_decision_status": "approved",
+        "timestamp": "2026-06-26T09:00:02Z",
+    })
+    path = tmp_path / "clearance_ledger.json"
+    _cl_save(ledger, path)
+    return path
 
 
 # ── happy path ────────────────────────────────────────────────────────────────
@@ -586,12 +636,15 @@ def test_output_contains_all_required_files(tmp_path):
 def test_validation_report_all_gates_passed(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    # Use a real approved source_id so source_registry_cleared=True in the report
-    run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate")
+    ledger_path = _build_valid_ledger(tmp_path)
+    run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate",
+                clearance_ledger_path=ledger_path)
 
     vr = json.loads((out_dir / "validation_report.json").read_text(encoding="utf-8"))
     assert vr["all_gates_passed"] is True
     assert vr["failures"] == []
+    assert vr["gates"]["source_registry_cleared"] is True
+    assert vr["gates"]["ledger_cleared"] is True
 
 
 # ── static analysis: no forbidden imports ─────────────────────────────────────
@@ -671,64 +724,81 @@ def test_is_simulated_operator_passes_real_operator():
 # ── TR-04B bridge: source registry enforcement ────────────────────────────────
 
 def test_dr_bridge_approved_source_l1_001_allowed(tmp_path):
-    """L1-001 is approved for sft_candidate — dry-run must succeed."""
+    """L1-001 is approved for sft_candidate in both registry and ledger — must succeed."""
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
     envelope = run_dry_run(ds_dir, out_dir,
-                           source_id="L1-001", requested_use="sft_candidate")
+                           source_id="L1-001", requested_use="sft_candidate",
+                           clearance_ledger_path=ledger_path)
     assert envelope["training_allowed"] is False
     assert envelope["job_intent"]["source_id"] == "L1-001"
     assert envelope["job_intent"]["source_registry_cleared"] is True
+    assert envelope["job_intent"]["ledger_cleared"] is True
     assert envelope["validation_summary"]["source_registry_cleared"] is True
+    assert envelope["validation_summary"]["ledger_cleared"] is True
 
 
 def test_dr_bridge_approved_source_l1_007_allowed(tmp_path):
-    """L1-007 (Synthetic Instruction Data) is approved for sft_candidate."""
+    """L1-007 (Synthetic Instruction Data) is approved for sft_candidate in both gates."""
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
     envelope = run_dry_run(ds_dir, out_dir,
-                           source_id="L1-007", requested_use="sft_candidate")
+                           source_id="L1-007", requested_use="sft_candidate",
+                           clearance_ledger_path=ledger_path)
     assert envelope["validation_summary"]["source_registry_cleared"] is True
+    assert envelope["validation_summary"]["ledger_cleared"] is True
 
 
 def test_dr_bridge_blocked_l6_001_fails(tmp_path):
-    """L6-001 (Common Crawl) is blocked — must fail for any use."""
+    """L6-001 (Common Crawl) is blocked in registry — must fail even with valid ledger."""
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
     with pytest.raises(SystemExit):
-        run_dry_run(ds_dir, out_dir, source_id="L6-001", requested_use="sft_candidate")
+        run_dry_run(ds_dir, out_dir, source_id="L6-001", requested_use="sft_candidate",
+                    clearance_ledger_path=ledger_path)
 
 
 def test_dr_bridge_pending_l5_001_fails_for_sft(tmp_path):
-    """L5-001 (Common Pile) is hp_pending — must fail for sft_candidate."""
+    """L5-001 (Common Pile) is hp_pending in registry — must fail even with valid ledger."""
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
     with pytest.raises(SystemExit):
-        run_dry_run(ds_dir, out_dir, source_id="L5-001", requested_use="sft_candidate")
+        run_dry_run(ds_dir, out_dir, source_id="L5-001", requested_use="sft_candidate",
+                    clearance_ledger_path=ledger_path)
 
 
 def test_dr_bridge_pending_l7_001_fails_for_sft(tmp_path):
-    """L7-001 (Stack Exchange CC BY-SA) is pending — must fail for sft_candidate."""
+    """L7-001 (Stack Exchange CC BY-SA) is pending in registry — must fail even with ledger."""
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
     with pytest.raises(SystemExit):
-        run_dry_run(ds_dir, out_dir, source_id="L7-001", requested_use="sft_candidate")
+        run_dry_run(ds_dir, out_dir, source_id="L7-001", requested_use="sft_candidate",
+                    clearance_ledger_path=ledger_path)
 
 
 def test_dr_bridge_l1_004_rejects_sft_candidate(tmp_path):
-    """L1-004 (Sentinel Red Team) only allows rag and evaluation_reference."""
+    """L1-004 (Sentinel Red Team) only allows rag/evaluation_reference in registry."""
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
     with pytest.raises(SystemExit):
-        run_dry_run(ds_dir, out_dir, source_id="L1-004", requested_use="sft_candidate")
+        run_dry_run(ds_dir, out_dir, source_id="L1-004", requested_use="sft_candidate",
+                    clearance_ledger_path=ledger_path)
 
 
 def test_dr_bridge_unknown_source_id_fails(tmp_path):
-    """An unregistered source_id must fail closed."""
+    """An unregistered source_id must fail closed even with a valid ledger."""
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
     with pytest.raises(SystemExit):
-        run_dry_run(ds_dir, out_dir, source_id="L9-999", requested_use="sft_candidate")
+        run_dry_run(ds_dir, out_dir, source_id="L9-999", requested_use="sft_candidate",
+                    clearance_ledger_path=ledger_path)
 
 
 def test_dr_bridge_no_source_id_fails_closed(tmp_path):
@@ -740,21 +810,112 @@ def test_dr_bridge_no_source_id_fails_closed(tmp_path):
 
 
 def test_dr_bridge_no_source_id_with_test_bypass_succeeds(tmp_path):
-    """Test-only bypass allows no source_id in simulation mode."""
+    """Test-only bypass allows no source_id and no ledger — both cleared flags are False."""
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
     envelope = run_dry_run(ds_dir, out_dir, allow_unregistered_source_for_tests=True)
     assert envelope["training_allowed"] is False
-    # source_registry_cleared is False when bypassed (source_id is None)
     assert envelope["validation_summary"]["source_registry_cleared"] is False
+    assert envelope["validation_summary"]["ledger_cleared"] is False
 
 
 def test_dr_bridge_source_registry_cleared_in_audit_record(tmp_path):
-    """Audit record captures source registry clearance state."""
+    """Audit record captures both registry and ledger clearance state."""
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate")
+    ledger_path = _build_valid_ledger(tmp_path)
+    run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate",
+                clearance_ledger_path=ledger_path)
     audit = json.loads((out_dir / "audit_record.json").read_text(encoding="utf-8"))
     assert audit["source_id"] == "L1-001"
     assert audit["requested_use"] == "sft_candidate"
     assert audit["source_registry_cleared"] is True
+    assert audit["ledger_cleared"] is True
+    assert audit["ledger_entry_id"].startswith("LE-")
+
+
+# ── TR-04B ledger bridge: mandatory clearance ledger enforcement ──────────────
+
+def test_dr_bridge_fails_without_clearance_ledger(tmp_path):
+    """source_id provided but no clearance_ledger_path → fail closed."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    with pytest.raises(SystemExit):
+        run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate")
+        # no clearance_ledger_path — must fail closed
+
+
+def test_dr_bridge_fails_when_ledger_has_no_matching_entry(tmp_path):
+    """Valid ledger with no entry for source_id → ledger gate fails."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    # Build an empty ledger (no entries for L1-001)
+    ledger = _cl_create(
+        {"human_principal_id": "DWS-001", "display_name": "Test Authority"},
+        ledger_id="empty-test-ledger",
+        created_at="2026-06-26T09:00:00Z",
+    )
+    empty_path = tmp_path / "empty_ledger.json"
+    _cl_save(ledger, empty_path)
+    with pytest.raises(SystemExit):
+        run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate",
+                    clearance_ledger_path=empty_path)
+
+
+def test_dr_bridge_fails_with_tampered_ledger(tmp_path):
+    """Tampered ledger hash chain → ledger validation fails → dry-run blocked."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
+    # Load, tamper first entry, save as new file
+    raw = json.loads(ledger_path.read_text(encoding="utf-8"))
+    raw["entries"][0]["decision_reason"] = "TAMPERED_CONTENT"
+    tampered_path = tmp_path / "tampered_ledger.json"
+    tampered_path.write_text(json.dumps(raw), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate",
+                    clearance_ledger_path=tampered_path)
+
+
+def test_dr_bridge_audit_includes_ledger_fields(tmp_path):
+    """Audit record has ledger_cleared=True and ledger_entry_id when both gates pass."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
+    run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate",
+                clearance_ledger_path=ledger_path)
+    audit = json.loads((out_dir / "audit_record.json").read_text(encoding="utf-8"))
+    assert audit["ledger_cleared"] is True
+    assert audit["ledger_entry_id"] is not None
+    assert audit["ledger_entry_id"].startswith("LE-")
+    assert len(audit["ledger_entry_id"]) == 19  # "LE-" + 16 hex
+
+
+def test_dr_bridge_training_job_preview_includes_ledger_cleared(tmp_path):
+    """training_job_preview.json includes ledger_cleared flag."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    ledger_path = _build_valid_ledger(tmp_path)
+    run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate",
+                clearance_ledger_path=ledger_path)
+    preview = json.loads((out_dir / "training_job_preview.json").read_text(encoding="utf-8"))
+    assert preview["ledger_cleared"] is True
+
+
+def test_dr_bridge_bypass_audit_has_ledger_cleared_false(tmp_path):
+    """With test bypass, audit_record has ledger_cleared=False and ledger_entry_id=None."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    run_dry_run(ds_dir, out_dir, allow_unregistered_source_for_tests=True)
+    audit = json.loads((out_dir / "audit_record.json").read_text(encoding="utf-8"))
+    assert audit["ledger_cleared"] is False
+    assert audit["ledger_entry_id"] is None
+
+
+def test_dr_bridge_static_fixture_ledger_is_valid(tmp_path):
+    """The committed fixture file has a valid hash chain and passes dry-run for L1-001."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    envelope = run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate",
+                           clearance_ledger_path=FIXTURE_LEDGER_PATH)
+    assert envelope["validation_summary"]["ledger_cleared"] is True

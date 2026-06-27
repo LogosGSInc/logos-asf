@@ -1,9 +1,9 @@
 # TR-04: Dry-Run Training Adapter
 
-**Version**: 1.0.0  
-**Status**: Implemented  
+**Version**: 1.1.0  
+**Status**: Implemented (TR-04B gate hardening applied)  
 **Authority**: LOGOS Governance Systems Inc.  
-**Effective Date**: 2026-06-26  
+**Effective Date**: 2026-06-27  
 **Prior Phase**: TR-03 — Immutable Dataset Builder and Contamination Gate  
 **Next Phase**: TR-05 — Model Registry and Lineage (not started)
 
@@ -59,22 +59,24 @@ a nonzero exit and no output artifacts are written.
 
 | Gate | Block condition |
 |------|----------------|
-| Output dir security | `--out-dir` is inside repository root |
-| Manifest exists | `manifest.json` not found in dataset dir |
-| Manifest version | `schema_versions.manifest_schema` not in supported set (`1.0.0`) |
-| Required artifacts | Any of the 7 required files is absent |
-| Checksum integrity | Any file listed in `checksums.sha256` does not match its stored hash |
-| `training_allowed` | `manifest.training_allowed` is not exactly `false` |
-| `operator_promotion_required` | `manifest.operator_promotion_required` is not exactly `true` |
-| `store1_write_allowed` | `manifest.store1_write_allowed` is not exactly `false` |
-| `runtime_deployment_allowed` | `manifest.runtime_deployment_allowed` is not exactly `false` |
-| `model_promotion_allowed` | `manifest.model_promotion_allowed` is `true` |
-| `external_calls_allowed` | `manifest.external_calls_allowed` is `true` |
-| Scan report: no critical | `scan_report.has_critical` is `true` |
-| Scan report: no protected eval | `"protected_evaluation_overlap"` in `scan_report.categories_found` |
-| Dataset status | `manifest.dataset_status` is `contamination_blocked` or `dataset_validation_failed` |
-| Split count match | Actual line count in any JSONL split differs from manifest declared count |
-| Operator identity | Production mode + simulated operator ID (TEST_, SIM_, DRY_ prefixes or _SIM_, _DRY_, _TEST_ substrings) |
+| 0. Output dir security | `--out-dir` is inside repository root |
+| 1. Manifest exists | `manifest.json` not found in dataset dir |
+| 2. Manifest version | `schema_versions.manifest_schema` not in supported set (`1.0.0`) |
+| 3. Required artifacts | Any of the 7 required files is absent |
+| 4. Checksum integrity | Any file listed in `checksums.sha256` does not match its stored hash |
+| 5. `training_allowed` | `manifest.training_allowed` is not exactly `false` |
+| 5. `operator_promotion_required` | `manifest.operator_promotion_required` is not exactly `true` |
+| 5. `store1_write_allowed` | `manifest.store1_write_allowed` is not exactly `false` |
+| 5. `runtime_deployment_allowed` | `manifest.runtime_deployment_allowed` is not exactly `false` |
+| 5. `model_promotion_allowed` | `manifest.model_promotion_allowed` is `true` |
+| 5. `external_calls_allowed` | `manifest.external_calls_allowed` is `true` |
+| 6. Scan report: no critical | `scan_report.has_critical` is `true` |
+| 6. Scan report: no protected eval | `"protected_evaluation_overlap"` in `scan_report.categories_found` |
+| 7. Dataset status | `manifest.dataset_status` is `contamination_blocked` or `dataset_validation_failed` |
+| 8. Split count match | Actual line count in any JSONL split differs from manifest declared count |
+| 9. Operator identity | Production mode + simulated operator ID (TEST_, SIM_, DRY_ prefixes or _SIM_, _DRY_, _TEST_ substrings) |
+| **10. Source registry** | `--source-id` not provided (without test bypass), or source not `approved` in `source_registry_seed.json`, or `requested_use` not in `allowed_uses` |
+| **10. Clearance ledger** | `--clearance-ledger` not provided (without test bypass), ledger hash chain invalid, or no valid approval entry for source_id |
 
 ---
 
@@ -172,22 +174,58 @@ across runs. Changing any of these inputs changes the ID.
 
 ---
 
+## TR-04B Gate: Registry + Ledger Required
+
+As of TR-04B hardening, the dry-run trainer requires both gates to be satisfied
+for normal operation:
+
+**Gate 1 — Source Registry (TR-04A.3):** `--source-id` must be an `approved`
+entry in `source_registry_seed.json` and `--requested-use` must be in its
+`allowed_uses` list.
+
+**Gate 2 — Clearance Ledger (TR-04A.4):** `--clearance-ledger` must point to a
+valid clearance ledger file. The ledger must have a valid SHA-256 hash chain and
+contain at least one approval-type decision (`hp_approve`, `reg01_clear`,
+`lgl01_clear`, `ea00_batch`) for the source_id that has not been superseded by
+a subsequent block/reject/archive decision.
+
+If either gate fails, the dry-run exits with a nonzero status and no output
+artifacts are written.
+
+**Test-only bypass:** `--allow-unregistered-source-for-tests` skips both gates.
+This flag must not appear in production invocations. When bypass is used,
+`source_registry_cleared` and `ledger_cleared` are `false` in all outputs.
+
+Both cleared flags appear in all four output artifacts:
+- `dry_run_envelope.json` → `validation_summary.ledger_cleared`, `job_intent.ledger_cleared`
+- `training_job_preview.json` → `ledger_cleared`
+- `validation_report.json` → `gates.ledger_cleared`
+- `audit_record.json` → `ledger_cleared`, `ledger_entry_id`
+
+---
+
 ## Exact Commands
 
 ```bash
-# Simulation mode (accepts TEST_ operators)
+# Full two-gate dry-run (registry + ledger)
 python3 training/dry_run_trainer.py \
-  --dataset-dir /tmp/tr03_output \
-  --out-dir     /tmp/tr04_dry_run \
-  --mode        simulation \
-  --operator-id TEST_OP_20260626
+  --dataset-dir    /tmp/tr03_output \
+  --out-dir        /tmp/tr04_dry_run \
+  --mode           simulation \
+  --operator-id    TEST_OP_001 \
+  --source-id      L1-001 \
+  --requested-use  sft_candidate \
+  --clearance-ledger /path/to/clearance_ledger.json
 
-# Production mode (requires non-simulated operator ID)
+# Production mode (requires non-simulated operator ID + both gates)
 python3 training/dry_run_trainer.py \
-  --dataset-dir /tmp/tr03_output \
-  --out-dir     /tmp/tr04_dry_run_prod \
-  --mode        production \
-  --operator-id PROD_GOVERNANCE_LEAD_001
+  --dataset-dir    /tmp/tr03_output \
+  --out-dir        /tmp/tr04_dry_run_prod \
+  --mode           production \
+  --operator-id    PROD_GOVERNANCE_LEAD_001 \
+  --source-id      L1-001 \
+  --requested-use  sft_candidate \
+  --clearance-ledger /path/to/clearance_ledger.json
 
 # Run TR-04 tests only
 python3 -m pytest -q training/tests/test_dry_run_trainer.py
@@ -207,13 +245,21 @@ python3 -m pytest -q
 field in every envelope explicitly states that TR-05 is required before any
 real training-job submission.
 
+**synthetic_doctrine.py (TR-04A.5)**: Not started. Synthetic data generation
+from owned doctrine is a separate phase after the clearance ledger is proven.
+
 **LoRA / QLoRA adapters**: Future work. TR-04 produces no adapters and contains
 no training framework code. The training-job preview describes these methods
 as placeholders (`future: local_lora or local_qlora`).
 
 **Real training infrastructure**: Not implemented at any phase. A separately
-signed `TRAINING_JOB_CONTRACT` (see `training/TRAINING_JOB_CONTRACT.schema.json`)
-is required, and operator approval is final.
+signed `TRAINING_JOB_CONTRACT` is required, and operator approval is final.
+
+**Real Ed25519 signing on ledger entries**: TR-04A.5. All current ledger entries
+carry `signature_status: unsigned_local` and `signature_algorithm: ed25519_placeholder`.
+
+**No real training occurred in TR-04B.** The dry-run adapter continues to
+produce no model weights, no training artifacts, and no external calls.
 
 ---
 

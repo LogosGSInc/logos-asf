@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from source_registry import (
-    assert_source_allowed as _registry_assert,
+    assert_source_allowed_with_ledger as _registry_assert,
     SourceRegistryError,
     SourceBlockedError,
 )
@@ -156,6 +156,7 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
                 source_id: str = None,
                 requested_use: str = "sft_candidate",
                 source_registry_path=None,
+                clearance_ledger_path=None,
                 allow_unregistered_source_for_tests: bool = False) -> dict:
     """
     Validate a TR-03 dataset artifact directory and produce a dry-run
@@ -275,26 +276,38 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
             f"ID: {operator_id!r}"
         )
 
-    # ── 10. Source registry enforcement ───────────────────────────────────────
+    # ── 10. Source registry + clearance ledger enforcement ────────────────────
     source_clearance = None
-    if source_id is not None:
+    if allow_unregistered_source_for_tests:
+        # TEST-ONLY bypass: skip registry and ledger checks entirely.
+        # source_clearance stays None; cleared flags are False in all outputs.
+        pass
+    elif source_id is None:
+        _fail(
+            "SOURCE_REGISTRY_BLOCK: no source_id provided. "
+            "All training sources must be registered in the source registry. "
+            "Provide --source-id with an approved registry entry."
+        )
+    elif clearance_ledger_path is None:
+        _fail(
+            "SOURCE_LEDGER_BLOCK: no clearance_ledger_path provided. "
+            "A valid clearance ledger with an approval record is required. "
+            "Provide --clearance-ledger pointing to a valid clearance ledger file."
+        )
+    else:
         try:
-            source_clearance = _registry_assert(source_id, requested_use,
-                                                source_registry_path)
+            source_clearance = _registry_assert(
+                source_id, requested_use,
+                source_registry_path, clearance_ledger_path,
+            )
         except SourceBlockedError as e:
             _fail(f"SOURCE_REGISTRY_BLOCK: {e}")
         except SourceRegistryError as e:
             _fail(f"SOURCE_REGISTRY_BLOCK: {e}")
-    elif not allow_unregistered_source_for_tests:
-        _fail(
-            "SOURCE_REGISTRY_BLOCK: no source_id provided. "
-            "All training sources must be registered in the source registry. "
-            "Provide --source-id with an approved registry entry, or use "
-            "--allow-unregistered-source-for-tests (test-only bypass)."
-        )
-    # else: test bypass — source_clearance stays None, logged in audit record
 
     source_registry_cleared = (source_clearance is not None)
+    ledger_cleared  = source_clearance.get("ledger_cleared",  False) if source_clearance else False
+    ledger_entry_id = source_clearance.get("ledger_entry_id")         if source_clearance else None
 
     # ── 11. Build deterministic dry-run ID ─────────────────────────────────
     dr_id = _dry_run_id(manifest, mode, operator_id)
@@ -348,6 +361,7 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
             "source_id":       source_id,
             "requested_use":   requested_use,
             "source_registry_cleared": source_registry_cleared,
+            "ledger_cleared":          ledger_cleared,
         },
         "dataset_summary": {
             "dataset_id":                    manifest.get("dataset_id"),
@@ -368,6 +382,7 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
             "operator_identity_valid":    True,
             "manifest_version_supported": True,
             "source_registry_cleared":    source_registry_cleared,
+            "ledger_cleared":             ledger_cleared,
         },
         "estimated_compute": {
             "estimated_char_volume":   char_volume,
@@ -393,6 +408,7 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
         "created_at":    ts,
         "preview_only":  True,
         "training_allowed": False,
+        "ledger_cleared": ledger_cleared,
         "job_description": (
             "Preview of what a governed training job would look like. "
             "No job has been submitted and no training has been performed."
@@ -450,6 +466,8 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
             "dataset_status_valid":              dataset_status == "dataset_validation_passed",
             "split_counts_match":                True,
             "operator_identity_valid":           True,
+            "source_registry_cleared":           source_registry_cleared,
+            "ledger_cleared":                    ledger_cleared,
         },
     }
 
@@ -460,9 +478,11 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
         "adapter_version": ADAPTER_VERSION,
         "mode":            mode,
         "operator_id":     operator_id,
-        "source_id":       source_id,
-        "requested_use":   requested_use,
+        "source_id":               source_id,
+        "requested_use":           requested_use,
         "source_registry_cleared": source_registry_cleared,
+        "ledger_cleared":          ledger_cleared,
+        "ledger_entry_id":         ledger_entry_id,
         "dataset_id":      manifest.get("dataset_id"),
         "dataset_status":  dataset_status,
         "manifest_content_hash": manifest.get("content_hash"),
@@ -513,6 +533,8 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
     print(f"  Dry-Run ID        : {dr_id}")
     print(f"  Dataset status    : {dataset_status}")
     print(f"  Checksums verified: OK")
+    print(f"  Registry cleared  : {source_registry_cleared}")
+    print(f"  Ledger cleared    : {ledger_cleared}")
     print(f"  training_allowed  : False")
     print(f"  Result            : DRY_RUN_ACCEPTED")
     print(f"  Envelope          : {env_path}")
@@ -562,8 +584,18 @@ def main() -> None:
         help="Path to an alternative source registry JSON file (default: source_registry_seed.json).",
     )
     parser.add_argument(
+        "--clearance-ledger", default=None,
+        help=(
+            "Path to a clearance ledger JSON file containing an approval record "
+            "for --source-id. Required alongside --source-id for normal operation."
+        ),
+    )
+    parser.add_argument(
         "--allow-unregistered-source-for-tests", action="store_true", default=False,
-        help="TEST-ONLY bypass: skip source registry check when no --source-id is provided.",
+        help=(
+            "TEST-ONLY bypass: skip source registry and clearance ledger checks. "
+            "Must not be used in production."
+        ),
     )
     args = parser.parse_args()
 
@@ -575,6 +607,7 @@ def main() -> None:
         source_id=args.source_id,
         requested_use=args.requested_use,
         source_registry_path=args.source_registry,
+        clearance_ledger_path=Path(args.clearance_ledger) if args.clearance_ledger else None,
         allow_unregistered_source_for_tests=args.allow_unregistered_source_for_tests,
     )
 
