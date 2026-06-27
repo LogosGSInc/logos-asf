@@ -411,3 +411,46 @@ def assert_source_allowed(source_id: str, requested_use: str,
 
 def build_registry_summary(registry_path=None) -> dict:
     return SourceRegistry(registry_path).load().build_registry_summary()
+
+
+def assert_source_allowed_with_ledger(source_id: str, requested_use: str,
+                                       registry_path=None,
+                                       ledger_path=None) -> dict:
+    """
+    Two-gate clearance check: source registry (TR-04A.3) + clearance ledger (TR-04A.4).
+
+    If ledger_path is None, behaves identically to assert_source_allowed —
+    no existing tests need to change.
+
+    If ledger_path is provided:
+      1. assert_source_allowed must pass (registry gate)
+      2. The ledger must contain at least one valid approval-type entry for source_id
+         that has not been superseded by a subsequent block/reject/archive.
+
+    Raises SourceNotAllowedError if either gate fails.
+    """
+    # Registry gate always runs first
+    registry_result = assert_source_allowed(source_id, requested_use, registry_path)
+
+    if ledger_path is None:
+        return registry_result
+
+    # Lazy import: clearance_ledger is only pulled in when ledger gating is requested.
+    # This avoids circular imports and keeps the registry module self-contained.
+    import clearance_ledger as _cl
+
+    try:
+        ledger = _cl.load_ledger(ledger_path)
+        _cl.validate_ledger(ledger)
+        ledger_entry = _cl.assert_clearance_entry_exists(ledger, source_id, requested_use)
+    except (_cl.LedgerClearanceError, _cl.LedgerValidationError) as exc:
+        raise SourceNotAllowedError(
+            f"Ledger clearance check failed for {source_id!r}: {exc}"
+        ) from exc
+
+    return {
+        **registry_result,
+        "ledger_cleared":    True,
+        "ledger_entry_id":   ledger_entry.get("ledger_entry_id"),
+        "ledger_decision_type": ledger_entry.get("decision_type"),
+    }
