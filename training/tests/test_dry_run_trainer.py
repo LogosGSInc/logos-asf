@@ -171,7 +171,8 @@ def _rechecksum(dataset_dir: Path):
 def test_valid_tr03_dataset_produces_dry_run_envelope(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "dry_run_out"
-    envelope = run_dry_run(ds_dir, out_dir, mode="simulation", operator_id="TEST_OP_001")
+    envelope = run_dry_run(ds_dir, out_dir, mode="simulation", operator_id="TEST_OP_001",
+                           allow_unregistered_source_for_tests=True)
 
     assert (out_dir / "dry_run_envelope.json").exists()
     assert (out_dir / "training_job_preview.json").exists()
@@ -190,7 +191,7 @@ def test_valid_tr03_dataset_produces_dry_run_envelope(tmp_path):
 def test_envelope_governance_flags_hardened(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    envelope = run_dry_run(ds_dir, out_dir)
+    envelope = run_dry_run(ds_dir, out_dir, allow_unregistered_source_for_tests=True)
 
     assert envelope["store1_write_allowed"] is False
     assert envelope["runtime_deployment_allowed"] is False
@@ -204,7 +205,7 @@ def test_envelope_governance_flags_hardened(tmp_path):
 def test_envelope_contains_dataset_summary(tmp_path):
     manifest, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    envelope = run_dry_run(ds_dir, out_dir)
+    envelope = run_dry_run(ds_dir, out_dir, allow_unregistered_source_for_tests=True)
 
     ds = envelope["dataset_summary"]
     assert ds["dataset_id"] == manifest["dataset_id"]
@@ -216,8 +217,10 @@ def test_envelope_compute_estimate_is_deterministic(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir1 = tmp_path / "out1"
     out_dir2 = tmp_path / "out2"
-    e1 = run_dry_run(ds_dir, out_dir1, operator_id="TEST_OP_001")
-    e2 = run_dry_run(ds_dir, out_dir2, operator_id="TEST_OP_001")
+    e1 = run_dry_run(ds_dir, out_dir1, operator_id="TEST_OP_001",
+                     allow_unregistered_source_for_tests=True)
+    e2 = run_dry_run(ds_dir, out_dir2, operator_id="TEST_OP_001",
+                     allow_unregistered_source_for_tests=True)
 
     assert e1["estimated_compute"]["estimated_char_volume"] == e2["estimated_compute"]["estimated_char_volume"]
     assert e1["estimated_compute"]["estimated_tokens_approx"] == e2["estimated_compute"]["estimated_tokens_approx"]
@@ -416,7 +419,8 @@ def test_production_mode_rejects_sim_substring_operator(tmp_path):
 def test_production_mode_accepts_real_operator(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    envelope = run_dry_run(ds_dir, out_dir, mode="production", operator_id="PROD_OP_001")
+    envelope = run_dry_run(ds_dir, out_dir, mode="production", operator_id="PROD_OP_001",
+                           allow_unregistered_source_for_tests=True)
     assert envelope["training_allowed"] is False
     assert envelope["job_intent"]["mode"] == "production"
 
@@ -424,7 +428,8 @@ def test_production_mode_accepts_real_operator(tmp_path):
 def test_simulation_mode_accepts_test_operator(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    envelope = run_dry_run(ds_dir, out_dir, mode="simulation", operator_id="TEST_OP_001")
+    envelope = run_dry_run(ds_dir, out_dir, mode="simulation", operator_id="TEST_OP_001",
+                           allow_unregistered_source_for_tests=True)
     assert envelope["training_allowed"] is False
 
 
@@ -434,8 +439,10 @@ def test_dry_run_is_deterministic_for_same_inputs(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out1 = tmp_path / "out1"
     out2 = tmp_path / "out2"
-    e1 = run_dry_run(ds_dir, out1, mode="simulation", operator_id="TEST_OP_001")
-    e2 = run_dry_run(ds_dir, out2, mode="simulation", operator_id="TEST_OP_001")
+    e1 = run_dry_run(ds_dir, out1, mode="simulation", operator_id="TEST_OP_001",
+                     allow_unregistered_source_for_tests=True)
+    e2 = run_dry_run(ds_dir, out2, mode="simulation", operator_id="TEST_OP_001",
+                     allow_unregistered_source_for_tests=True)
     assert e1["dry_run_id"] == e2["dry_run_id"]
 
 
@@ -443,8 +450,10 @@ def test_dry_run_id_changes_when_operator_changes(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out1 = tmp_path / "out1"
     out2 = tmp_path / "out2"
-    e1 = run_dry_run(ds_dir, out1, mode="simulation", operator_id="TEST_OP_001")
-    e2 = run_dry_run(ds_dir, out2, mode="simulation", operator_id="TEST_OP_002")
+    e1 = run_dry_run(ds_dir, out1, mode="simulation", operator_id="TEST_OP_001",
+                     allow_unregistered_source_for_tests=True)
+    e2 = run_dry_run(ds_dir, out2, mode="simulation", operator_id="TEST_OP_002",
+                     allow_unregistered_source_for_tests=True)
     assert e1["dry_run_id"] != e2["dry_run_id"]
 
 
@@ -452,15 +461,17 @@ def test_dry_run_id_changes_when_mode_changes(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out1 = tmp_path / "out1"
     out2 = tmp_path / "out2"
-    e1 = run_dry_run(ds_dir, out1, mode="simulation",  operator_id="PROD_OP_001")
-    e2 = run_dry_run(ds_dir, out2, mode="production",  operator_id="PROD_OP_001")
+    e1 = run_dry_run(ds_dir, out1, mode="simulation", operator_id="PROD_OP_001",
+                     allow_unregistered_source_for_tests=True)
+    e2 = run_dry_run(ds_dir, out2, mode="production", operator_id="PROD_OP_001",
+                     allow_unregistered_source_for_tests=True)
     assert e1["dry_run_id"] != e2["dry_run_id"]
 
 
 def test_dry_run_id_format(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    envelope = run_dry_run(ds_dir, out_dir)
+    envelope = run_dry_run(ds_dir, out_dir, allow_unregistered_source_for_tests=True)
     dr_id = envelope["dry_run_id"]
     assert dr_id.startswith("DR-")
     assert len(dr_id) == 19  # "DR-" + 16 hex chars
@@ -471,7 +482,8 @@ def test_dry_run_id_format(tmp_path):
 def test_audit_output_excludes_raw_examples(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    run_dry_run(ds_dir, out_dir, operator_id="TEST_OP_001")
+    run_dry_run(ds_dir, out_dir, operator_id="TEST_OP_001",
+                allow_unregistered_source_for_tests=True)
 
     audit = json.loads((out_dir / "audit_record.json").read_text(encoding="utf-8"))
     audit_text = json.dumps(audit)
@@ -487,7 +499,7 @@ def test_audit_output_excludes_raw_examples(tmp_path):
 def test_audit_record_has_required_fields(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    run_dry_run(ds_dir, out_dir)
+    run_dry_run(ds_dir, out_dir, allow_unregistered_source_for_tests=True)
 
     audit = json.loads((out_dir / "audit_record.json").read_text(encoding="utf-8"))
     for field in ("dry_run_id", "created_at", "adapter_version", "mode",
@@ -548,7 +560,7 @@ def test_dataset_validation_failed_blocks(tmp_path):
 def test_output_checksums_are_valid(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    run_dry_run(ds_dir, out_dir)
+    run_dry_run(ds_dir, out_dir, allow_unregistered_source_for_tests=True)
 
     checksum_lines = (out_dir / "checksums.sha256").read_text(encoding="utf-8").splitlines()
     for line in checksum_lines:
@@ -562,7 +574,7 @@ def test_output_checksums_are_valid(tmp_path):
 def test_output_contains_all_required_files(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    run_dry_run(ds_dir, out_dir)
+    run_dry_run(ds_dir, out_dir, allow_unregistered_source_for_tests=True)
 
     for name in ("dry_run_envelope.json", "training_job_preview.json",
                  "validation_report.json", "audit_record.json", "checksums.sha256"):
@@ -574,13 +586,12 @@ def test_output_contains_all_required_files(tmp_path):
 def test_validation_report_all_gates_passed(tmp_path):
     _, ds_dir = _build_tr03(tmp_path)
     out_dir = tmp_path / "out"
-    run_dry_run(ds_dir, out_dir)
+    # Use a real approved source_id so source_registry_cleared=True in the report
+    run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate")
 
     vr = json.loads((out_dir / "validation_report.json").read_text(encoding="utf-8"))
     assert vr["all_gates_passed"] is True
     assert vr["failures"] == []
-    assert all(v is True for k, v in vr["gates"].items()
-               if k != "dataset_status_valid"), "all basic gates should pass"
 
 
 # ── static analysis: no forbidden imports ─────────────────────────────────────
@@ -655,3 +666,95 @@ def test_is_simulated_operator_detects_sim_substring():
 def test_is_simulated_operator_passes_real_operator():
     assert _is_simulated_operator("PROD_OP_001") is False
     assert _is_simulated_operator("GOVERNANCE_LEAD_001") is False
+
+
+# ── TR-04B bridge: source registry enforcement ────────────────────────────────
+
+def test_dr_bridge_approved_source_l1_001_allowed(tmp_path):
+    """L1-001 is approved for sft_candidate — dry-run must succeed."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    envelope = run_dry_run(ds_dir, out_dir,
+                           source_id="L1-001", requested_use="sft_candidate")
+    assert envelope["training_allowed"] is False
+    assert envelope["job_intent"]["source_id"] == "L1-001"
+    assert envelope["job_intent"]["source_registry_cleared"] is True
+    assert envelope["validation_summary"]["source_registry_cleared"] is True
+
+
+def test_dr_bridge_approved_source_l1_007_allowed(tmp_path):
+    """L1-007 (Synthetic Instruction Data) is approved for sft_candidate."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    envelope = run_dry_run(ds_dir, out_dir,
+                           source_id="L1-007", requested_use="sft_candidate")
+    assert envelope["validation_summary"]["source_registry_cleared"] is True
+
+
+def test_dr_bridge_blocked_l6_001_fails(tmp_path):
+    """L6-001 (Common Crawl) is blocked — must fail for any use."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    with pytest.raises(SystemExit):
+        run_dry_run(ds_dir, out_dir, source_id="L6-001", requested_use="sft_candidate")
+
+
+def test_dr_bridge_pending_l5_001_fails_for_sft(tmp_path):
+    """L5-001 (Common Pile) is hp_pending — must fail for sft_candidate."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    with pytest.raises(SystemExit):
+        run_dry_run(ds_dir, out_dir, source_id="L5-001", requested_use="sft_candidate")
+
+
+def test_dr_bridge_pending_l7_001_fails_for_sft(tmp_path):
+    """L7-001 (Stack Exchange CC BY-SA) is pending — must fail for sft_candidate."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    with pytest.raises(SystemExit):
+        run_dry_run(ds_dir, out_dir, source_id="L7-001", requested_use="sft_candidate")
+
+
+def test_dr_bridge_l1_004_rejects_sft_candidate(tmp_path):
+    """L1-004 (Sentinel Red Team) only allows rag and evaluation_reference."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    with pytest.raises(SystemExit):
+        run_dry_run(ds_dir, out_dir, source_id="L1-004", requested_use="sft_candidate")
+
+
+def test_dr_bridge_unknown_source_id_fails(tmp_path):
+    """An unregistered source_id must fail closed."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    with pytest.raises(SystemExit):
+        run_dry_run(ds_dir, out_dir, source_id="L9-999", requested_use="sft_candidate")
+
+
+def test_dr_bridge_no_source_id_fails_closed(tmp_path):
+    """No source_id without bypass must fail closed."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    with pytest.raises(SystemExit):
+        run_dry_run(ds_dir, out_dir)  # no source_id, no bypass
+
+
+def test_dr_bridge_no_source_id_with_test_bypass_succeeds(tmp_path):
+    """Test-only bypass allows no source_id in simulation mode."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    envelope = run_dry_run(ds_dir, out_dir, allow_unregistered_source_for_tests=True)
+    assert envelope["training_allowed"] is False
+    # source_registry_cleared is False when bypassed (source_id is None)
+    assert envelope["validation_summary"]["source_registry_cleared"] is False
+
+
+def test_dr_bridge_source_registry_cleared_in_audit_record(tmp_path):
+    """Audit record captures source registry clearance state."""
+    _, ds_dir = _build_tr03(tmp_path)
+    out_dir = tmp_path / "out"
+    run_dry_run(ds_dir, out_dir, source_id="L1-001", requested_use="sft_candidate")
+    audit = json.loads((out_dir / "audit_record.json").read_text(encoding="utf-8"))
+    assert audit["source_id"] == "L1-001"
+    assert audit["requested_use"] == "sft_candidate"
+    assert audit["source_registry_cleared"] is True

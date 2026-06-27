@@ -24,6 +24,12 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from source_registry import (
+    assert_source_allowed as _registry_assert,
+    SourceRegistryError,
+    SourceBlockedError,
+)
+
 ADAPTER_VERSION = "dry_run_trainer:1.0.0"
 SUPPORTED_MANIFEST_SCHEMA_VERSIONS = frozenset({"1.0.0"})
 
@@ -146,7 +152,11 @@ def write_output_checksums(out_dir: Path, artifact_paths: list) -> Path:
 
 def run_dry_run(dataset_dir: Path, out_dir: Path,
                 mode: str = "simulation",
-                operator_id: str = "TEST_SIMULATION") -> dict:
+                operator_id: str = "TEST_SIMULATION",
+                source_id: str = None,
+                requested_use: str = "sft_candidate",
+                source_registry_path=None,
+                allow_unregistered_source_for_tests: bool = False) -> dict:
     """
     Validate a TR-03 dataset artifact directory and produce a dry-run
     training envelope. All governance flags remain false/deny-by-default.
@@ -265,7 +275,28 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
             f"ID: {operator_id!r}"
         )
 
-    # ── 10. Build deterministic dry-run ID ─────────────────────────────────
+    # ── 10. Source registry enforcement ───────────────────────────────────────
+    source_clearance = None
+    if source_id is not None:
+        try:
+            source_clearance = _registry_assert(source_id, requested_use,
+                                                source_registry_path)
+        except SourceBlockedError as e:
+            _fail(f"SOURCE_REGISTRY_BLOCK: {e}")
+        except SourceRegistryError as e:
+            _fail(f"SOURCE_REGISTRY_BLOCK: {e}")
+    elif not allow_unregistered_source_for_tests:
+        _fail(
+            "SOURCE_REGISTRY_BLOCK: no source_id provided. "
+            "All training sources must be registered in the source registry. "
+            "Provide --source-id with an approved registry entry, or use "
+            "--allow-unregistered-source-for-tests (test-only bypass)."
+        )
+    # else: test bypass — source_clearance stays None, logged in audit record
+
+    source_registry_cleared = (source_clearance is not None)
+
+    # ── 11. Build deterministic dry-run ID ─────────────────────────────────
     dr_id = _dry_run_id(manifest, mode, operator_id)
 
     # ── 11. Estimate compute (deterministic, no real measurement) ──────────
@@ -312,8 +343,11 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
                 "No training performed. Operator must separately sign a "
                 "training-job contract before any real training may proceed."
             ),
-            "mode":        mode,
-            "operator_id": operator_id,
+            "mode":            mode,
+            "operator_id":     operator_id,
+            "source_id":       source_id,
+            "requested_use":   requested_use,
+            "source_registry_cleared": source_registry_cleared,
         },
         "dataset_summary": {
             "dataset_id":                    manifest.get("dataset_id"),
@@ -333,6 +367,7 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
             "split_counts_match":         True,
             "operator_identity_valid":    True,
             "manifest_version_supported": True,
+            "source_registry_cleared":    source_registry_cleared,
         },
         "estimated_compute": {
             "estimated_char_volume":   char_volume,
@@ -425,6 +460,9 @@ def run_dry_run(dataset_dir: Path, out_dir: Path,
         "adapter_version": ADAPTER_VERSION,
         "mode":            mode,
         "operator_id":     operator_id,
+        "source_id":       source_id,
+        "requested_use":   requested_use,
+        "source_registry_cleared": source_registry_cleared,
         "dataset_id":      manifest.get("dataset_id"),
         "dataset_status":  dataset_status,
         "manifest_content_hash": manifest.get("content_hash"),
@@ -509,6 +547,24 @@ def main() -> None:
         "--operator-id", default="TEST_SIMULATION",
         help="Operator ID for this dry-run. Required to be non-simulated in production mode.",
     )
+    parser.add_argument(
+        "--source-id", default=None,
+        help="Source registry ID (e.g. L1-001) for this dataset. Must be an approved entry.",
+    )
+    parser.add_argument(
+        "--requested-use", default="sft_candidate",
+        choices=["rag", "sft_candidate", "synthetic_seed",
+                 "evaluation_reference", "pretraining_candidate"],
+        help="Intended pipeline use for this dataset (default: sft_candidate).",
+    )
+    parser.add_argument(
+        "--source-registry", default=None,
+        help="Path to an alternative source registry JSON file (default: source_registry_seed.json).",
+    )
+    parser.add_argument(
+        "--allow-unregistered-source-for-tests", action="store_true", default=False,
+        help="TEST-ONLY bypass: skip source registry check when no --source-id is provided.",
+    )
     args = parser.parse_args()
 
     run_dry_run(
@@ -516,6 +572,10 @@ def main() -> None:
         out_dir=Path(args.out_dir),
         mode=args.mode,
         operator_id=args.operator_id,
+        source_id=args.source_id,
+        requested_use=args.requested_use,
+        source_registry_path=args.source_registry,
+        allow_unregistered_source_for_tests=args.allow_unregistered_source_for_tests,
     )
 
 
