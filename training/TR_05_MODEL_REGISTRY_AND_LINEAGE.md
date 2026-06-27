@@ -81,9 +81,9 @@ the full pipeline:
 
 | Field | Provenance chain |
 |---|---|
-| `dep_keystone_ingress_refs` | DEP.KEYSTONE/GovSec V2 ingress clearance record IDs (DKI-*) |
-| `keystone_evidence_refs` | References to DEP.KEYSTONE evidence packages |
-| `keystone_verification_report_refs` | References to DEP.KEYSTONE verification reports |
+| `dep_keystone_ingress_refs` | TR-04D ingress clearance record IDs (DKI-*) |
+| `dep_keystone_evidence_sha256_refs` | References to DEP.KEYSTONE `evidence.sha256` files |
+| `dep_keystone_verification_report_refs` | References to DEP.KEYSTONE `verification-report.json` files |
 | `source_registry_refs` | Training Source Registry IDs (L<N>-NNN) |
 | `clearance_ledger_refs` | Clearance Ledger entry IDs (LE-*) |
 | `synthetic_manifest_refs` | synthetic_doctrine.py manifest files |
@@ -105,7 +105,8 @@ tamper detection across a chain of lineage records.
 **TR-04D → TR-05**: When a DEP.KEYSTONE ingress record is supplied,
 `assert_training_ingress_allowed(record, next_gate="tr05_model_registry")` is
 called before registration. The ingress record must have
-`admissibility_status=approved`, `training_pipeline_allowed=true`, and
+`dep_keystone_status=VERIFIED`, `dep_keystone_trust_score >= 70`,
+`govsec_admissibility_status=approved`, `training_pipeline_allowed=true`, and
 `"tr05_model_registry"` in `allowed_next_gates`.
 
 **TR-03 → TR-05**: The dataset manifest is loaded and verified (

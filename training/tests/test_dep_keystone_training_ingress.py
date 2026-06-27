@@ -7,6 +7,13 @@ Layer Zero/admissibility/ingress/sbom in training/, abigail/, governance-spine/,
 agents/, and docs/ were either department IDs (DEPT-*) or env-var references
 (GOVMEM_DEPARTMENT_ID). No callable training-ingress gate existed.
 dep_keystone_ingress.py implements that gate as a new narrow bridge (TR-04D).
+
+TR-05A semantic alignment: DEP.KEYSTONE is LogosGSInc/dep.keystone — a standalone
+supply-chain trust product. Abigail references its trust-bundle outputs
+(verification-report.json, evidence.sha256, sbom.cdx.json). Abigail does not
+redefine or duplicate DEP.KEYSTONE. GovSec V2 / Layer Zero is the broader
+training-admissibility doctrine. Source Registry and Clearance Ledger are
+separate, independent gates.
 """
 import ast
 import json
@@ -18,8 +25,9 @@ from training.dep_keystone_ingress import (
     INGRESS_VERSION,
     REQUIRED_FIELDS,
     SCHEMA_VERSION,
-    VALID_ADMISSIBILITY_DECISIONS,
-    VALID_ADMISSIBILITY_STATUSES,
+    VALID_DEP_KEYSTONE_STATUSES,
+    VALID_GOVSEC_ADMISSIBILITY_DECISIONS,
+    VALID_GOVSEC_ADMISSIBILITY_STATUSES,
     VALID_GOVSEC_LAYERS,
     VALID_NEXT_GATES,
     KeystoneIngressBlockedError,
@@ -35,27 +43,37 @@ _TRAINING_DIR = Path(__file__).resolve().parent.parent
 
 
 def _valid_ingress(**overrides) -> dict:
-    """Factory for a minimal valid approved DEP.KEYSTONE ingress record."""
+    """Factory for a minimal valid approved TR-04D ingress record."""
     base = {
-        "dep_keystone_ingress_id": "DKI-test-l1001-001",
-        "schema_version": "1.0.0",
-        "created_at": "2026-06-27T00:00:00Z",
-        "source_id": "L1-001",
-        "source_name": "Buildspec Volumes I, II, III",
-        "source_type": "logos_owned_doctrine",
-        "classification": "LOGOS_INTERNAL",
-        "admissibility_status": "approved",
-        "admissibility_decision": "accepted_for_clearance",
-        "keystone_evidence_ref": "keystone-evidence://L1-001/v1",
-        "keystone_verification_report_ref": "keystone-report://L1-001/v1",
-        "keystone_sbom_ref": "keystone-sbom://L1-001/v1",
-        "evidence_sha256": "a" * 64,
-        "artifact_sha256": "b" * 64,
-        "govsec_layer": "layer_zero_reality_formation",
-        "reality_formation_input": True,
-        "ingress_actor_id": "TEST_INGRESS_OP_001",
-        "ingress_actor_role": "ingress_reviewer",
-        "operator_review_required": True,
+        "dep_keystone_ingress_id":   "DKI-test-l1001-001",
+        "schema_version":            "1.0.0",
+        "created_at":                "2026-06-27T00:00:00Z",
+        "source_id":                 "L1-001",
+        "source_name":               "Buildspec Volumes I, II, III",
+        "source_type":               "logos_owned_doctrine",
+        "classification":            "LOGOS_INTERNAL",
+        # DEP.KEYSTONE trust-bundle fields (from LogosGSInc/dep.keystone)
+        "dep_keystone_project_name": "LogosGSInc/dep.keystone",
+        "dep_keystone_status":       "VERIFIED",
+        "dep_keystone_trust_score":  95,
+        "dep_keystone_findings_count": 0,
+        "dep_keystone_haap_drs_escalation_required": False,
+        "dep_keystone_verification_report_ref":
+            "dep-keystone://verification-report.json/L1-001/v1",
+        "dep_keystone_evidence_sha256_ref":
+            "dep-keystone://evidence.sha256/L1-001/v1",
+        "dep_keystone_sbom_ref":     "dep-keystone://sbom.cdx.json/L1-001/v1",
+        "dep_keystone_trust_cert_ref": "dep-keystone://trust-cert/L1-001/v1",
+        # Abigail artifact hash
+        "artifact_sha256":           "b" * 64,
+        # GovSec V2 training-admissibility fields
+        "govsec_admissibility_status":   "approved",
+        "govsec_admissibility_decision": "accepted_for_clearance",
+        "govsec_layer":              "layer_zero_reality_formation",
+        "reality_formation_input":   True,
+        "ingress_actor_id":          "TEST_INGRESS_OP_001",
+        "ingress_actor_role":        "ingress_reviewer",
+        "operator_review_required":  True,
         "training_pipeline_allowed": True,
         "allowed_next_gates": [
             "tr04a_source_registry",
@@ -90,11 +108,17 @@ class TestSchema:
         schema_required = set(schema["required"])
         assert schema_required == REQUIRED_FIELDS
 
-    def test_schema_has_admissibility_status_enum(self):
+    def test_schema_has_govsec_admissibility_status_enum(self):
         schema_path = _TRAINING_DIR / "DEP_KEYSTONE_TRAINING_INGRESS.schema.json"
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
-        enum_vals = set(schema["properties"]["admissibility_status"]["enum"])
-        assert enum_vals == VALID_ADMISSIBILITY_STATUSES
+        enum_vals = set(schema["properties"]["govsec_admissibility_status"]["enum"])
+        assert enum_vals == VALID_GOVSEC_ADMISSIBILITY_STATUSES
+
+    def test_schema_has_dep_keystone_status_enum(self):
+        schema_path = _TRAINING_DIR / "DEP_KEYSTONE_TRAINING_INGRESS.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        enum_vals = set(schema["properties"]["dep_keystone_status"]["enum"])
+        assert enum_vals == VALID_DEP_KEYSTONE_STATUSES
 
     def test_schema_has_allowed_next_gates_enum(self):
         schema_path = _TRAINING_DIR / "DEP_KEYSTONE_TRAINING_INGRESS.schema.json"
@@ -158,29 +182,35 @@ class TestValidateIngressRecord:
     def test_valid_record_passes(self):
         result = validate_ingress_record(_valid_ingress())
         assert result["valid"] is True
-        assert result["admissibility_status"] == "approved"
+        assert result["govsec_admissibility_status"] == "approved"
+        assert result["dep_keystone_status"] == "VERIFIED"
 
     def test_missing_required_field_raises(self):
         rec = _valid_ingress()
-        del rec["evidence_sha256"]
-        with pytest.raises(KeystoneIngressValidationError, match="evidence_sha256"):
+        del rec["dep_keystone_status"]
+        with pytest.raises(KeystoneIngressValidationError, match="dep_keystone_status"):
             validate_ingress_record(rec)
 
     def test_multiple_missing_fields_reported(self):
         rec = _valid_ingress()
-        del rec["evidence_sha256"]
-        del rec["artifact_sha256"]
+        del rec["dep_keystone_status"]
+        del rec["dep_keystone_trust_score"]
         with pytest.raises(KeystoneIngressValidationError, match="2 error"):
             validate_ingress_record(rec)
 
-    def test_invalid_admissibility_status_raises(self):
-        rec = _valid_ingress(admissibility_status="unknown_status")
-        with pytest.raises(KeystoneIngressValidationError, match="admissibility_status"):
+    def test_invalid_govsec_admissibility_status_raises(self):
+        rec = _valid_ingress(govsec_admissibility_status="unknown_status")
+        with pytest.raises(KeystoneIngressValidationError, match="govsec_admissibility_status"):
             validate_ingress_record(rec)
 
-    def test_invalid_admissibility_decision_raises(self):
-        rec = _valid_ingress(admissibility_decision="maybe")
-        with pytest.raises(KeystoneIngressValidationError, match="admissibility_decision"):
+    def test_invalid_govsec_admissibility_decision_raises(self):
+        rec = _valid_ingress(govsec_admissibility_decision="maybe")
+        with pytest.raises(KeystoneIngressValidationError, match="govsec_admissibility_decision"):
+            validate_ingress_record(rec)
+
+    def test_invalid_dep_keystone_status_raises(self):
+        rec = _valid_ingress(dep_keystone_status="UNKNOWN")
+        with pytest.raises(KeystoneIngressValidationError, match="dep_keystone_status"):
             validate_ingress_record(rec)
 
     def test_invalid_govsec_layer_raises(self):
@@ -202,8 +232,8 @@ class TestAssertTrainingIngressAllowed:
     def test_approved_ingress_clears(self):
         result = assert_training_ingress_allowed(_valid_ingress())
         assert result["cleared"] is True
-        assert result["admissibility_status"] == "approved"
-        assert result["admissibility_decision"] == "accepted_for_clearance"
+        assert result["govsec_admissibility_status"] == "approved"
+        assert result["govsec_admissibility_decision"] == "accepted_for_clearance"
 
     def test_approved_ingress_with_tr04a_source_registry(self):
         result = assert_training_ingress_allowed(
@@ -222,16 +252,48 @@ class TestAssertTrainingIngressAllowed:
         with pytest.raises(KeystoneIngressNotAllowedError, match="tr03_dataset_builder"):
             assert_training_ingress_allowed(rec, next_gate="tr03_dataset_builder")
 
-    def test_missing_evidence_sha256_blocks(self):
-        rec = _valid_ingress()
-        del rec["evidence_sha256"]
-        rec["evidence_sha256"] = ""
-        with pytest.raises(KeystoneIngressNotAllowedError, match="evidence_sha256"):
+    # DEP.KEYSTONE status tests
+    def test_dep_keystone_status_verified_and_score_passes(self):
+        rec = _valid_ingress(dep_keystone_status="VERIFIED", dep_keystone_trust_score=95)
+        result = assert_training_ingress_allowed(rec)
+        assert result["cleared"] is True
+        assert result["dep_keystone_status"] == "VERIFIED"
+        assert result["dep_keystone_trust_score"] == 95
+
+    def test_dep_keystone_status_failed_blocks(self):
+        rec = _valid_ingress(dep_keystone_status="FAILED")
+        with pytest.raises(KeystoneIngressBlockedError, match="FAILED"):
             assert_training_ingress_allowed(rec)
 
-    def test_empty_evidence_sha256_blocks(self):
-        rec = _valid_ingress(evidence_sha256="")
-        with pytest.raises(KeystoneIngressNotAllowedError, match="evidence_sha256"):
+    def test_dep_keystone_trust_score_below_70_blocks(self):
+        rec = _valid_ingress(dep_keystone_trust_score=65)
+        with pytest.raises(KeystoneIngressNotAllowedError, match="trust_score"):
+            assert_training_ingress_allowed(rec)
+
+    def test_dep_keystone_trust_score_exactly_70_passes(self):
+        rec = _valid_ingress(dep_keystone_trust_score=70)
+        result = assert_training_ingress_allowed(rec)
+        assert result["cleared"] is True
+
+    def test_dep_keystone_haap_escalation_required_blocks(self):
+        rec = _valid_ingress(dep_keystone_haap_drs_escalation_required=True)
+        with pytest.raises(KeystoneIngressNotAllowedError, match="haap"):
+            assert_training_ingress_allowed(rec)
+
+    # DEP.KEYSTONE evidence ref tests
+    def test_missing_dep_keystone_evidence_sha256_ref_blocks(self):
+        rec = _valid_ingress(dep_keystone_evidence_sha256_ref="")
+        with pytest.raises(KeystoneIngressNotAllowedError, match="dep_keystone_evidence_sha256_ref"):
+            assert_training_ingress_allowed(rec)
+
+    def test_missing_dep_keystone_verification_report_ref_blocks(self):
+        rec = _valid_ingress(dep_keystone_verification_report_ref="")
+        with pytest.raises(KeystoneIngressNotAllowedError, match="dep_keystone_verification_report_ref"):
+            assert_training_ingress_allowed(rec)
+
+    def test_missing_dep_keystone_sbom_ref_blocks(self):
+        rec = _valid_ingress(dep_keystone_sbom_ref="")
+        with pytest.raises(KeystoneIngressNotAllowedError, match="dep_keystone_sbom_ref"):
             assert_training_ingress_allowed(rec)
 
     def test_missing_artifact_sha256_blocks(self):
@@ -239,38 +301,29 @@ class TestAssertTrainingIngressAllowed:
         with pytest.raises(KeystoneIngressNotAllowedError, match="artifact_sha256"):
             assert_training_ingress_allowed(rec)
 
-    def test_missing_keystone_evidence_ref_blocks(self):
-        rec = _valid_ingress(keystone_evidence_ref="")
-        with pytest.raises(KeystoneIngressNotAllowedError, match="keystone_evidence_ref"):
-            assert_training_ingress_allowed(rec)
-
-    def test_missing_keystone_verification_report_ref_blocks(self):
-        rec = _valid_ingress(keystone_verification_report_ref="")
-        with pytest.raises(KeystoneIngressNotAllowedError, match="keystone_verification_report_ref"):
-            assert_training_ingress_allowed(rec)
-
-    def test_pending_status_blocks(self):
-        rec = _valid_ingress(admissibility_status="pending")
+    # GovSec status tests
+    def test_govsec_pending_status_blocks(self):
+        rec = _valid_ingress(govsec_admissibility_status="pending")
         with pytest.raises(KeystoneIngressNotAllowedError, match="pending"):
             assert_training_ingress_allowed(rec)
 
-    def test_draft_status_blocks(self):
-        rec = _valid_ingress(admissibility_status="draft")
+    def test_govsec_draft_status_blocks(self):
+        rec = _valid_ingress(govsec_admissibility_status="draft")
         with pytest.raises(KeystoneIngressNotAllowedError, match="draft"):
             assert_training_ingress_allowed(rec)
 
-    def test_blocked_status_raises_blocked_error(self):
-        rec = _valid_ingress(admissibility_status="blocked")
+    def test_govsec_blocked_status_raises_blocked_error(self):
+        rec = _valid_ingress(govsec_admissibility_status="blocked")
         with pytest.raises(KeystoneIngressBlockedError, match="blocked"):
             assert_training_ingress_allowed(rec)
 
-    def test_rejected_status_raises_blocked_error(self):
-        rec = _valid_ingress(admissibility_status="rejected")
+    def test_govsec_rejected_status_raises_blocked_error(self):
+        rec = _valid_ingress(govsec_admissibility_status="rejected")
         with pytest.raises(KeystoneIngressBlockedError, match="rejected"):
             assert_training_ingress_allowed(rec)
 
-    def test_archived_status_raises_blocked_error(self):
-        rec = _valid_ingress(admissibility_status="archived")
+    def test_govsec_archived_status_raises_blocked_error(self):
+        rec = _valid_ingress(govsec_admissibility_status="archived")
         with pytest.raises(KeystoneIngressBlockedError, match="archived"):
             assert_training_ingress_allowed(rec)
 
@@ -294,15 +347,52 @@ class TestAssertTrainingIngressAllowed:
         with pytest.raises(KeystoneIngressNotAllowedError, match="not in allowed_next_gates"):
             assert_training_ingress_allowed(rec, next_gate="tr05_model_registry")
 
-    def test_wrong_admissibility_decision_blocks(self):
-        rec = _valid_ingress(admissibility_decision="requires_more_evidence")
-        with pytest.raises(KeystoneIngressNotAllowedError, match="admissibility_decision"):
+    def test_wrong_govsec_admissibility_decision_blocks(self):
+        rec = _valid_ingress(govsec_admissibility_decision="requires_more_evidence")
+        with pytest.raises(KeystoneIngressNotAllowedError, match="govsec_admissibility_decision"):
             assert_training_ingress_allowed(rec)
 
     def test_clearance_result_includes_govsec_layer(self):
         result = assert_training_ingress_allowed(_valid_ingress())
         assert result["govsec_layer"] == "layer_zero_reality_formation"
         assert result["reality_formation_input"] is True
+
+    def test_clearance_result_includes_dep_keystone_status(self):
+        result = assert_training_ingress_allowed(_valid_ingress())
+        assert result["dep_keystone_status"] == "VERIFIED"
+        assert result["dep_keystone_trust_score"] == 95
+
+
+# ---------------------------------------------------------------------------
+# TestBoundaries — DEP.KEYSTONE does not replace source registry or ledger
+# ---------------------------------------------------------------------------
+
+class TestBoundaries:
+    def test_dep_keystone_evidence_does_not_replace_source_registry_approval(self):
+        # source_registry_cleared belongs to the dry-run envelope validation_summary,
+        # not to this ingress record. The ingress schema must not claim that field.
+        schema_path = _TRAINING_DIR / "DEP_KEYSTONE_TRAINING_INGRESS.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        props = schema.get("properties", {})
+        assert "source_registry_cleared" not in props
+
+    def test_dep_keystone_evidence_does_not_replace_clearance_ledger_approval(self):
+        schema_path = _TRAINING_DIR / "DEP_KEYSTONE_TRAINING_INGRESS.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        props = schema.get("properties", {})
+        assert "ledger_cleared" not in props
+
+    def test_schema_invariant_states_dep_keystone_is_standalone(self):
+        schema_path = _TRAINING_DIR / "DEP_KEYSTONE_TRAINING_INGRESS.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        inv = schema.get("x-invariants", {})
+        assert "dep_keystone_is_standalone_product" in inv
+
+    def test_schema_invariant_refs_are_refs_not_hashes(self):
+        schema_path = _TRAINING_DIR / "DEP_KEYSTONE_TRAINING_INGRESS.schema.json"
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        inv = schema.get("x-invariants", {})
+        assert "dep_keystone_outputs_are_refs" in inv
 
 
 # ---------------------------------------------------------------------------
@@ -313,20 +403,29 @@ class TestSummarizeIngress:
     def test_summarize_has_expected_fields(self):
         summary = summarize_ingress(_valid_ingress())
         assert summary["dep_keystone_ingress_id"] == "DKI-test-l1001-001"
-        assert summary["admissibility_status"] == "approved"
+        assert summary["govsec_admissibility_status"] == "approved"
+        assert summary["dep_keystone_status"] == "VERIFIED"
+        assert summary["dep_keystone_trust_score"] == 95
         assert summary["training_pipeline_allowed"] is True
         assert "tr04a_source_registry" in summary["allowed_next_gates"]
 
-    def test_summarize_excludes_raw_evidence_hashes(self):
+    def test_summarize_excludes_raw_artifact_hash_and_evidence_refs(self):
         summary = summarize_ingress(_valid_ingress())
-        assert "evidence_sha256" not in summary
         assert "artifact_sha256" not in summary
-        assert "keystone_sbom_ref" not in summary
+        assert "dep_keystone_evidence_sha256_ref" not in summary
+        assert "dep_keystone_verification_report_ref" not in summary
+        assert "dep_keystone_sbom_ref" not in summary
+        assert "dep_keystone_trust_cert_ref" not in summary
 
     def test_summarize_includes_actor(self):
         summary = summarize_ingress(_valid_ingress())
         assert summary["ingress_actor_id"] == "TEST_INGRESS_OP_001"
         assert summary["ingress_actor_role"] == "ingress_reviewer"
+
+    def test_summarize_includes_dep_keystone_risk_fields(self):
+        summary = summarize_ingress(_valid_ingress())
+        assert summary["dep_keystone_findings_count"] == 0
+        assert summary["dep_keystone_haap_drs_escalation_required"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -340,11 +439,16 @@ class TestConstants:
     def test_ingress_version_constant(self):
         assert INGRESS_VERSION == "dep_keystone_ingress:1.0.0"
 
-    def test_valid_admissibility_statuses(self):
-        assert "approved" in VALID_ADMISSIBILITY_STATUSES
-        assert "blocked" in VALID_ADMISSIBILITY_STATUSES
-        assert "pending" in VALID_ADMISSIBILITY_STATUSES
-        assert "rejected" in VALID_ADMISSIBILITY_STATUSES
+    def test_valid_govsec_admissibility_statuses(self):
+        assert "approved" in VALID_GOVSEC_ADMISSIBILITY_STATUSES
+        assert "blocked" in VALID_GOVSEC_ADMISSIBILITY_STATUSES
+        assert "pending" in VALID_GOVSEC_ADMISSIBILITY_STATUSES
+        assert "rejected" in VALID_GOVSEC_ADMISSIBILITY_STATUSES
+
+    def test_valid_dep_keystone_statuses(self):
+        assert "VERIFIED" in VALID_DEP_KEYSTONE_STATUSES
+        assert "FAILED" in VALID_DEP_KEYSTONE_STATUSES
+        assert len(VALID_DEP_KEYSTONE_STATUSES) == 2
 
     def test_valid_next_gates(self):
         assert "tr04a_source_registry" in VALID_NEXT_GATES

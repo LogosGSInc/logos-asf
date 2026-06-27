@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "logos-asf:training:dep-keystone-training-ingress:v1.0.0",
-  "title": "LOGOS ASF — DEP.KEYSTONE / GovSec V2 Training Ingress Record",
-  "description": "Constitutional data contract for DEP.KEYSTONE / GovSec V2 / Layer Zero training-source admissibility records. No training data may enter TR-04A, TR-03, TR-04B, or TR-05 without a cleared record of this type.",
+  "title": "LOGOS ASF — TR-04D Training Ingress Record (DEP.KEYSTONE + GovSec)",
+  "description": "Constitutional data contract for Abigail-side training-source ingress records. Captures DEP.KEYSTONE supply-chain trust-bundle evidence (from LogosGSInc/dep.keystone) and GovSec V2 training admissibility decisions. DEP.KEYSTONE is a standalone LOGOS product; Abigail references its outputs, not redefines them.",
   "version": "1.0.0",
   "effective_date": "2026-06-27",
   "authority": "LOGOS Governance Systems Inc.",
@@ -16,13 +16,18 @@
     "source_name",
     "source_type",
     "classification",
-    "admissibility_status",
-    "admissibility_decision",
-    "keystone_evidence_ref",
-    "keystone_verification_report_ref",
-    "keystone_sbom_ref",
-    "evidence_sha256",
+    "dep_keystone_project_name",
+    "dep_keystone_status",
+    "dep_keystone_trust_score",
+    "dep_keystone_findings_count",
+    "dep_keystone_haap_drs_escalation_required",
+    "dep_keystone_verification_report_ref",
+    "dep_keystone_evidence_sha256_ref",
+    "dep_keystone_sbom_ref",
+    "dep_keystone_trust_cert_ref",
     "artifact_sha256",
+    "govsec_admissibility_status",
+    "govsec_admissibility_decision",
     "govsec_layer",
     "reality_formation_input",
     "ingress_actor_id",
@@ -37,14 +42,14 @@
 
     "dep_keystone_ingress_id": {
       "type": "string",
-      "description": "Stable identifier for this DEP.KEYSTONE ingress record. Format: DKI-<descriptor>-<seq>.",
+      "description": "Stable Abigail-side identifier for this ingress record. Format: DKI-<descriptor>-<seq>.",
       "minLength": 1
     },
 
     "schema_version": {
       "type": "string",
       "const": "1.0.0",
-      "description": "Schema version. Must be 1.0.0 for records governed by this schema."
+      "description": "Schema version. Must be 1.0.0."
     },
 
     "created_at": {
@@ -55,7 +60,7 @@
 
     "source_id": {
       "type": "string",
-      "description": "Source registry ID of the artifact being cleared (e.g., L1-001). Must match an entry in the Training Source Registry.",
+      "description": "Source registry ID of the artifact being cleared (e.g., L1-001).",
       "minLength": 1
     },
 
@@ -67,7 +72,7 @@
 
     "source_type": {
       "type": "string",
-      "description": "Machine-readable category of the artifact (e.g., logos_owned_doctrine, synthetic_instruction_data).",
+      "description": "Machine-readable category of the artifact.",
       "minLength": 1
     },
 
@@ -77,51 +82,81 @@
       "minLength": 1
     },
 
-    "admissibility_status": {
+    "dep_keystone_project_name": {
       "type": "string",
-      "description": "Current admissibility lifecycle status. Only 'approved' permits training pipeline entry.",
+      "description": "Name of the DEP.KEYSTONE project that produced the trust bundle. Typically LogosGSInc/dep.keystone.",
+      "minLength": 1
+    },
+
+    "dep_keystone_status": {
+      "type": "string",
+      "description": "DEP.KEYSTONE verification outcome. VERIFIED means the supply-chain trust check passed. FAILED means it did not.",
+      "enum": ["VERIFIED", "FAILED"]
+    },
+
+    "dep_keystone_trust_score": {
+      "type": "number",
+      "description": "DEP.KEYSTONE trust score (0-100). Scores below 70 require HAAP DRS escalation and block training pipeline entry.",
+      "minimum": 0,
+      "maximum": 100
+    },
+
+    "dep_keystone_findings_count": {
+      "type": "integer",
+      "description": "Number of findings reported by DEP.KEYSTONE. Informational; zero findings expected for clean artifacts.",
+      "minimum": 0
+    },
+
+    "dep_keystone_haap_drs_escalation_required": {
+      "type": "boolean",
+      "description": "Whether DEP.KEYSTONE requires HAAP v2.0 Dynamic Risk Score escalation before this source may enter the training pipeline. Set to true by DEP.KEYSTONE when trust_score < 70."
+    },
+
+    "dep_keystone_verification_report_ref": {
+      "type": "string",
+      "description": "Reference (URI, path, or ID) to the verification-report.json produced by DEP.KEYSTONE for this artifact.",
+      "minLength": 1
+    },
+
+    "dep_keystone_evidence_sha256_ref": {
+      "type": "string",
+      "description": "Reference (URI, path, or ID) to the evidence.sha256 file produced by DEP.KEYSTONE for this artifact.",
+      "minLength": 1
+    },
+
+    "dep_keystone_sbom_ref": {
+      "type": "string",
+      "description": "Reference (URI, path, or ID) to the sbom.cdx.json (CycloneDX 1.5 SBOM) produced by DEP.KEYSTONE for this artifact.",
+      "minLength": 1
+    },
+
+    "dep_keystone_trust_cert_ref": {
+      "type": "string",
+      "description": "Reference (URI, path, or ID) to the DEP.KEYSTONE TrustCert envelope for this artifact.",
+      "minLength": 1
+    },
+
+    "artifact_sha256": {
+      "type": "string",
+      "description": "SHA-256 hash of the artifact being cleared. Computed by Abigail; must be non-empty for approved records.",
+      "minLength": 1
+    },
+
+    "govsec_admissibility_status": {
+      "type": "string",
+      "description": "GovSec V2 / Abigail training-admissibility lifecycle status. Only 'approved' permits training pipeline entry.",
       "enum": ["draft", "pending", "approved", "rejected", "blocked", "archived"]
     },
 
-    "admissibility_decision": {
+    "govsec_admissibility_decision": {
       "type": "string",
-      "description": "Specific decision made at the DEP.KEYSTONE ingress gate. Only 'accepted_for_clearance' permits pipeline entry.",
+      "description": "GovSec V2 / Abigail admissibility decision. Only 'accepted_for_clearance' permits pipeline entry.",
       "enum": [
         "accepted_for_clearance",
         "rejected_at_ingress",
         "blocked_at_ingress",
         "requires_more_evidence"
       ]
-    },
-
-    "keystone_evidence_ref": {
-      "type": "string",
-      "description": "Reference (URI, path, or ID) to the DEP.KEYSTONE supply-chain evidence package for this artifact.",
-      "minLength": 1
-    },
-
-    "keystone_verification_report_ref": {
-      "type": "string",
-      "description": "Reference to the DEP.KEYSTONE verification report that confirmed artifact integrity.",
-      "minLength": 1
-    },
-
-    "keystone_sbom_ref": {
-      "type": "string",
-      "description": "Reference to the Software Bill of Materials (SBOM) for this artifact. May be a sentinel value for non-software artifacts.",
-      "minLength": 1
-    },
-
-    "evidence_sha256": {
-      "type": "string",
-      "description": "SHA-256 hash of the DEP.KEYSTONE evidence package. Must be non-empty for approved records.",
-      "minLength": 1
-    },
-
-    "artifact_sha256": {
-      "type": "string",
-      "description": "SHA-256 hash of the artifact being cleared. Must be non-empty for approved records.",
-      "minLength": 1
     },
 
     "govsec_layer": {
@@ -136,7 +171,7 @@
 
     "reality_formation_input": {
       "type": "boolean",
-      "description": "Whether this artifact is a reality-formation input under GovSec V2 / Layer Zero doctrine. Training corpora, fine-tuning corpora, synthetic data, and embeddings must be true."
+      "description": "Whether this artifact is a reality-formation input under GovSec V2 / Layer Zero doctrine."
     },
 
     "ingress_actor_id": {
@@ -147,23 +182,23 @@
 
     "ingress_actor_role": {
       "type": "string",
-      "description": "Role of the ingress actor (e.g., ingress_reviewer, automated_pipeline, hp_operator).",
+      "description": "Role of the ingress actor.",
       "minLength": 1
     },
 
     "operator_review_required": {
       "type": "boolean",
-      "description": "Whether operator review of this record is required before pipeline use. Must be true for training data."
+      "description": "Whether operator review of this record is required before pipeline use."
     },
 
     "training_pipeline_allowed": {
       "type": "boolean",
-      "description": "Whether the artifact may enter the training pipeline. Must be true for approved records that will be used in TR-04A/TR-03/TR-04B/TR-05."
+      "description": "Whether the artifact may enter the training pipeline."
     },
 
     "allowed_next_gates": {
       "type": "array",
-      "description": "Ordered list of training pipeline gates this cleared artifact may enter. Each entry must be a valid gate name.",
+      "description": "Training pipeline gates this cleared artifact may enter.",
       "items": {
         "type": "string",
         "enum": [
@@ -181,7 +216,7 @@
 
     "notes": {
       "type": "string",
-      "description": "Free-text governance notes. Should record evidence disposition, conditions of clearance, and any operator remarks."
+      "description": "Free-text governance notes."
     }
 
   },
@@ -189,11 +224,13 @@
   "additionalProperties": false,
 
   "x-invariants": {
-    "approved_requires_accepted_decision": "Records with admissibility_status=approved must have admissibility_decision=accepted_for_clearance.",
-    "approved_requires_evidence_hashes": "Records with admissibility_status=approved must have non-empty evidence_sha256 and artifact_sha256.",
-    "approved_requires_evidence_refs": "Records with admissibility_status=approved must have non-empty keystone_evidence_ref and keystone_verification_report_ref.",
-    "approved_requires_training_allowed": "Records with admissibility_status=approved that enter the pipeline must have training_pipeline_allowed=true.",
-    "reality_formation_inputs_must_be_cleared": "All training corpora, fine-tuning corpora, synthetic data, embeddings, retrieved documents, and memory layer inputs must have reality_formation_input=true and be cleared through this gate before pipeline entry.",
-    "no_duplicate_system": "This schema introduces the DEP.KEYSTONE gate where none previously existed. Do not create a parallel system."
+    "dep_keystone_is_standalone_product":     "DEP.KEYSTONE is LogosGSInc/dep.keystone — a standalone supply-chain trust product. Abigail references its outputs; Abigail does not redefine, duplicate, or vendor DEP.KEYSTONE.",
+    "dep_keystone_outputs_are_refs":          "dep_keystone_verification_report_ref, dep_keystone_evidence_sha256_ref, dep_keystone_sbom_ref are references to DEP.KEYSTONE outputs — not re-computed hashes.",
+    "verified_required_for_clearance":        "dep_keystone_status must be VERIFIED for clearance. FAILED is a terminal block.",
+    "trust_score_gate":                       "dep_keystone_trust_score < 70 requires HAAP DRS escalation and blocks training pipeline entry.",
+    "haap_escalation_blocks_pipeline":        "dep_keystone_haap_drs_escalation_required=true blocks training pipeline entry regardless of other fields.",
+    "govsec_approved_required":               "govsec_admissibility_status=approved and govsec_admissibility_decision=accepted_for_clearance are required for pipeline entry.",
+    "dep_keystone_does_not_replace_registry": "source_registry_cleared and ledger_cleared belong to the dry-run envelope validation_summary, not to this ingress record.",
+    "no_duplicate_system":                    "This schema introduces the TR-04D bridge where none previously existed. Do not create a parallel system."
   }
 }

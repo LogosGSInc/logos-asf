@@ -16,8 +16,8 @@
     "artifact_type",
     "parent_artifacts",
     "dep_keystone_ingress_refs",
-    "keystone_evidence_refs",
-    "keystone_verification_report_refs",
+    "dep_keystone_evidence_sha256_refs",
+    "dep_keystone_verification_report_refs",
     "source_registry_refs",
     "clearance_ledger_refs",
     "synthetic_manifest_refs",
@@ -81,15 +81,15 @@
       "items": { "type": "string" }
     },
 
-    "keystone_evidence_refs": {
+    "dep_keystone_evidence_sha256_refs": {
       "type": "array",
-      "description": "References to DEP.KEYSTONE evidence packages.",
+      "description": "References to DEP.KEYSTONE evidence.sha256 files for this artifact.",
       "items": { "type": "string" }
     },
 
-    "keystone_verification_report_refs": {
+    "dep_keystone_verification_report_refs": {
       "type": "array",
-      "description": "References to DEP.KEYSTONE verification reports.",
+      "description": "References to DEP.KEYSTONE verification-report.json files for this artifact.",
       "items": { "type": "string" }
     },
 
@@ -190,6 +190,7 @@
   "additionalProperties": false,
 
   "x-invariants": {
+    "dep_keystone_refs_are_refs_not_hashes": "dep_keystone_evidence_sha256_refs and dep_keystone_verification_report_refs hold references to DEP.KEYSTONE output files, not re-computed hashes.",
     "lineage_hash_covers_provenance": "lineage_hash is computed from artifact_id, artifact_type, and all *_refs arrays. Changing any ref changes the hash.",
     "genesis_previous_hash":         "First lineage record for any artifact uses previous_lineage_hash = 64 zero hex chars.",
     "governance_flags_const":        "All governance_flags are const values. They cannot be overridden.",

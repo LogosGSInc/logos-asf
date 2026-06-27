@@ -132,27 +132,37 @@ def _valid_manifest(**overrides) -> dict:
 
 
 def _valid_ingress_for_tr05(**overrides) -> dict:
-    """Factory for a DEP.KEYSTONE ingress record that allows tr05_model_registry."""
+    """Factory for a TR-04D ingress record that allows tr05_model_registry."""
     base = {
-        "dep_keystone_ingress_id": "DKI-test-tr05-001",
-        "schema_version": "1.0.0",
-        "created_at": "2026-06-27T00:00:00Z",
-        "source_id": "L1-001",
-        "source_name": "Buildspec Volumes I, II, III",
-        "source_type": "logos_owned_doctrine",
-        "classification": "LOGOS_INTERNAL",
-        "admissibility_status": "approved",
-        "admissibility_decision": "accepted_for_clearance",
-        "keystone_evidence_ref": "keystone-evidence://L1-001/tr05/v1",
-        "keystone_verification_report_ref": "keystone-report://L1-001/tr05/v1",
-        "keystone_sbom_ref": "keystone-sbom://L1-001/tr05/v1",
-        "evidence_sha256": "a" * 64,
-        "artifact_sha256": "b" * 64,
-        "govsec_layer": "layer_zero_reality_formation",
-        "reality_formation_input": True,
-        "ingress_actor_id": "TEST_INGRESS_OP_001",
-        "ingress_actor_role": "ingress_reviewer",
-        "operator_review_required": True,
+        "dep_keystone_ingress_id":   "DKI-test-tr05-001",
+        "schema_version":            "1.0.0",
+        "created_at":                "2026-06-27T00:00:00Z",
+        "source_id":                 "L1-001",
+        "source_name":               "Buildspec Volumes I, II, III",
+        "source_type":               "logos_owned_doctrine",
+        "classification":            "LOGOS_INTERNAL",
+        # DEP.KEYSTONE trust-bundle fields
+        "dep_keystone_project_name": "LogosGSInc/dep.keystone",
+        "dep_keystone_status":       "VERIFIED",
+        "dep_keystone_trust_score":  95,
+        "dep_keystone_findings_count": 0,
+        "dep_keystone_haap_drs_escalation_required": False,
+        "dep_keystone_verification_report_ref":
+            "dep-keystone://verification-report.json/L1-001/tr05",
+        "dep_keystone_evidence_sha256_ref":
+            "dep-keystone://evidence.sha256/L1-001/tr05",
+        "dep_keystone_sbom_ref":       "dep-keystone://sbom.cdx.json/L1-001/tr05",
+        "dep_keystone_trust_cert_ref": "dep-keystone://trust-cert/L1-001/tr05",
+        # Abigail artifact hash
+        "artifact_sha256":           "b" * 64,
+        # GovSec V2 training-admissibility fields
+        "govsec_admissibility_status":   "approved",
+        "govsec_admissibility_decision": "accepted_for_clearance",
+        "govsec_layer":              "layer_zero_reality_formation",
+        "reality_formation_input":   True,
+        "ingress_actor_id":          "TEST_INGRESS_OP_001",
+        "ingress_actor_role":        "ingress_reviewer",
+        "operator_review_required":  True,
         "training_pipeline_allowed": True,
         "allowed_next_gates": [
             "tr04a_source_registry",
@@ -611,7 +621,7 @@ class TestRegistrationRejections:
     def test_rejects_invalid_dep_keystone_ingress(self, tmp_path):
         env_path, mfst_path = _make_pipeline_files(tmp_path)
         ingress_path = tmp_path / "ingress.json"
-        bad_ingress = _valid_ingress_for_tr05(admissibility_status="blocked")
+        bad_ingress = _valid_ingress_for_tr05(govsec_admissibility_status="blocked")
         _write_json(ingress_path, bad_ingress)
         with pytest.raises(ModelRegistryBlockedError, match="DEP.KEYSTONE"):
             register_dry_run_candidate(
@@ -658,13 +668,19 @@ class TestLineagePreservation:
         entry = self._register_with_ingress(tmp_path)
         assert "DKI-test-tr05-001" in entry["lineage"]["dep_keystone_ingress_refs"]
 
-    def test_lineage_preserves_keystone_evidence_ref(self, tmp_path):
+    def test_lineage_preserves_dep_keystone_evidence_sha256_ref(self, tmp_path):
         entry = self._register_with_ingress(tmp_path)
-        assert "keystone-evidence://L1-001/tr05/v1" in entry["lineage"]["keystone_evidence_refs"]
+        assert (
+            "dep-keystone://evidence.sha256/L1-001/tr05"
+            in entry["lineage"]["dep_keystone_evidence_sha256_refs"]
+        )
 
-    def test_lineage_preserves_keystone_report_ref(self, tmp_path):
+    def test_lineage_preserves_dep_keystone_verification_report_ref(self, tmp_path):
         entry = self._register_with_ingress(tmp_path)
-        assert "keystone-report://L1-001/tr05/v1" in entry["lineage"]["keystone_verification_report_refs"]
+        assert (
+            "dep-keystone://verification-report.json/L1-001/tr05"
+            in entry["lineage"]["dep_keystone_verification_report_refs"]
+        )
 
     def test_lineage_preserves_dataset_id(self, tmp_path):
         entry = self._register_without_ingress(tmp_path)

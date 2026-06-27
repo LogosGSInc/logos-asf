@@ -104,8 +104,8 @@ def _compute_lineage_hash(record: dict) -> str:
         "artifact_id",
         "artifact_type",
         "dep_keystone_ingress_refs",
-        "keystone_evidence_refs",
-        "keystone_verification_report_refs",
+        "dep_keystone_evidence_sha256_refs",
+        "dep_keystone_verification_report_refs",
         "source_registry_refs",
         "clearance_ledger_refs",
         "dataset_manifest_refs",
@@ -201,8 +201,8 @@ def build_lineage_record(
     artifact_id: str,
     artifact_type: str,
     dep_keystone_ingress_refs: list = None,
-    keystone_evidence_refs: list = None,
-    keystone_verification_report_refs: list = None,
+    dep_keystone_evidence_sha256_refs: list = None,
+    dep_keystone_verification_report_refs: list = None,
     source_registry_refs: list = None,
     clearance_ledger_refs: list = None,
     synthetic_manifest_refs: list = None,
@@ -223,9 +223,9 @@ def build_lineage_record(
         "artifact_id":                    artifact_id,
         "artifact_type":                  artifact_type,
         "parent_artifacts":               [],
-        "dep_keystone_ingress_refs":      list(dep_keystone_ingress_refs or []),
-        "keystone_evidence_refs":         list(keystone_evidence_refs or []),
-        "keystone_verification_report_refs": list(keystone_verification_report_refs or []),
+        "dep_keystone_ingress_refs":            list(dep_keystone_ingress_refs or []),
+        "dep_keystone_evidence_sha256_refs":    list(dep_keystone_evidence_sha256_refs or []),
+        "dep_keystone_verification_report_refs": list(dep_keystone_verification_report_refs or []),
         "source_registry_refs":           list(source_registry_refs or []),
         "clearance_ledger_refs":          list(clearance_ledger_refs or []),
         "synthetic_manifest_refs":        list(synthetic_manifest_refs or []),
@@ -417,10 +417,10 @@ def register_dry_run_candidate(
         )
 
     # DEP.KEYSTONE ingress gate (optional — verified when supplied)
-    dep_ingress_id = None
-    dep_evidence_ref = None
-    dep_report_ref = None
-    dep_govsec_layer = None
+    dep_ingress_id          = None
+    dep_evidence_sha256_ref = None
+    dep_report_ref          = None
+    dep_govsec_layer        = None
     if dep_keystone_ingress_path is not None:
         ingress_rec = load_ingress_record(dep_keystone_ingress_path)
         try:
@@ -429,10 +429,10 @@ def register_dry_run_candidate(
             raise ModelRegistryBlockedError(
                 f"DEP.KEYSTONE ingress check failed: {exc}"
             ) from exc
-        dep_ingress_id  = ingress_rec.get("dep_keystone_ingress_id")
-        dep_evidence_ref = ingress_rec.get("keystone_evidence_ref")
-        dep_report_ref  = ingress_rec.get("keystone_verification_report_ref")
-        dep_govsec_layer = ingress_rec.get("govsec_layer")
+        dep_ingress_id       = ingress_rec.get("dep_keystone_ingress_id")
+        dep_evidence_sha256_ref = ingress_rec.get("dep_keystone_evidence_sha256_ref")
+        dep_report_ref       = ingress_rec.get("dep_keystone_verification_report_ref")
+        dep_govsec_layer     = ingress_rec.get("govsec_layer")
 
     # Extract provenance from envelope and manifest
     job_intent  = envelope.get("job_intent", {})
@@ -479,8 +479,8 @@ def register_dry_run_candidate(
         artifact_id=artifact_id,
         artifact_type="dry_run_adapter_candidate",
         dep_keystone_ingress_refs=[dep_ingress_id] if dep_ingress_id else [],
-        keystone_evidence_refs=[dep_evidence_ref] if dep_evidence_ref else [],
-        keystone_verification_report_refs=[dep_report_ref] if dep_report_ref else [],
+        dep_keystone_evidence_sha256_refs=[dep_evidence_sha256_ref] if dep_evidence_sha256_ref else [],
+        dep_keystone_verification_report_refs=[dep_report_ref] if dep_report_ref else [],
         source_registry_refs=[source_registry_ref] if source_registry_ref else [],
         clearance_ledger_refs=[clearance_ledger_ref] if clearance_ledger_ref else [],
         dataset_manifest_refs=[f"dataset:{dataset_id}"] if dataset_id else [],
@@ -489,6 +489,7 @@ def register_dry_run_candidate(
             f"source_id={source_id!r}, requested_use={requested_use!r}, "
             f"ledger_entry_id={ledger_entry_id!r}, dataset_id={dataset_id!r}, "
             f"dry_run_id={dry_run_id!r}, dep_keystone_ingress_id={dep_ingress_id!r}, "
+            f"dep_keystone_evidence_sha256_ref={dep_evidence_sha256_ref!r}, "
             f"govsec_layer={dep_govsec_layer!r}"
         ),
     )
@@ -505,9 +506,9 @@ def register_dry_run_candidate(
         "lineage_record_id":               lineage["lineage_record_id"],
         "base_model_reference":            None,
         "adapter_reference":               None,
-        "dep_keystone_ingress_ref":        dep_ingress_id,
-        "keystone_evidence_ref":           dep_evidence_ref,
-        "keystone_verification_report_ref": dep_report_ref,
+        "dep_keystone_ingress_ref":             dep_ingress_id,
+        "dep_keystone_evidence_sha256_ref":     dep_evidence_sha256_ref,
+        "dep_keystone_verification_report_ref": dep_report_ref,
         "dataset_manifest_ref":            f"dataset:{dataset_id}" if dataset_id else None,
         "dry_run_envelope_ref":            f"dry_run:{dry_run_id}" if dry_run_id else None,
         "training_job_contract_ref":       None,
