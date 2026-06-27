@@ -292,6 +292,11 @@
         "generation_agent_id": {
           "type": ["string", "null"],
           "description": "Identifier of the agent or pipeline that generated this synthetic source. Required for concrete synthetic output batches. Null at registry seed declaration stage."
+        },
+
+        "dep_keystone_ingress_id": {
+          "type": ["string", "null"],
+          "description": "Optional reference to a DEP.KEYSTONE / GovSec V2 ingress record (DKI-<descriptor>-<seq>) that cleared this source for training pipeline entry. Populated after TR-04D ingress gate clearance."
         }
 
       },
