@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:model-lineage-record:v1.0.0",
+  "title": "LOGOS ASF — TR-05 Model Lineage Record",
+  "description": "Constitutional data contract for model lineage DAG records. Each record ties a model artifact back through DEP.KEYSTONE/GovSec ingress, source registry, clearance ledger, synthetic provenance, dataset manifests, dry-run envelopes, and future promotion decisions.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-27",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "lineage_record_id",
+    "schema_version",
+    "created_at",
+    "artifact_id",
+    "artifact_type",
+    "parent_artifacts",
+    "dep_keystone_ingress_refs",
+    "keystone_evidence_refs",
+    "keystone_verification_report_refs",
+    "source_registry_refs",
+    "clearance_ledger_refs",
+    "synthetic_manifest_refs",
+    "synthetic_review_bridge_refs",
+    "dataset_manifest_refs",
+    "dry_run_envelope_refs",
+    "training_job_contract_refs",
+    "evaluation_refs",
+    "promotion_decision_refs",
+    "lineage_hash",
+    "previous_lineage_hash",
+    "governance_flags",
+    "notes"
+  ],
+
+  "properties": {
+
+    "lineage_record_id": {
+      "type": "string",
+      "description": "Deterministic identifier for this lineage record. Format: LR-<sha256[:16]>.",
+      "minLength": 1
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "artifact_id": {
+      "type": "string",
+      "description": "Reference to the model_artifact_id this lineage record describes.",
+      "minLength": 1
+    },
+
+    "artifact_type": {
+      "type": "string",
+      "description": "Artifact type, matching the registry entry.",
+      "enum": [
+        "base_model_reference",
+        "dry_run_adapter_candidate",
+        "future_adapter_placeholder",
+        "evaluation_baseline",
+        "rejected_candidate"
+      ]
+    },
+
+    "parent_artifacts": {
+      "type": "array",
+      "description": "Upstream artifact IDs this artifact was derived from.",
+      "items": { "type": "string" }
+    },
+
+    "dep_keystone_ingress_refs": {
+      "type": "array",
+      "description": "DEP.KEYSTONE ingress record IDs (DKI-*) that cleared the source for this artifact.",
+      "items": { "type": "string" }
+    },
+
+    "keystone_evidence_refs": {
+      "type": "array",
+      "description": "References to DEP.KEYSTONE evidence packages.",
+      "items": { "type": "string" }
+    },
+
+    "keystone_verification_report_refs": {
+      "type": "array",
+      "description": "References to DEP.KEYSTONE verification reports.",
+      "items": { "type": "string" }
+    },
+
+    "source_registry_refs": {
+      "type": "array",
+      "description": "Source registry IDs (L<N>-NNN) for all contributing sources.",
+      "items": { "type": "string" }
+    },
+
+    "clearance_ledger_refs": {
+      "type": "array",
+      "description": "Clearance ledger entry IDs (LE-*) for all source clearances.",
+      "items": { "type": "string" }
+    },
+
+    "synthetic_manifest_refs": {
+      "type": "array",
+      "description": "References to synthetic_manifest.json files if synthetic data contributed.",
+      "items": { "type": "string" }
+    },
+
+    "synthetic_review_bridge_refs": {
+      "type": "array",
+      "description": "References to synthetic review bridge manifests.",
+      "items": { "type": "string" }
+    },
+
+    "dataset_manifest_refs": {
+      "type": "array",
+      "description": "References to TR-03 dataset manifest IDs.",
+      "items": { "type": "string" }
+    },
+
+    "dry_run_envelope_refs": {
+      "type": "array",
+      "description": "References to TR-04B dry-run envelope IDs (DR-*).",
+      "items": { "type": "string" }
+    },
+
+    "training_job_contract_refs": {
+      "type": "array",
+      "description": "References to signed training job contracts. Empty until a contract is signed.",
+      "items": { "type": "string" }
+    },
+
+    "evaluation_refs": {
+      "type": "array",
+      "description": "References to TR-06 evaluation records. Empty until TR-06 is implemented.",
+      "items": { "type": "string" }
+    },
+
+    "promotion_decision_refs": {
+      "type": "array",
+      "description": "References to operator promotion decision records.",
+      "items": { "type": "string" }
+    },
+
+    "lineage_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of the key provenance fields of this record. Enables tamper detection.",
+      "minLength": 64
+    },
+
+    "previous_lineage_hash": {
+      "type": "string",
+      "description": "lineage_hash of the previous lineage record in the chain. Genesis records use 64 zero hex chars.",
+      "minLength": 64
+    },
+
+    "governance_flags": {
+      "type": "object",
+      "description": "Governance flags inherited from the registry entry.",
+      "required": [
+        "training_allowed",
+        "model_weights_present",
+        "store1_write_allowed",
+        "runtime_deployment_allowed",
+        "external_calls_allowed",
+        "operator_promotion_required"
+      ],
+      "properties": {
+        "training_allowed":            { "type": "boolean", "const": false },
+        "model_weights_present":       { "type": "boolean", "const": false },
+        "store1_write_allowed":        { "type": "boolean", "const": false },
+        "runtime_deployment_allowed":  { "type": "boolean", "const": false },
+        "external_calls_allowed":      { "type": "boolean", "const": false },
+        "operator_promotion_required": { "type": "boolean", "const": true }
+      },
+      "additionalProperties": false
+    },
+
+    "notes": {
+      "type": "string"
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "lineage_hash_covers_provenance": "lineage_hash is computed from artifact_id, artifact_type, and all *_refs arrays. Changing any ref changes the hash.",
+    "genesis_previous_hash":         "First lineage record for any artifact uses previous_lineage_hash = 64 zero hex chars.",
+    "governance_flags_const":        "All governance_flags are const values. They cannot be overridden.",
+    "no_tr06":                       "evaluation_refs is empty until TR-06 is implemented.",
+    "no_real_training":              "This lineage record describes metadata only. No model weights exist."
+  }
+}
