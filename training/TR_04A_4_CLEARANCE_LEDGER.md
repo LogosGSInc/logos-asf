@@ -68,7 +68,7 @@ Every entry carries three signature fields:
 These are **interface placeholders only**. No private keys are generated or
 used in TR-04A.4. The hash chain operates independently of signing.
 
-Real Ed25519 signing is TR-04A.5 (synthetic_doctrine.py is also TR-04A.5).
+Real Ed25519 signing is future TR-04A.4 infrastructure hardening. TR-04A.5 is `synthetic_doctrine.py`.
 
 `signature_value` is excluded from `entry_hash` computation so that adding a
 signature to an existing entry does not break the chain.
@@ -183,8 +183,7 @@ python3 -m pytest -q
 
 **Real Ed25519 signing**: `signature_value` is null for all entries. The
 signing interface is defined (`signature_algorithm`, `signature_public_key_id`,
-`signature_value`) but no private key is generated or used. Real signing is
-TR-04A.5.
+`signature_value`) but no private key is generated or used. Real signing is future TR-04A.4 infrastructure hardening. TR-04A.5 is `synthetic_doctrine.py`.
 
 **AWS S3 Object Lock / WORM**: The ledger is a local JSON file. Immutability
 in production will require S3 Object Lock or equivalent WORM storage. That is

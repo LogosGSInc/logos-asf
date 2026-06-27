@@ -255,8 +255,9 @@ as placeholders (`future: local_lora or local_qlora`).
 **Real training infrastructure**: Not implemented at any phase. A separately
 signed `TRAINING_JOB_CONTRACT` is required, and operator approval is final.
 
-**Real Ed25519 signing on ledger entries**: TR-04A.5. All current ledger entries
-carry `signature_status: unsigned_local` and `signature_algorithm: ed25519_placeholder`.
+**Real Ed25519 signing on ledger entries**: Future TR-04A.4 infrastructure hardening.
+All current ledger entries carry `signature_status: unsigned_local` and
+`signature_algorithm: ed25519_placeholder`. TR-04A.5 is `synthetic_doctrine.py`.
 
 **No real training occurred in TR-04B.** The dry-run adapter continues to
 produce no model weights, no training artifacts, and no external calls.
