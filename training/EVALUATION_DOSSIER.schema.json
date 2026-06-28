@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:evaluation-dossier:v1.0.0",
+  "title": "LOGOS ASF — TR-06E Evaluation Dossier",
+  "description": "Sealed aggregated evaluation dossier for one registered Abigail candidate. Collects TR-06A metadata evaluation reports, TR-06C live evaluation plans, and TR-06D deterministic stub execution reports into one checksum-addressed evidence package. Classifies readiness_state without emitting a promotion decision. No real inference, provider calls, model weights, training, deployment, or promotion occurs here.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-28",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "evaluation_dossier_id",
+    "schema_version",
+    "created_at",
+    "candidate_artifact_id",
+    "candidate_lineage_record_id",
+    "source_model_registry_ref",
+    "metadata_evaluation_report_refs",
+    "live_evaluation_plan_refs",
+    "stub_execution_report_refs",
+    "gate_summary",
+    "stub_execution_summary",
+    "readiness_state",
+    "readiness_rationale",
+    "promotion_blocked",
+    "promotion_decision_emitted",
+    "operator_review_required",
+    "real_model_inference_performed",
+    "provider_calls_performed",
+    "model_weights_loaded",
+    "model_training_performed",
+    "runtime_deployment_performed",
+    "store1_writes_performed",
+    "blocked_actions",
+    "dossier_hash",
+    "previous_dossier_hash",
+    "notes"
+  ],
+
+  "properties": {
+
+    "evaluation_dossier_id": {
+      "type": "string",
+      "description": "Deterministic ID. Format: ED-<sha256[:16]>. Stable for same candidate + sorted input refs + readiness_state.",
+      "minLength": 1
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "candidate_artifact_id": {
+      "type": "string",
+      "description": "MA-* artifact this dossier evaluates.",
+      "minLength": 1
+    },
+
+    "candidate_lineage_record_id": {
+      "type": "string",
+      "description": "Lineage record ID from TR-05 model registry (may be empty string if not known)."
+    },
+
+    "source_model_registry_ref": {
+      "type": "string",
+      "description": "Model registry path or identifier from which this candidate was drawn."
+    },
+
+    "metadata_evaluation_report_refs": {
+      "type": "array",
+      "description": "ER-* IDs of TR-06A metadata evaluation reports included in this dossier.",
+      "items": { "type": "string" }
+    },
+
+    "live_evaluation_plan_refs": {
+      "type": "array",
+      "description": "LP-* IDs of TR-06C live evaluation plans included in this dossier.",
+      "items": { "type": "string" }
+    },
+
+    "stub_execution_report_refs": {
+      "type": "array",
+      "description": "XR-* IDs of TR-06D stub execution reports included in this dossier.",
+      "items": { "type": "string" }
+    },
+
+    "gate_summary": {
+      "type": "object",
+      "description": "Aggregated TR-06A gate result counts across all metadata evaluation reports.",
+      "required": ["pass", "fail", "block", "not_evaluated", "total"],
+      "properties": {
+        "pass":          { "type": "integer", "minimum": 0 },
+        "fail":          { "type": "integer", "minimum": 0 },
+        "block":         { "type": "integer", "minimum": 0 },
+        "not_evaluated": { "type": "integer", "minimum": 0 },
+        "total":         { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+
+    "stub_execution_summary": {
+      "type": "object",
+      "description": "Aggregated TR-06D stub execution result counts across all stub execution reports.",
+      "required": ["stub_pass", "stub_fail", "stub_block", "not_evaluated", "blocked", "total"],
+      "properties": {
+        "stub_pass":     { "type": "integer", "minimum": 0 },
+        "stub_fail":     { "type": "integer", "minimum": 0 },
+        "stub_block":    { "type": "integer", "minimum": 0 },
+        "not_evaluated": { "type": "integer", "minimum": 0 },
+        "blocked":       { "type": "integer", "minimum": 0 },
+        "total":         { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+
+    "readiness_state": {
+      "type": "string",
+      "description": "Deterministic readiness classification. Does not constitute promotion eligibility. metadata_ready means no blocking evidence found and required metadata passed; it does not mean the candidate is ready for production.",
+      "enum": ["metadata_ready", "needs_more_evidence", "blocked", "not_evaluated"]
+    },
+
+    "readiness_rationale": {
+      "type": "string",
+      "description": "Human-readable explanation of why readiness_state was assigned.",
+      "minLength": 1
+    },
+
+    "promotion_blocked": {
+      "type": "boolean",
+      "description": "Always true. The dossier cannot promote a candidate.",
+      "const": true
+    },
+
+    "promotion_decision_emitted": {
+      "type": "boolean",
+      "description": "Always false. TR-06E never emits a promotion decision.",
+      "const": false
+    },
+
+    "operator_review_required": {
+      "type": "boolean",
+      "description": "Always true. Dossier contents require operator review before any further action.",
+      "const": true
+    },
+
+    "real_model_inference_performed": {
+      "type": "boolean",
+      "description": "Always false. TR-06E aggregates evidence only; no real inference occurred.",
+      "const": false
+    },
+
+    "provider_calls_performed": {
+      "type": "boolean",
+      "description": "Always false. No provider calls occurred in TR-06E.",
+      "const": false
+    },
+
+    "model_weights_loaded": {
+      "type": "boolean",
+      "description": "Always false. No model weights were loaded in TR-06E.",
+      "const": false
+    },
+
+    "model_training_performed": {
+      "type": "boolean",
+      "description": "Always false. No training occurred in TR-06E.",
+      "const": false
+    },
+
+    "runtime_deployment_performed": {
+      "type": "boolean",
+      "description": "Always false. No runtime deployment occurred in TR-06E.",
+      "const": false
+    },
+
+    "store1_writes_performed": {
+      "type": "boolean",
+      "description": "Always false. No Store 1 writes occurred in TR-06E.",
+      "const": false
+    },
+
+    "blocked_actions": {
+      "type": "array",
+      "description": "Actions blocked from occurring within this dossier.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+
+    "dossier_hash": {
+      "type": "string",
+      "description": "SHA-256 of the canonical dossier content (excluding dossier_hash itself). Provides tamper-evidence.",
+      "minLength": 64,
+      "maxLength": 64
+    },
+
+    "previous_dossier_hash": {
+      "type": ["string", "null"],
+      "description": "Hash of the previous dossier for this candidate, if any. Null for first dossier."
+    },
+
+    "notes": {
+      "type": "string",
+      "description": "Free-text notes about this dossier."
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "promotion_blocked_const":           "promotion_blocked is const:true. Dossier cannot promote a candidate.",
+    "promotion_decision_never":          "promotion_decision_emitted is const:false. No promotion pathway is opened.",
+    "metadata_ready_is_not_promotion":   "readiness_state='metadata_ready' does not constitute promotion eligibility. It means no blocking evidence was found.",
+    "no_real_inference":                 "real_model_inference_performed is const:false.",
+    "no_provider_calls":                 "provider_calls_performed is const:false.",
+    "no_model_weights":                  "model_weights_loaded is const:false.",
+    "no_training":                       "model_training_performed is const:false.",
+    "no_deployment":                     "runtime_deployment_performed is const:false.",
+    "no_store1":                         "store1_writes_performed is const:false.",
+    "no_tr07":                           "TR-07 shadow/canary was not started here.",
+    "single_candidate":                  "All input reports must share the same candidate_artifact_id.",
+    "dossier_hash_covers_content":       "dossier_hash is SHA-256 of canonical content excluding itself."
+  }
+}
