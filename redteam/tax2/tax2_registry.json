@@ -1,9 +1,9 @@
 {
   "taxonomy": "TAX2",
-  "version": "1.2.0",
-  "date": "2026-06-11",
+  "version": "2.1.0",
+  "date": "2026-07-03",
   "baseline": "BD1A",
-  "feeds": ["GovMem v2", "Sentinel OverWatch v3.6", "HAAP v2.0"],
+  "feeds": ["GovMem v2", "Sentinel OverWatch v3.6", "HAAP v2.0", "GovSec V2.1"],
   "sprint_staged": "Sprint 5A",
   "execution_status": "dormant — not run",
   "generations": [
@@ -116,6 +116,24 @@
       "haap_requirement": "required",
       "audit_reason": "g4_g5_fusion_pattern_detected",
       "safety_status": "sanitized_defensive_signature_only"
+    },
+    {
+      "taxonomy": "TAX2",
+      "version": "2.1.0",
+      "generation": "G7",
+      "name": "CMD_STYLE_INJECTION",
+      "source_file": "GOVSEC_V2_1_COMMAND_STYLE_INJECTION_REGISTRY.json",
+      "vectors": [
+        "MT-G7-01", "MT-G7-02", "MT-G7-03", "MT-G7-04", "MT-G7-05",
+        "MT-G7-06", "MT-G7-07", "MT-G7-08", "MT-G7-09", "MT-G7-10"
+      ],
+      "bd1a_relationship": "G7 is a surface-class attack targeting the API classification gap. Command-shaped text sent as inference input bypasses deterministic routing and exploits LLM non-determinism. G7 attacks are distinct from BD1A cognitive manipulation (G4/G5/G6) — they operate at the HTTP/routing layer, not the semantic layer.",
+      "govmem_memory_action": "quarantine",
+      "sentinel_action": "block",
+      "haap_requirement": "required",
+      "audit_reason": "cmd_style_injection_detected",
+      "safety_status": "sanitized_defensive_signature_only",
+      "govsec_doctrine": "GOVSEC_V2_1_COMMAND_STYLE_INJECTION.md"
     }
   ],
   "bd1a_phase_q_addendum": {

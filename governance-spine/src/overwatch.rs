@@ -113,6 +113,27 @@ impl OverWatch {
 
         if multi_turn { violations.push(("MULTI_TURN_INJECTION_CAMPAIGN", "OW-003", 0.82)); }
 
+        // OW-CMD-001: MULTI_TURN_CMD_INJECTION_CAMPAIGN
+        // Threshold: 3+ CMD_STYLE_INJECTION signals across the session.
+        let cmd_campaign = {
+            let mut sessions = self.sessions.write();
+            let fp = sessions.get_mut(session_id).unwrap();
+            let lower = payload.to_lowercase();
+            let hit = lower.contains("/api/admin") || lower.contains("/api/internal")
+                || (lower.contains("dump") && (lower.contains("config") || lower.contains("key") || lower.contains("secret")))
+                || ((lower.contains("show") || lower.contains("reveal")) && (lower.contains("key") || lower.contains("token") || lower.contains("secret")))
+                || ((lower.contains("bypass") || lower.contains("ignore")) && (lower.contains("haap") || lower.contains("sentinel") || lower.contains("auth")))
+                || ((lower.contains("grant") || lower.contains("escalate")) && (lower.contains("admin") || lower.contains("root")));
+            if hit {
+                *fp.violation_counts.entry("CMD_STYLE_INJ".to_string()).or_insert(0) += 1;
+            }
+            fp.violation_counts.get("CMD_STYLE_INJ").copied().unwrap_or(0)
+        };
+        if cmd_campaign >= 3 {
+            let conf = (0.70_f32 + (cmd_campaign.saturating_sub(2) as f32 * 0.05)).min(0.95);
+            violations.push(("CMD_INJECTION_CAMPAIGN", "OW-CMD-001", conf));
+        }
+
         // OW-Q09-001: SEMANTIC_DRIFT_DIALECTICAL — TAX2 G5/Q09 dialectical boundary erosion.
         // Detects session-history-as-authorization extraction patterns across turns without
         // requiring full conversation history. Each pattern family targets one linguistic

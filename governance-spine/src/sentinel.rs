@@ -60,6 +60,17 @@ static INJECTION_PATTERNS: Lazy<Vec<(&'static str, Regex)>> = Lazy::new(|| {
         ("SENT-015A", Regex::new(r"(?ix)\bwhat\s+(model|version).{0,30}\b(you|are|based\s+on|running|powered|built)\b").unwrap()),
         ("SENT-015B", Regex::new(r"(?ix)\bwhat\s+(version|release).{0,40}\b(governance|spine|sentinel|corridor|overwatch|system)\b").unwrap()),
         ("SENT-015C", Regex::new(r"(?i)\bwhat\s+(architecture|framework|stack|pipeline)\b").unwrap()),
+        // CMD_STYLE_INJECTION rules — SENT-CMD-001 through SENT-CMD-010
+        ("SENT-CMD-001", Regex::new(r"(?i)\bdump\b.{0,10}\b(config|env|key|secret|token|credential)\b").unwrap()),
+        ("SENT-CMD-002", Regex::new(r"(?i)/api/(admin|internal|secret|debug|config|raw|v\d+)").unwrap()),
+        ("SENT-CMD-003", Regex::new(r"(?ix)\b(show|reveal|print|echo|expose|list)\b.{0,20}\b(key|token|secret|route|config)\b").unwrap()),
+        ("SENT-CMD-004", Regex::new(r"(?ix)\b(role|grant|escalate)\b.{0,15}\b(admin|root|operator|superuser)\b").unwrap()),
+        ("SENT-CMD-005", Regex::new(r"(?ix)\b(tool|function|call|invoke|execute|run)\b.{0,20}\b(shell|bash|system|exec|eval)\b").unwrap()),
+        ("SENT-CMD-006", Regex::new(r"(?ix)\b(bypass|skip|ignore)\b.{0,20}\b(auth|governance|gate|haap|sentinel)\b").unwrap()),
+        ("SENT-CMD-007", Regex::new(r"(?ix)\b(list|dump|show)\s+(all\s+)?(endpoint|route|api\s*route|handler)s?\b").unwrap()),
+        ("SENT-CMD-008", Regex::new(r"(?ix)\b(promote|elevate|sudo|su)\b.{0,20}\b(privilege|access|level|role)\b").unwrap()),
+        ("SENT-CMD-009", Regex::new(r"(?ix)\b(enumerate|iterate|list)\b.{0,30}\b(function|method|endpoint|tool|command|capability)s?\b").unwrap()),
+        ("SENT-CMD-010", Regex::new(r"(?i)\bexecute\s+(as|with)\s+(admin|root|operator|system)\b").unwrap()),
     ]
 });
 
@@ -149,6 +160,11 @@ impl Sentinel {
                     "SENT-015A" | "SENT-015B" | "SENT-015C" => "RECONNAISSANCE",
                     "SENT-011A" | "SENT-011B" | "SENT-011C" => "HYPOTHETICAL_JAILBREAK",
                     "SENT-013A" | "SENT-013B" => "EXCEPTION_PERSUASION",
+                    "SENT-CMD-001" | "SENT-CMD-002" | "SENT-CMD-003"
+                    | "SENT-CMD-006" | "SENT-CMD-007" | "SENT-CMD-010" => "CMD_INJECTION",
+                    "SENT-CMD-004" | "SENT-CMD-008" => "AUTHORITY_SPOOFING",
+                    "SENT-CMD-005" => "TOOL_MISUSE",
+                    "SENT-CMD-009" => "MODEL_EXTRACTION",
                     _ => "INJECTION_ATTEMPT",
                 };
                 return self.build(direction, session_id, class, rule_id,

@@ -60,6 +60,14 @@ except ImportError:
     _provider_registry = None
     def _safe_provider_fields(e): return {}
 
+# ── Governed Command Bus (CB-01, pre-inference operator command detection) ─────
+try:
+    from command_bus import try_operator_command as _try_operator_command_fn
+    _COMMAND_BUS_OK = True
+except ImportError:
+    _COMMAND_BUS_OK = False
+    def _try_operator_command_fn(*a, **kw): return None
+
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
 LOG_FILE     = HOME / ".abigail_audit.jsonl"
@@ -225,6 +233,15 @@ SENTINEL_PATTERNS = [
     r"jailbreak",r"DAN\b",r"do\s+anything\s+now",
     r"hypothetically\s+speaking.{0,30}(harm|weapon|exploit)",
     r"[\u200b-\u200f\u2028\u2029\ufeff]",
+    # CMD_STYLE_INJECTION signals (SENT-CMD-001 through SENT-CMD-006)
+    # Catches hostile command-shaped input not on the operator allowlist.
+    # "status" and "help" do not match any of these patterns \u2014 no conflict.
+    r"dump.{0,10}(config|env|key|secret|token|credential)",                         # SENT-CMD-001
+    r"/api/(admin|internal|secret|debug|config|raw|v\d)",                           # SENT-CMD-002
+    r"(show|reveal|print|echo|expose|list).{0,20}(key|token|secret|route|config)",  # SENT-CMD-003
+    r"(role|grant|escalate).{0,15}(admin|root|operator|superuser)",                 # SENT-CMD-004
+    r"(tool|function|call|invoke|execute|run).{0,20}(shell|bash|system|exec|eval)", # SENT-CMD-005
+    r"(bypass|skip|ignore).{0,20}(auth|governance|gate|haap|sentinel)",             # SENT-CMD-006
 ]
 _DRS_SIGNALS = [
     (r"delete|remove|drop|truncate",          8, "destructive verb"),
@@ -757,6 +774,18 @@ def run_web(session, kill_switch, active_backend, port=7070):
         if request.method=="OPTIONS": return jsonify({}),200
         msg=((request.get_json(silent=True) or {}).get("message") or "").strip()
         if not msg: return jsonify({"ok":False,"text":"Empty message.","drs":0,"mode":"NONE","crsv":0.0})
+        # Governed command bus — classify before LLM inference (CB-01)
+        if _COMMAND_BUS_OK:
+            _auth = (request.headers.get("Authorization","") or
+                     request.headers.get("X-HAAP-Token",""))
+            _status = {"backend":active_backend[0],"crsv":session.crsv(),
+                       "turns":session.turn_count,"kill_switch":kill_switch.is_active,
+                       "version":VERSION,"sandbox":"docker+venv"}
+            _cmd = _try_operator_command_fn(
+                msg, request.remote_addr, _auth,
+                haap_gate, log_event, _status, session)
+            if _cmd is not None:
+                return jsonify(_cmd)
         return jsonify(process_message(msg,session,kill_switch,active_backend))
 
     @flask_app.route("/api/sentinel-health")
