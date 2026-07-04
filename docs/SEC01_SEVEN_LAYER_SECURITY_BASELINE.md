@@ -22,8 +22,12 @@ the GovSec V2.1 CMD_STYLE_INJECTION doctrine are all in place and 1407 tests pas
 material risk is **not** in the AI-governance layer; it is in **infrastructure and
 access posture (L3/L4)**: the server binds all network interfaces, admin auth fails
 open, the primary inference route is unauthenticated with no cost ceiling, and a
-world-readable copy of the real Groq key sits in the repo working directory. Several of
-these compound with the **in-progress and unfinished SH-01 secret migration**.
+world-readable copy of the real Groq key sits in the repo working directory.
+
+*Status (2026-07-04): the L3/L4/L7 access findings were remediated in SEC-02, and SH-01
+secret hygiene is resolved (`~/.abigail.env` canonical at mode 600; `~/.bashrc` no longer
+exports managed secrets). This report is retained as the point-in-time baseline; see
+inline **Status** notes on individual findings.*
 
 - **Critical:** 1
 - **High:** 4
@@ -72,11 +76,13 @@ Finding fields: `id | layer | severity | component | evidence | risk | recommend
   Evidence: guard pattern is `if admin_token and token != admin_token: reject` and
   `_admin_ok()` returns `(not admin_token) or (token == admin_token)`. Risk: if
   `ABIGAIL_ADMIN_TOKEN` is empty/unset, **every** privileged route (agent spawn,
-  department kill/restart, audit-tail) is served unauthenticated. This is coupled to the
-  unfinished SH-01 migration: the active admin token currently depends on a fragile
-  `~/.bashrc` export, and the `.abigail.env` value differs from it. Action: make auth
-  fail *closed* — refuse to serve privileged routes when no admin token is configured;
-  finish SH-01 so the token has one authoritative source. **patch_now** | owner: Eng/Sec
+  department kill/restart, audit-tail) is served unauthenticated. Action: make auth
+  fail *closed* — refuse to serve privileged routes when no admin token is configured.
+  **patch_now** | owner: Eng/Sec.
+  *Status (2026-07-04): RESOLVED by SEC-02* — `require_admin_token()` now fails closed
+  (503 when unconfigured, 401 otherwise). SH-01 is resolved: `~/.abigail.env` is the
+  authoritative source (mode 600, distinct admin/demo tokens) and `~/.bashrc` no longer
+  exports the managed secrets.
 
 - **SEC01-L1-2 | MEDIUM | operator-command local gate | launch env `ABIGAIL_ALLOW_LOCAL_OPERATOR_COMMANDS`**
   Evidence: launch relies on this env flag, but it is not read in
@@ -224,7 +230,7 @@ Finding fields: `id | layer | severity | component | evidence | risk | recommend
   `/api/chat` and paid Groq inference.
 
 ## High Findings
-- **SEC01-L1-1** — Admin auth fails open when the token is unset (coupled to unfinished SH-01).
+- **SEC01-L1-1** — Admin auth fails open when the token is unset. *(RESOLVED in SEC-02; SH-01 secret source canonicalized.)*
 - **SEC01-L3-1** — Flask binds `0.0.0.0` despite localhost-only assumptions.
 - **SEC01-L3-2** — World-readable (644) real `gsk_` key in the repo working directory.
 - **SEC01-L4-1** — Unauthenticated `/api/chat` inference, network-reachable.
@@ -262,13 +268,11 @@ Finding fields: `id | layer | severity | component | evidence | risk | recommend
 - Confirm audit-log file mode + fail-close tail (L7-2).
 
 ## Do Not Fix Yet
-- **SH-01 is only partially complete and is paused pending operator decision.**
-  *Done:* `GROQ_API_KEY` exports removed from `~/.bashrc` (backup `~/.bashrc.bak.20260704`);
-  the real Groq key lives in `~/.abigail.env` at mode 600.
-  *Not done:* `ABIGAIL_ADMIN_TOKEN`, `ABIGAIL_DEMO_TOKEN`, and `XAI_API_KEY` are **still
-  exported from `~/.bashrc`**, and the `.bashrc` vs `.abigail.env` admin/demo token values
-  **differ** (length 64 vs 43/32) — no canonical source has been chosen. This must be
-  resolved *before* the L1-1 fail-closed fix can rely on a single authoritative admin token.
+- **SH-01 — RESOLVED (2026-07-04).** `~/.abigail.env` is the authoritative secret source
+  (mode 600, with distinct `ABIGAIL_ADMIN_TOKEN` len 43 and `ABIGAIL_DEMO_TOKEN` len 32,
+  plus `GROQ_API_KEY`). `~/.bashrc` no longer exports `GROQ_API_KEY`,
+  `ABIGAIL_ADMIN_TOKEN`, or `ABIGAIL_DEMO_TOKEN` (verified in a clean login shell). One
+  empty `XAI_API_KEY=""` template placeholder remains in `~/.bashrc` (unused by Abigail).
 - No changes to `~/Abigailv1` or the evidence archive.
 
 ---

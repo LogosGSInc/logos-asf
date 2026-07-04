@@ -157,6 +157,67 @@ def _require_env_key(name):
     return v
 
 
+# ── SEC-02: Runtime hardening — bind host, admin auth, cost governor ────────────
+def resolve_bind_host():
+    """SEC-02 (L3-1): default to localhost. A non-local bind must be explicitly opted
+    into via ABIGAIL_BIND_HOST plus ABIGAIL_ALLOW_NONLOCAL_BIND=1; otherwise the request
+    is refused and downgraded to 127.0.0.1."""
+    requested = (os.environ.get("ABIGAIL_BIND_HOST","") or "127.0.0.1").strip()
+    if requested in ("127.0.0.1","localhost","::1"):
+        return "127.0.0.1"
+    if os.environ.get("ABIGAIL_ALLOW_NONLOCAL_BIND","0") == "1":
+        return requested
+    log_event("BIND_NONLOCAL_REFUSED", {"requested_len": len(requested)})
+    return "127.0.0.1"
+
+
+def require_admin_token(req):
+    """SEC-02 (L1-1): fail-closed admin authentication.
+    Returns (ok, http_status, error). ok is True only when a server-side
+    ABIGAIL_ADMIN_TOKEN is configured AND the request presents the matching token.
+    A missing server token is a misconfiguration and fails closed (503). A missing or
+    incorrect client token is 401. Error text never reveals token contents or closeness."""
+    admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN","").strip()
+    if not admin_token:
+        return (False, 503, "Admin control unavailable: server auth not configured.")
+    auth = req.headers.get("Authorization","").removeprefix("Bearer ").strip()
+    token = auth or req.headers.get("X-HAAP-Token","").strip()
+    if not token or token != admin_token:
+        return (False, 401, "Admin token required.")
+    return (True, 200, None)
+
+
+def estimate_tokens(text):
+    """Deterministic local token estimate (~4 chars/token). No provider calls."""
+    return max(1, (len(text or "") + 3) // 4)
+
+
+def check_chat_cost_budget(message, mode, session):
+    """SEC-02 (L7-1): deterministic local pre-inference spend gate. Returns
+    (allowed, meta). No external billing calls. When enabled, a zero/empty budget fails
+    closed; over-budget turn counts or oversized requests are blocked before any paid
+    provider dispatch. meta is audit-safe — message length only, never raw prompt."""
+    enabled = os.environ.get("ABIGAIL_COST_GOVERNOR_ENABLED","1") == "1"
+    def _int(name, default):
+        try: return int(os.environ.get(name, str(default)) or 0)
+        except ValueError: return 0
+    max_turns  = _int("ABIGAIL_MAX_CHAT_TURNS", 1000)
+    max_tokens = _int("ABIGAIL_MAX_ESTIMATED_TOKENS", 8000)
+    est = estimate_tokens(message)
+    meta = {"cost_governor": "enabled" if enabled else "disabled",
+            "turns_used": session.turn_count, "max_chat_turns": max_turns,
+            "estimated_tokens": est, "max_estimated_tokens": max_tokens}
+    if not enabled:
+        meta["decision"] = "allow_disabled"; return (True, meta)
+    if max_turns <= 0 or max_tokens <= 0:
+        meta["decision"] = "block_zero_budget"; return (False, meta)
+    if session.turn_count >= max_turns:
+        meta["decision"] = "block_turns_exhausted"; return (False, meta)
+    if est > max_tokens:
+        meta["decision"] = "block_request_too_large"; return (False, meta)
+    meta["decision"] = "allow"; return (True, meta)
+
+
 # ── Backends ──────────────────────────────────────────────────────────────────
 BACKENDS = {
     "groq":       {"env":"GROQ_API_KEY",      "label":"Groq (Llama 4 Scout)"},
@@ -706,7 +767,10 @@ fetchStatus();setInterval(fetchStatus,15000);
 
 
 # ── Web server ────────────────────────────────────────────────────────────────
-def run_web(session, kill_switch, active_backend, port=7070):
+def build_web_app(session, kill_switch, active_backend):
+    """SEC-02: construct and return the Flask app (routes wired) without starting the
+    server. Exposed separately so tests can exercise routes via a test client; run_web()
+    handles bind-host resolution, the banner, and flask_app.run()."""
     try:
         from flask import Flask, Response, jsonify, request
     except ImportError:
@@ -795,6 +859,15 @@ def run_web(session, kill_switch, active_backend, port=7070):
                 haap_gate, log_event, _status, session)
             if _cmd is not None:
                 return jsonify(_cmd)
+        # SEC-02: Cost Governor — deterministic local spend gate BEFORE paid inference (L7-1)
+        _cost_ok, _cost_meta = check_chat_cost_budget(msg, "chat", session)
+        if not _cost_ok:
+            log_event("COST_GATE_BLOCK", {"decision": _cost_meta.get("decision"),
+                                          "turns": _cost_meta.get("turns_used")})
+            return jsonify({"ok": False,
+                            "text": "Request blocked by Cost Governor — local spend ceiling reached.",
+                            "drs": 0, "mode": "COST_BLOCKED", "crsv": session.crsv(),
+                            "cost": _cost_meta})
         # MM-02: Shadow orchestration context — audit-safe, additive, fail-soft (CB-02)
         _orch_ctx = None
         if _ORCHESTRATION_BRIDGE_OK:
@@ -803,6 +876,7 @@ def run_web(session, kill_switch, active_backend, port=7070):
         result = process_message(msg, session, kill_switch, active_backend)
         if _orch_ctx is not None:
             result["orchestration"] = _orch_ctx.response_metadata
+        result.setdefault("cost", _cost_meta)
         return jsonify(result)
 
     @flask_app.route("/api/sentinel-health")
@@ -868,12 +942,10 @@ def run_web(session, kill_switch, active_backend, port=7070):
     @flask_app.route("/api/agents/spawn",methods=["POST","OPTIONS"])
     def api_agents_spawn():
         if request.method=="OPTIONS": return jsonify({}),200
-        auth=request.headers.get("Authorization","").removeprefix("Bearer ").strip()
-        token=auth or request.headers.get("X-HAAP-Token","")
-        admin_token=os.environ.get("ABIGAIL_ADMIN_TOKEN","")
-        if admin_token and token!=admin_token:
-            log_event("SPAWN_AUTH_REJECTED",{"ip":request.remote_addr})
-            return jsonify({"error":"Admin HAAP token required."}),401
+        _ok,_st,_err = require_admin_token(request)
+        if not _ok:
+            log_event("SPAWN_AUTH_REJECTED",{"ip":request.remote_addr,"status":_st})
+            return jsonify({"error":_err}),_st
         body=request.get_json(force=True,silent=True) or {}
         dept_id=body.get("dept_id","DEPT-UNKNOWN")
         task=body.get("task","").strip()
@@ -914,12 +986,6 @@ def run_web(session, kill_switch, active_backend, port=7070):
 
     VALID_DEPTS = {"EXE","ENG","PRD","SEC","LGL","FIN","OPS","REV","MKT","HR","DAT","GRC"}
 
-    def _admin_ok():
-        auth = request.headers.get("Authorization","").removeprefix("Bearer ").strip()
-        token = auth or request.headers.get("X-HAAP-Token","")
-        admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN","")
-        return (not admin_token) or (token == admin_token)
-
     def _normalize_dept(dept):
         d = (dept or "").strip().upper()
         return d if d in VALID_DEPTS else None
@@ -933,7 +999,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
     @flask_app.route("/api/agents/<dept>/kill", methods=["POST","OPTIONS"])
     def api_dept_kill(dept):
         if request.method == "OPTIONS": return ("",204)
-        if not _admin_ok(): return jsonify({"error":"Admin token required."}), 401
+        _ok,_st,_err = require_admin_token(request)
+        if not _ok: return jsonify({"error":_err}), _st
         d = _normalize_dept(dept)
         if not d: return jsonify({"error":f"Unknown department: {dept}","valid":sorted(VALID_DEPTS)}), 400
         body = request.get_json(silent=True) or {}
@@ -947,7 +1014,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
     @flask_app.route("/api/agents/<dept>/restart", methods=["POST","OPTIONS"])
     def api_dept_restart(dept):
         if request.method == "OPTIONS": return ("",204)
-        if not _admin_ok(): return jsonify({"error":"Admin token required."}), 401
+        _ok,_st,_err = require_admin_token(request)
+        if not _ok: return jsonify({"error":_err}), _st
         d = _normalize_dept(dept)
         if not d: return jsonify({"error":f"Unknown department: {dept}","valid":sorted(VALID_DEPTS)}), 400
         body = request.get_json(silent=True) or {}
@@ -975,10 +1043,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
     @flask_app.route("/api/audit-tail")  # alias for dashboard
     @flask_app.route("/api/audit/tail")
     def api_audit_tail():
-        auth=request.headers.get("Authorization","").removeprefix("Bearer ").strip()
-        token=auth or request.headers.get("X-HAAP-Token","")
-        admin_token=os.environ.get("ABIGAIL_ADMIN_TOKEN","")
-        if admin_token and token!=admin_token: return jsonify({"error":"Admin token required."}),401
+        _ok,_st,_err = require_admin_token(request)
+        if not _ok: return jsonify({"error":_err}), _st
         n=min(int(request.args.get("n",50)),500)
         events=[]
         if LOG_FILE.exists():
@@ -987,14 +1053,22 @@ def run_web(session, kill_switch, active_backend, port=7070):
                 except Exception: pass
         return jsonify({"events":events,"count":len(events)})
 
+    return flask_app
+
+
+def run_web(session, kill_switch, active_backend, port=7070):
+    flask_app = build_web_app(session, kill_switch, active_backend)
+    bind_host = resolve_bind_host()            # SEC-02 (L3-1): localhost by default
+    local_only = bind_host in ("127.0.0.1","localhost","::1")
     headless=os.environ.get("ABIGAIL_HEADLESS","0")=="1"
-    print(f"\n  Abigail CP-00  →  http://127.0.0.1:{port}")
+    print(f"\n  Abigail CP-00  →  http://{bind_host}:{port}")
     print(f"  Backend  : {BACKENDS.get(active_backend[0],{}).get('label',active_backend[0])}")
     print(f"  HAAP     : ACTIVE  |  Sandbox: Docker+venv  |  Sentinel: {SENTINEL_URL}")
+    print(f"  Bind     : {bind_host}:{port}  ({'localhost-only' if local_only else 'NON-LOCAL (opt-in)'})")
     print(f"  Audit    : {LOG_FILE}\n")
     if not headless:
         threading.Timer(0.9,lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
-    flask_app.run(host="0.0.0.0",port=port,debug=False,use_reloader=False)
+    flask_app.run(host=bind_host,port=port,debug=False,use_reloader=False)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
