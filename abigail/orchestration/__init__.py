@@ -34,6 +34,11 @@ from .audit import (
 )
 from .routing_manifest import build_routing_manifest, to_audit_dict, manifest_hash
 from .handoff_packet import build_handoff_packet, packet_canonical_payload_dict
+from .runtime_bridge import (
+    ShadowOrchestrationContext,
+    build_shadow_orchestration_context,
+    BRIDGE_VERSION,
+)
 from .capabilities import (
     get_capability_profile,
     check_modality_supported,
@@ -68,6 +73,9 @@ __all__ = [
     "manifest_hash",
     "build_handoff_packet",
     "packet_canonical_payload_dict",
+    "ShadowOrchestrationContext",
+    "build_shadow_orchestration_context",
+    "BRIDGE_VERSION",
     "get_capability_profile",
     "check_modality_supported",
     "check_risk_level_allowed",

@@ -68,6 +68,14 @@ except ImportError:
     _COMMAND_BUS_OK = False
     def _try_operator_command_fn(*a, **kw): return None
 
+# ── Shadow Orchestration Bridge (MM-02, audit-safe shadow routing context) ─────
+try:
+    from orchestration.runtime_bridge import build_shadow_orchestration_context as _build_shadow_ctx
+    _ORCHESTRATION_BRIDGE_OK = True
+except ImportError:
+    _ORCHESTRATION_BRIDGE_OK = False
+    def _build_shadow_ctx(*a, **kw): return None
+
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
 LOG_FILE     = HOME / ".abigail_audit.jsonl"
@@ -772,7 +780,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
     @flask_app.route("/api/chat",methods=["POST","OPTIONS"])
     def api_chat():
         if request.method=="OPTIONS": return jsonify({}),200
-        msg=((request.get_json(silent=True) or {}).get("message") or "").strip()
+        _body = request.get_json(silent=True) or {}
+        msg = (_body.get("message") or "").strip()
         if not msg: return jsonify({"ok":False,"text":"Empty message.","drs":0,"mode":"NONE","crsv":0.0})
         # Governed command bus — classify before LLM inference (CB-01)
         if _COMMAND_BUS_OK:
@@ -786,7 +795,15 @@ def run_web(session, kill_switch, active_backend, port=7070):
                 haap_gate, log_event, _status, session)
             if _cmd is not None:
                 return jsonify(_cmd)
-        return jsonify(process_message(msg,session,kill_switch,active_backend))
+        # MM-02: Shadow orchestration context — audit-safe, additive, fail-soft (CB-02)
+        _orch_ctx = None
+        if _ORCHESTRATION_BRIDGE_OK:
+            _req_meta = {k: v for k, v in _body.items() if k != "message"}
+            _orch_ctx = _build_shadow_ctx(msg, "chat", session, active_backend, _req_meta)
+        result = process_message(msg, session, kill_switch, active_backend)
+        if _orch_ctx is not None:
+            result["orchestration"] = _orch_ctx.response_metadata
+        return jsonify(result)
 
     @flask_app.route("/api/sentinel-health")
     def api_sentinel_health():
