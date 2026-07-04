@@ -69,12 +69,17 @@ except ImportError:
     def _try_operator_command_fn(*a, **kw): return None
 
 # ── Shadow Orchestration Bridge (MM-02, audit-safe shadow routing context) ─────
+# ── + MM-03 enforced approval gate predicate ──────────────────────────────────
 try:
-    from orchestration.runtime_bridge import build_shadow_orchestration_context as _build_shadow_ctx
+    from orchestration.runtime_bridge import (
+        build_shadow_orchestration_context as _build_shadow_ctx,
+        approval_gate_blocks as _approval_gate_blocks,
+    )
     _ORCHESTRATION_BRIDGE_OK = True
 except ImportError:
     _ORCHESTRATION_BRIDGE_OK = False
     def _build_shadow_ctx(*a, **kw): return None
+    def _approval_gate_blocks(*a, **kw): return False
 
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
@@ -216,6 +221,36 @@ def check_chat_cost_budget(message, mode, session):
     if est > max_tokens:
         meta["decision"] = "block_request_too_large"; return (False, meta)
     meta["decision"] = "allow"; return (True, meta)
+
+
+def build_approval_required_response(approval_meta, session):
+    """MM-03: governed APPROVAL_REQUIRED response. Returned when human_approval_required
+    is true and no hard-block fired first. No worker executes, no external action, no file
+    write, no tool/outbound path, and no provider inference/spend occurs. Reason fields are
+    audit-safe (ids, risk, signal) — never the raw prompt."""
+    m = approval_meta or {}
+    reasons = []
+    if m.get("command_style_signal"): reasons.append("command_style_signal")
+    if m.get("risk_level") in ("high", "critical"): reasons.append("risk_level:" + str(m.get("risk_level")))
+    if m.get("request_type"): reasons.append("request_type:" + str(m.get("request_type")))
+    return {
+        "ok": False,
+        "mode": "APPROVAL_REQUIRED",
+        "text": ("Human approval is required before this request can proceed. Abigail "
+                 "stopped before action: no worker, tool, outbound call, file write, or "
+                 "model inference was performed."),
+        "drs": 0,
+        "crsv": session.crsv(),
+        "approval": {
+            "human_approval_required": True,
+            "enforced": True,
+            "manifest_id": m.get("manifest_id"),
+            "state_id": m.get("state_id"),
+            "risk_level": m.get("risk_level"),
+            "command_style_signal": m.get("command_style_signal"),
+            "reason": reasons or ["human_approval_required"],
+        },
+    }
 
 
 # ── Backends ──────────────────────────────────────────────────────────────────
@@ -415,7 +450,7 @@ class SessionState:
 
 
 # ── Shared dispatch ───────────────────────────────────────────────────────────
-def process_message(raw, session, kill_switch, active_backend):
+def process_message(raw, session, kill_switch, active_backend, approval_meta=None):
     try: kill_switch.check()
     except HAAPViolation as e:
         return {"ok":False,"text":str(e),"drs":0,"mode":"KILL_SWITCH","crsv":session.crsv()}
@@ -446,6 +481,15 @@ def process_message(raw, session, kill_switch, active_backend):
     except HAAPViolation as e:
         log_event("REQUEST_BLOCKED",{"reason":str(e)[:200]})
         return {"ok":False,"text":str(e),"drs":0,"mode":"BLOCKED","crsv":session.crsv()}
+    # MM-03: enforced approval gate — hard-blocks above win; if not blocked but the shadow
+    # context flags human_approval_required, stop here BEFORE any inference/spend/action.
+    if _approval_gate_blocks(approval_meta):
+        log_event("APPROVAL_REQUIRED_ENFORCED", {
+            "manifest_id": (approval_meta or {}).get("manifest_id"),
+            "risk_level": (approval_meta or {}).get("risk_level"),
+            "command_style_signal": (approval_meta or {}).get("command_style_signal"),
+        })
+        return build_approval_required_response(approval_meta, session)
     score,signals=drs_score(raw)
     session.record_turn(raw,score,signals)
     drift=session.drift_warning()
@@ -870,10 +914,14 @@ def build_web_app(session, kill_switch, active_backend):
                             "cost": _cost_meta})
         # MM-02: Shadow orchestration context — audit-safe, additive, fail-soft (CB-02)
         _orch_ctx = None
+        _approval_meta = None
         if _ORCHESTRATION_BRIDGE_OK:
             _req_meta = {k: v for k, v in _body.items() if k != "message"}
             _orch_ctx = _build_shadow_ctx(msg, "chat", session, active_backend, _req_meta)
-        result = process_message(msg, session, kill_switch, active_backend)
+            if _orch_ctx is not None:
+                _approval_meta = _orch_ctx.response_metadata  # MM-03: enforced downstream
+        result = process_message(msg, session, kill_switch, active_backend,
+                                 approval_meta=_approval_meta)
         if _orch_ctx is not None:
             result["orchestration"] = _orch_ctx.response_metadata
         result.setdefault("cost", _cost_meta)

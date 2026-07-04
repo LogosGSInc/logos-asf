@@ -163,3 +163,11 @@ def build_shadow_orchestration_context(
         )
     except Exception:
         return None
+
+
+def approval_gate_blocks(response_metadata) -> bool:
+    """MM-03: enforced approval gate predicate. Returns True when a shadow context's
+    audit-safe metadata indicates human approval is required before any action, worker,
+    tool, outbound call, or provider spend may proceed. Reusable by every future dispatch
+    path — the single source of truth for 'must Abigail stop and escalate?'."""
+    return bool(response_metadata and response_metadata.get("human_approval_required"))

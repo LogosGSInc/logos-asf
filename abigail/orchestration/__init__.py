@@ -37,6 +37,7 @@ from .handoff_packet import build_handoff_packet, packet_canonical_payload_dict
 from .runtime_bridge import (
     ShadowOrchestrationContext,
     build_shadow_orchestration_context,
+    approval_gate_blocks,
     BRIDGE_VERSION,
 )
 from .capabilities import (
@@ -75,6 +76,7 @@ __all__ = [
     "packet_canonical_payload_dict",
     "ShadowOrchestrationContext",
     "build_shadow_orchestration_context",
+    "approval_gate_blocks",
     "BRIDGE_VERSION",
     "get_capability_profile",
     "check_modality_supported",
