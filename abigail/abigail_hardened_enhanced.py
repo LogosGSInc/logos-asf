@@ -277,11 +277,12 @@ def call_groq(messages, system, model="meta-llama/llama-4-scout-17b-16e-instruct
         log_event("BACKEND_ERROR",{"backend":"groq","error_type":type(exc).__name__})
         return _safe_error("Groq",exc)
 
-def call_anthropic(messages, system):
+def call_anthropic(messages, system, model=None):
     try:
         import anthropic
+        model=model or os.environ.get("ABIGAIL_ANTHROPIC_MODEL","claude-sonnet-5")
         r=anthropic.Anthropic(api_key=_require_env_key("ANTHROPIC_API_KEY")).messages.create(
-            model="claude-sonnet-4-20250514",max_tokens=2048,system=system,messages=messages)
+            model=model,max_tokens=2048,system=system,messages=messages)
         return r.content[0].text.strip()
     except ImportError: return "[anthropic not installed]"
     except Exception as exc:
@@ -339,7 +340,7 @@ def call_xai(messages, system, model=None):
     try:
         import httpx
         key=_require_env_key("XAI_API_KEY")
-        model=model or os.environ.get("ABIGAIL_XAI_MODEL","grok-2-latest")
+        model=model or os.environ.get("ABIGAIL_XAI_MODEL","grok-4.3")
         with httpx.Client(timeout=GROQ_TIMEOUT) as c:
             r=c.post("https://api.x.ai/v1/chat/completions",
                      headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
