@@ -259,6 +259,8 @@ BACKENDS = {
     "anthropic":  {"env":"ANTHROPIC_API_KEY",  "label":"Anthropic (Claude Sonnet)"},
     "perplexity": {"env":"PERPLEXITY_API_KEY", "label":"Perplexity (Sonar)"},
     "ollama":     {"env":None,                 "label":"Ollama (local)"},
+    "openai":     {"env":"OPENAI_API_KEY",     "label":"OpenAI (GPT-4o)"},
+    "xai":        {"env":"XAI_API_KEY",        "label":"xAI (Grok)"},
 }
 
 def _safe_error(ctx,exc): return f"[{ctx} error — {type(exc).__name__}]"
@@ -316,8 +318,43 @@ def call_ollama(messages, system, model="llama3"):
         log_event("BACKEND_ERROR",{"backend":"ollama","error_type":type(exc).__name__})
         return _safe_error("Ollama",exc)
 
+def call_openai(messages, system, model=None):
+    try:
+        import httpx
+        key=_require_env_key("OPENAI_API_KEY")
+        model=model or os.environ.get("ABIGAIL_OPENAI_MODEL","gpt-4o")
+        with httpx.Client(timeout=GROQ_TIMEOUT) as c:
+            r=c.post("https://api.openai.com/v1/chat/completions",
+                     headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
+                     json={"model":model,"messages":[{"role":"system","content":system}]+messages,
+                           "max_tokens":2048,"temperature":0.3})
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"].strip()
+    except ImportError: return "[httpx not installed]"
+    except Exception as exc:
+        log_event("BACKEND_ERROR",{"backend":"openai","error_type":type(exc).__name__})
+        return _safe_error("OpenAI",exc)
+
+def call_xai(messages, system, model=None):
+    try:
+        import httpx
+        key=_require_env_key("XAI_API_KEY")
+        model=model or os.environ.get("ABIGAIL_XAI_MODEL","grok-2-latest")
+        with httpx.Client(timeout=GROQ_TIMEOUT) as c:
+            r=c.post("https://api.x.ai/v1/chat/completions",
+                     headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
+                     json={"model":model,"messages":[{"role":"system","content":system}]+messages,
+                           "max_tokens":2048,"temperature":0.3})
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"].strip()
+    except ImportError: return "[httpx not installed]"
+    except Exception as exc:
+        log_event("BACKEND_ERROR",{"backend":"xai","error_type":type(exc).__name__})
+        return _safe_error("xAI",exc)
+
 BACKEND_DISPATCH = {"groq":call_groq,"anthropic":call_anthropic,
-                    "perplexity":call_perplexity,"ollama":call_ollama}
+                    "perplexity":call_perplexity,"ollama":call_ollama,
+                    "openai":call_openai,"xai":call_xai}
 
 
 # ── DRS / HAAP ────────────────────────────────────────────────────────────────
