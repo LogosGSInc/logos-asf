@@ -490,6 +490,13 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
             "command_style_signal": (approval_meta or {}).get("command_style_signal"),
         })
         return build_approval_required_response(approval_meta, session)
+    # UX-01: benign public product/identity/help questions get useful, governed answers
+    # instead of the topology-protection fallback. Adversarial and protected-disclosure
+    # input has already been hard-blocked by Sentinel/HAAP above; the classifier's guard
+    # keeps internal-probe phrasing on the governed pipeline.
+    _pub = public_intent_answer(raw, session)
+    if _pub is not None:
+        return _pub
     score,signals=drs_score(raw)
     session.record_turn(raw,score,signals)
     drift=session.drift_warning()
@@ -706,6 +713,92 @@ def _public_safe_fallback() -> str:
         "outcomes, but I do not disclose internal topology, enforcement mechanics, "
         "routing details, credentials, or operational controls."
     )
+
+
+# ── UX-01: Public response calibration ─────────────────────────────────────────
+# Benign product/identity/help questions get useful, customer-facing answers.
+# Adversarial and protected-disclosure input is already hard-blocked upstream by
+# Sentinel/HAAP; the guard below keeps self-referential internal probes out of the
+# friendly path so they fall through to the existing hard-block/disclosure clamp.
+# The canned answers contain no internals, so they are safe even on misclassification.
+_PUBLIC_PROTECTED_GUARD = re.compile(
+    r"(?i)("
+    r"\byour\b.{0,25}\b(token|secret|credential|password|api[_ -]?key|config|env(ironment)?"
+    r"|route|routes|topology|system\s*prompt|internals?|enforcement|admin)\b"
+    r"|\b(bypass|disable|ignore|circumvent|override|turn\s*off)\b.{0,25}"
+    r"\b(sentinel|haap|govsec|governance|command\s*bus|gate|safety|guard|kill.?switch)\b"
+    r"|\b(hidden|internal|admin)\b.{0,12}\b(route|routes|topology|endpoint|control|mechanic)"
+    r"|\b(dump|reveal|leak|expose|print|show|list)\b.{0,25}"
+    r"\b(token|secret|credential|config|env|route|routes|topology|key|prompt)\b"
+    r")"
+)
+
+_PUBLIC_INTENT_PATTERNS = [
+    ("identity", re.compile(
+        r"(?i)\bare\s+you\s+(an?\s+)?(ai|a\s*bot|a\s*robot|human|real|conscious|sentient)\b"
+        r"|\bwho\s+are\s+you\b|\bwhat\s+are\s+you\b|\bare\s+you\s+abigail\b"
+        r"|\bwhat('?s|\s+is)\s+your\s+name\b")),
+    ("capability", re.compile(
+        r"(?i)\bwhat\s+can\s+you\s+(do|help)\b|\bwhat\s+do\s+you\s+do\b"
+        r"|\bhow\s+can\s+you\s+help\b|\bwhat\s+(are|is)\s+your\s+"
+        r"(capabilities|features|services|benefits)\b|\bwhat\s+services\b"
+        r"|\bexplain\s+your\s+benefits\b")),
+    ("build", re.compile(
+        r"(?i)\b(build|create|make|design|develop|help\s+me\s+(build|create|make|design|write))\b"
+        r".{0,40}\b(chat\s*bot|bot|assistant|app|application|website|site|tool|agent|plan|"
+        r"document|workflow|form|page)\b")),
+    ("help", re.compile(
+        r"(?i)^\s*(help|hi|hello|hey|greetings)\s*[.!?]*\s*$"
+        r"|\bwhat\s+is\s+abigail\b|\btell\s+me\s+about\s+abigail\b")),
+]
+
+_PUBLIC_ANSWERS = {
+    "capability": (
+        "I can help answer questions, draft plans and documents, review risks, prepare "
+        "workflows, and guide work through approval, audit, and cost controls. I can help "
+        "with ordinary tasks while stopping when a request becomes risky or requires permission."
+    ),
+    "identity": (
+        "Yes — I am Abigail, a governed AI assistant for LOGOS ASF. I am designed to help "
+        "with useful work while applying safety, cost, approval, and audit controls, and I "
+        "stop when a request needs human approval."
+    ),
+    "build": (
+        "I can help you design one. To scope it well, tell me: who it serves (for example "
+        "customer support, internal assistant, sales intake, community support, or technical "
+        "helpdesk), what it should answer, what data it may use, what actions it may take, and "
+        "what approval or safety limits it needs."
+    ),
+    "help": (
+        "I am Abigail, a governed AI assistant for LOGOS ASF. I can help you plan, draft, "
+        "review, classify, and route work — answering questions and preparing documents while "
+        "applying approval, audit, and cost controls. What would you like help with?"
+    ),
+}
+
+
+def classify_public_intent(message):
+    """UX-01: classify a benign public question. Returns an intent label
+    ('capability'|'identity'|'build'|'help') or None. Returns None for anything that
+    references internal controls/secrets/bypasses so those keep the governed pipeline."""
+    m = (message or "").strip()
+    if not m or _PUBLIC_PROTECTED_GUARD.search(m):
+        return None
+    for label, pat in _PUBLIC_INTENT_PATTERNS:
+        if pat.search(m):
+            return label
+    return None
+
+
+def public_intent_answer(message, session):
+    """UX-01: return a governed, customer-facing answer for a benign public question,
+    or None to fall through to the normal governed pipeline. No internals, no inference."""
+    label = classify_public_intent(message)
+    if not label:
+        return None
+    log_event("PUBLIC_INTENT_ANSWER", {"intent": label})
+    return {"ok": True, "text": _PUBLIC_ANSWERS[label], "drs": 0,
+            "mode": "PUBLIC_ASSIST", "crsv": session.crsv()}
 
 # ── ASF Department Registry ───────────────────────────────────────────────────
 ASF_DEPARTMENTS = [
