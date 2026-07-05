@@ -19,7 +19,7 @@ SPRINT 6 ADDITIONS (all existing HAAP layers preserved):
 """
 
 import datetime, hashlib, json, logging, os, re, stat
-import subprocess, sys, threading, time, uuid, webbrowser
+import subprocess, sys, threading, time, types, uuid, webbrowser
 from pathlib import Path
 
 # ── Agent loader (YAML definitions) ──────────────────────────────────────────
@@ -59,6 +59,21 @@ except ImportError:
     _PROVIDER_ADAPTER_OK = False
     _provider_registry = None
     def _safe_provider_fields(e): return {}
+
+# ── MR-04/MR-05: governed live router dispatch (mode 2) ────────────────────────
+# The MR-04 dispatcher enforces approval → cost → router → execution ordering and
+# never crashes (governed fallback on any failure). It is referenced through a
+# module global so tests can inject/monkeypatch it. No provider is ever called at
+# import time; tests inject a dispatch_table so no real provider calls occur.
+try:
+    from model_router.dispatcher import governed_route_and_dispatch as _governed_route_and_dispatch
+    _MODEL_ROUTER_DISPATCH_OK = True
+except ImportError:
+    _MODEL_ROUTER_DISPATCH_OK = False
+    def _governed_route_and_dispatch(*a, **kw):  # pragma: no cover - import guard
+        return {"provider_selected": None, "dispatch_status": "unavailable",
+                "reason": "router_dispatch_unavailable", "fallback_provider": None,
+                "routed": False}
 
 # ── Governed Command Bus (CB-01, pre-inference operator command detection) ─────
 try:
@@ -488,7 +503,143 @@ class SessionState:
 
 
 # ── Shared dispatch ───────────────────────────────────────────────────────────
-def process_message(raw, session, kill_switch, active_backend, approval_meta=None):
+# ── MR-05: three-state governed router mode for the /api/chat path ─────────────
+# ABIGAIL_MOE_ROUTER_MODE:
+#   "0" single-backend (existing behavior) · "1" dry-run router · "2" live router.
+# Invalid values fail closed to "0" with an audit-safe config warning (never the
+# raw value). All governance gates (Sentinel/HAAP, command bus, MM-03 approval,
+# UX-01 public, SEC-02 cost) run and resolve BEFORE this dispatch layer is reached.
+_ROUTER_MODES = ("0", "1", "2")
+
+
+def resolve_router_mode():
+    """Return "0"|"1"|"2". Unknown/invalid → fail closed to "0" (single backend)."""
+    raw = (os.environ.get("ABIGAIL_MOE_ROUTER_MODE", "0") or "").strip()
+    if raw in _ROUTER_MODES:
+        return raw
+    # audit-safe: record that an invalid value was rejected, never echo the value
+    log_event("ROUTER_MODE_CONFIG_WARNING",
+              {"reason": "invalid_router_mode", "fell_back_to": "0"})
+    return "0"
+
+
+def _router_meta(mode, provider, status, *, fallback_used=False, fallback_provider=None,
+                 reason=None, live_dispatch=False, request_type=None):
+    """Audit-safe router metadata — NEVER contains raw prompt, keys, env values,
+    provider headers, or hidden topology. Reason strings are governance codes only."""
+    meta = {
+        "router_mode": mode,
+        "selected_provider": provider,
+        "dispatch_status": status,
+        "fallback_used": fallback_used,
+        "fallback_provider": fallback_provider,
+        "reason": reason,
+        "live_dispatch": live_dispatch,
+    }
+    if request_type is not None:
+        meta["request_type"] = request_type
+    return meta
+
+
+def _router_dispatch(raw, session, active_backend, system, route_card, drs_score,
+                     *, cost_state=None):
+    """MR-05 dispatch layer. Called ONLY after Sentinel/HAAP, command bus, MM-03
+    approval, UX-01 public-intent, and SEC-02 cost gates have already cleared for a
+    normal chat turn. Returns (response_text, router_meta).
+
+      mode 0 → existing single active-backend dispatch (no router involvement).
+      mode 1 → dry-run: compute+log an audit-safe route decision, but NEVER call a
+               provider through the MR-04 dispatcher; the existing active backend
+               still produces the response. dispatch_status == "dry_run".
+      mode 2 → governed live dispatch via MR-04 governed_route_and_dispatch. If the
+               selected provider is unavailable, use a governed fallback to the
+               active/current backend. Provider errors are sanitized upstream.
+    """
+    mode = resolve_router_mode()
+    backend = active_backend[0]
+
+    def _active_backend_call():
+        """Existing behavior; sanitized on failure (never leaks provider internals)."""
+        try:
+            return BACKEND_DISPATCH.get(backend, call_groq)(
+                messages=session.messages, system=system)
+        except Exception as exc:
+            log_event("BACKEND_ERROR", {"backend": backend, "error_type": type(exc).__name__})
+            return _safe_error(backend, exc)
+
+    # ── Mode 0 (or router dispatch unavailable) — existing single-backend path ──
+    if mode == "0" or not _MODEL_ROUTER_DISPATCH_OK:
+        text = _active_backend_call()
+        return text, _router_meta(
+            "0", backend, "single_backend",
+            reason=("router_dispatch_unavailable" if mode != "0" else "router_mode_0"),
+            live_dispatch=False)
+
+    # Audit-safe provider selection from the already-computed MR-01 route card.
+    selected = "current_backend"
+    req_type = None
+    if route_card:
+        selected = route_card.get("selected_provider", "current_backend")
+        req_type = route_card.get("request_type")
+
+    # ── Mode 1 — dry-run: decide + log, but NEVER call a provider via MR-04 ─────
+    if mode == "1":
+        meta = _router_meta("1", selected, "dry_run",
+                            reason="router_dry_run_no_live_dispatch",
+                            live_dispatch=False, request_type=req_type)
+        log_event("ROUTER_DRY_RUN", dict(meta))
+        # Existing active-backend behavior remains the actual responder.
+        text = _active_backend_call()
+        return text, meta
+
+    # ── Mode 2 — live governed router dispatch via MR-04 ───────────────────────
+    tier = (os.environ.get("ABIGAIL_SUBSCRIBER_TIER", "paid") or "paid").strip()
+    # Cost gate must have cleared before any provider dispatch. In the web path the
+    # SEC-02 gate already ran and passed upstream; if a caller did not supply state
+    # we re-run the deterministic local gate here (idempotent, no billing calls).
+    if cost_state is None:
+        _cost_ok, _ = check_chat_cost_budget(raw, "chat", session)
+        cost_state = {"approved": bool(_cost_ok)}
+
+    # approval_state is "cleared": we are downstream of the MM-03 approval gate,
+    # which returns APPROVAL_REQUIRED before ever reaching this dispatch layer.
+    route_fn = (lambda *a, **k: types.SimpleNamespace(**route_card)) if route_card else None
+    try:
+        result = _governed_route_and_dispatch(
+            raw, drs_score=drs_score, approval_state="cleared",
+            cost_state=cost_state, subscriber_tier=tier, route_fn=route_fn,
+            messages=session.messages, system=system)
+    except Exception as exc:
+        # Never crash — governed fallback to the active/current backend.
+        log_event("ROUTER_DISPATCH_ERROR", {"error_type": type(exc).__name__})
+        text = _active_backend_call()
+        meta = _router_meta("2", selected, "fallback", fallback_used=True,
+                            fallback_provider=backend, reason="router_exception_sanitized",
+                            live_dispatch=True, request_type=req_type)
+        log_event("ROUTER_LIVE_DISPATCH", dict(meta))
+        return text, meta
+
+    status = (result or {}).get("dispatch_status")
+    sel = (result or {}).get("provider_selected") or selected
+    reason = (result or {}).get("reason")
+
+    if status == "executed":
+        meta = _router_meta("2", sel, "executed", reason=reason, live_dispatch=True,
+                            request_type=result.get("route_request_type") or req_type)
+        log_event("ROUTER_LIVE_DISPATCH", dict(meta))
+        return result.get("text", ""), meta
+
+    # unavailable / approval_required / blocked → governed fallback to active backend.
+    text = _active_backend_call()
+    meta = _router_meta("2", sel, "fallback", fallback_used=True,
+                        fallback_provider=backend, reason=reason,
+                        live_dispatch=True, request_type=req_type)
+    log_event("ROUTER_LIVE_DISPATCH", dict(meta))
+    return text, meta
+
+
+def process_message(raw, session, kill_switch, active_backend, approval_meta=None,
+                    cost_state=None):
     try: kill_switch.check()
     except HAAPViolation as e:
         return {"ok":False,"text":str(e),"drs":0,"mode":"KILL_SWITCH","crsv":session.crsv()}
@@ -574,21 +725,22 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
             log_event("PROVIDER_ADAPTER_ERROR", {"error_type": type(_pae).__name__})
     session.messages.append({"role":"user","content":raw})
     t=time.monotonic()
-    try:
-        response=BACKEND_DISPATCH.get(active_backend[0],call_groq)(
-            messages=session.messages,system=_system)
-    except Exception as exc:
-        response=_safe_error(active_backend[0],exc)
-        log_event("BACKEND_ERROR",{"backend":active_backend[0],"error_type":type(exc).__name__})
+    # MR-05: governed router dispatch (mode 0 preserves the single-backend path).
+    response, _router_info = _router_dispatch(
+        raw, session, active_backend, _system, _route_card, score,
+        cost_state=cost_state)
     session.messages.append({"role":"assistant","content":response})
     log_event("TURN_COMPLETE",{"turn":session.turn_count,"backend":active_backend[0],
-                                "drs":score,"elapsed":round(time.monotonic()-t,2),"crsv":round(session.crsv(),1)})
+                                "drs":score,"elapsed":round(time.monotonic()-t,2),"crsv":round(session.crsv(),1),
+                                "router_mode":_router_info.get("router_mode"),
+                                "dispatch_status":_router_info.get("dispatch_status")})
     # PUBLIC disclosure clamp — strip internal topology from unauthenticated responses
     if score <= 20 and _public_response_overexposed(response):
         log_event("PUBLIC_DISCLOSURE_CLAMP",{"action":"REDACTED_TO_PUBLIC_FALLBACK","turn":session.turn_count})
         response = _public_safe_fallback()
 
     out={"ok":True,"text":response,"drs":score,"mode":mode,"crsv":round(session.crsv(),1)}
+    if _router_info: out["router"]=_router_info
     if drift: out["drift"]=drift
     return out
 
