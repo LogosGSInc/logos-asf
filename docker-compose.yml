@@ -14,7 +14,11 @@ services:
       dockerfile: Dockerfile
     container_name: asf-sentinel
     ports:
-      - "${SENTINEL_HOST_PORT:-9091}:8080"
+      # SEC-03 DOCK-01: publish only to the loopback interface. The container
+      # still binds 0.0.0.0:8080 internally (SENTOW_BIND) so Abigail reaches it
+      # over the Docker network (SENTINEL_URL=http://sentinel:8080); only the
+      # HOST publish is scoped to localhost, closing the all-interfaces exposure.
+      - "127.0.0.1:${SENTINEL_HOST_PORT:-9091}:8080"
     environment:
       - RUST_LOG=info
       - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
