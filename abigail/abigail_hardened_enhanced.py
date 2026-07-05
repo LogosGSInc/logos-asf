@@ -1093,13 +1093,37 @@ fetchStatus();setInterval(fetchStatus,15000);
 </script></body></html>"""
 
 
+# ── EP-01: static-file path-traversal containment ─────────────────────────────
+def _safe_static_relpath(static_root, filename):
+    """Return `filename` as a path provably contained within `static_root`, or None
+    if it escapes. Rejects absolute paths, `..` traversal, and symlink escapes by
+    resolving realpaths and enforcing containment against the canonical root. The
+    returned value is a normalized relative path suitable for
+    flask.send_from_directory(static_root, relpath). Defense-in-depth: callers still
+    serve via send_from_directory (which re-applies werkzeug's safe_join)."""
+    if not filename or os.path.isabs(filename):
+        return None
+    root = os.path.realpath(static_root)
+    candidate = os.path.realpath(os.path.join(root, filename))
+    # candidate must be the root itself (never a file) or strictly beneath it
+    try:
+        if candidate != root and os.path.commonpath([root, candidate]) != root:
+            return None
+    except ValueError:
+        # different drives / mixed abs-rel — treat as escape
+        return None
+    if not os.path.isfile(candidate):
+        return None
+    return os.path.relpath(candidate, root)
+
+
 # ── Web server ────────────────────────────────────────────────────────────────
 def build_web_app(session, kill_switch, active_backend):
     """SEC-02: construct and return the Flask app (routes wired) without starting the
     server. Exposed separately so tests can exercise routes via a test client; run_web()
     handles bind-host resolution, the banner, and flask_app.run()."""
     try:
-        from flask import Flask, Response, jsonify, request
+        from flask import Flask, Response, abort, jsonify, request, send_from_directory
     except ImportError:
         print("\033[31m[ERROR] Flask required: pip install flask\033[0m"); sys.exit(1)
 
@@ -1135,15 +1159,18 @@ def build_web_app(session, kill_switch, active_backend):
         return response
 
     import os as _os
-    STATIC_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "static")
+    # EP-01: anchor the static root to a canonical absolute path for containment.
+    STATIC_DIR = _os.path.realpath(
+        _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "static"))
     if not _os.path.isdir(STATIC_DIR):
         STATIC_DIR = "/app/static"  # Docker path
 
     @flask_app.route("/")
     def index():
-        p = _os.path.join(STATIC_DIR, "index.html")
-        if _os.path.exists(p):
-            return Response(open(p).read(), mimetype="text/html")
+        # EP-01: serve via the same contained sender as any other static asset.
+        rel = _safe_static_relpath(STATIC_DIR, "index.html")
+        if rel is not None:
+            return send_from_directory(STATIC_DIR, rel)
         # Fallback if static dir not mounted
         return Response("""<!doctype html><html><body style='background:#0b1020;color:#eef2ff;font-family:system-ui;display:grid;place-items:center;min-height:100vh;margin:0'>
 <main style='text-align:center'><h1>LOGOS ASF</h1>
@@ -1152,15 +1179,12 @@ def build_web_app(session, kill_switch, active_backend):
 
     @flask_app.route("/<path:filename>")
     def static_files(filename):
-        p = _os.path.join(STATIC_DIR, filename)
-        if _os.path.exists(p) and _os.path.isfile(p):
-            ext = filename.rsplit(".", 1)[-1].lower()
-            mime = {"html":"text/html","css":"text/css","js":"application/javascript",
-                    "json":"application/json","png":"image/png","svg":"image/svg+xml",
-                    "ico":"image/x-icon"}.get(ext, "text/plain")
-            return Response(open(p, "rb").read(), mimetype=mime)
-        from flask import abort
-        abort(404)
+        # EP-01: explicit containment check, then serve via werkzeug's safe_join.
+        # Unauthenticated path traversal (e.g. ../../etc/passwd) is rejected as 404.
+        rel = _safe_static_relpath(STATIC_DIR, filename)
+        if rel is None:
+            abort(404)
+        return send_from_directory(STATIC_DIR, rel)
 
     @flask_app.route("/api/status")
     def api_status():
