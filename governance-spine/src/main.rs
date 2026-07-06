@@ -86,13 +86,14 @@ fn main() {
     println!("\n[ TEST 4 ] Operator Reset — Requires Token, Never Clears Audit");
     let audit_before = pipeline.audit_entry_count();
 
-    // Attempt reset without token — must fail
-    let fail_result = pipeline.operator_reset(drift_session, "");
+    // Attempt reset without token — must fail (constant-time compare vs expected)
+    let fail_result = pipeline.operator_reset(drift_session, "", "OPERATOR_TOKEN_PLACEHOLDER");
     assert!(fail_result.is_err(), "Empty token reset should fail");
     println!("  Empty token reset correctly rejected: {:?}", fail_result.err());
 
-    // Reset with token
-    let ok_result = pipeline.operator_reset(drift_session, "OPERATOR_TOKEN_PLACEHOLDER");
+    // Reset with the correct token
+    let ok_result = pipeline.operator_reset(
+        drift_session, "OPERATOR_TOKEN_PLACEHOLDER", "OPERATOR_TOKEN_PLACEHOLDER");
     println!("  Authorized reset: {:?}", ok_result);
 
     let audit_after = pipeline.audit_entry_count();

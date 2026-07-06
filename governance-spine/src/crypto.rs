@@ -5,6 +5,21 @@ use parking_lot::RwLock;
 use std::sync::Arc;
 use thiserror::Error;
 
+/// Constant-time byte comparison for secret/token checks (SEC-03).
+/// Length is not treated as secret (returns early on length mismatch), matching
+/// the semantics of Python's `hmac.compare_digest`. Prevents value-dependent
+/// timing on the content comparison.
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 #[derive(Error, Debug)]
 pub enum CryptoError {
     #[error("Invalid keypair bytes: {0}")]

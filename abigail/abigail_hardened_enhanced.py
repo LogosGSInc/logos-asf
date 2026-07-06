@@ -839,11 +839,16 @@ def _sentinel_health():
     except Exception as e: return {"ok":False,"error":str(e)}
 
 def _sentinel_inspect(payload:str, session_id:str) -> dict:
-    """Route inbound message through Rust Sentinel /inspect before Python DRS."""
+    """Route inbound message through Rust Sentinel /inspect before Python DRS.
+    SEC-03: authenticate to the Sentinel governance control plane with the
+    X-Sentinel-Token header (value read from env; never logged)."""
     try:
         import httpx
+        _tok = os.environ.get("SENTINEL_ADMIN_TOKEN", "")
+        _headers = {"X-Sentinel-Token": _tok} if _tok else {}
         r=httpx.post(f"{SENTINEL_URL}/inspect",
-                     json={"payload":payload,"session_id":session_id},timeout=5)
+                     json={"payload":payload,"session_id":session_id},
+                     headers=_headers,timeout=5)
         return r.json()
     except Exception as e:
         log_event("SENTINEL_INSPECT_ERROR",{"error":str(e)})

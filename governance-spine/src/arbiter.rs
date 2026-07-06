@@ -435,10 +435,18 @@ impl Arbiter {
         &self,
         session_id: &str,
         operator_token: &str,
+        expected_token: &str,
     ) -> Result<(), &'static str> {
-        // Validate operator token (simplified — production uses Ed25519 signed token)
-        if operator_token.is_empty() {
-            return Err("Operator token required for session reset");
+        // SEC-03: validate the operator token against the configured secret with a
+        // constant-time compare — presence alone is NOT sufficient. Fail closed if
+        // no operator token is configured for this deployment.
+        if expected_token.is_empty() {
+            return Err("Operator reset not configured (no operator token set)");
+        }
+        if operator_token.is_empty()
+            || !crate::crypto::constant_time_eq(operator_token.as_bytes(), expected_token.as_bytes())
+        {
+            return Err("Invalid operator token for session reset");
         }
 
         // Log the reset as an audit event — resets are always audited

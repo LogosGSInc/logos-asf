@@ -354,8 +354,9 @@ impl GovernancePipeline {
         &self,
         session_id: &str,
         operator_token: &str,
+        expected_token: &str,
     ) -> Result<(), &'static str> {
-        self.arbiter.operator_reset_session(session_id, operator_token)?;
+        self.arbiter.operator_reset_session(session_id, operator_token, expected_token)?;
         self.overwatch.write().reset_session(session_id);
         // Reset session memory but keep strategic memory intact
         self.session_memories.write().remove(session_id);

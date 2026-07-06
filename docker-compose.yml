@@ -24,6 +24,9 @@ services:
       - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
       - SENTOW_HAAP_DRS_CEILING=${SENTOW_HAAP_DRS_CEILING:-60}
       - SENTOW_MEMORY_PATH=/app/audit/strategic_memory.json
+      # SEC-03 DOCK-02: shared secret for route auth. If unset, the server fails
+      # closed (503) on all non-/health routes.
+      - SENTINEL_ADMIN_TOKEN=${SENTINEL_ADMIN_TOKEN}
     volumes:
       - sentinel-audit:/app/audit
       - sentinel-data:/data
@@ -65,6 +68,8 @@ services:
       # Auth tokens
       - ABIGAIL_ADMIN_TOKEN=${ABIGAIL_ADMIN_TOKEN}
       - ABIGAIL_DEMO_TOKEN=${ABIGAIL_DEMO_TOKEN}
+      # SEC-03: token Abigail presents to the Sentinel control plane (X-Sentinel-Token)
+      - SENTINEL_ADMIN_TOKEN=${SENTINEL_ADMIN_TOKEN}
       # Governance profile
       - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
       - SENTOW_HAAP_DRS_CEILING=${SENTOW_HAAP_DRS_CEILING:-60}
