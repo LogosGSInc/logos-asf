@@ -23,8 +23,25 @@ from pathlib import Path
 
 import yaml
 
-# skills/ lives at the repo root: abigail/skills_lib/discovery.py -> ../../skills
-SKILLS_DIR = Path(__file__).resolve().parent.parent.parent / "skills"
+
+def _resolve_skills_dir():
+    """Container-aware resolution (P4b-1):
+      1) explicit ABIGAIL_SKILLS_DIR override, else
+      2) repo-root/skills (host/dev: abigail/skills_lib/discovery.py -> ../../../skills), else
+      3) /app/skills (Docker: modules are flattened to /app, skills COPY'd to /app/skills).
+    Falls back to the host path even if missing (fail-soft: build_index() returns [])."""
+    env = os.environ.get("ABIGAIL_SKILLS_DIR", "").strip()
+    if env:
+        return Path(env)
+    here = Path(__file__).resolve()
+    candidates = [here.parent.parent.parent / "skills", Path("/app/skills")]
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return candidates[0]
+
+
+SKILLS_DIR = _resolve_skills_dir()
 _ROOT = SKILLS_DIR.parent
 
 # metadata surfaced by discovery (mirrors manifest.schema.json skillEntry)
@@ -159,3 +176,17 @@ def emit_manifest(dest, generated="unstamped"):
     payload = {"version": 1, "generated": generated, "skills": build_index()}
     dest.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return dest
+
+
+def library_version():
+    """Return the parsed skills/version.json (library version marker) or None.
+    Read-only; lets operators answer 'what skill library is loaded?' without
+    touching any skill body. Never raises."""
+    p = SKILLS_DIR / "version.json"
+    try:
+        if p.is_file():
+            data = json.loads(p.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+    return None

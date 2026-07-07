@@ -1,0 +1,8 @@
+{
+  "library": "Abigail First-Party Skills",
+  "version": "0.1.0",
+  "generated_at": "2026-07-07",
+  "skills": 10,
+  "departments": ["ENG", "SEC", "OPS", "GRC"],
+  "note": "Version marker for the first-party skill library, versioned independently of the application so operators can answer 'what skill library is loaded?'. Update on any library change. Not the discovery manifest (which is generated from SKILL.md frontmatter)."
+}

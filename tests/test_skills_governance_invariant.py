@@ -120,9 +120,12 @@ def test_dispatch_route_has_no_skill_wiring():
         assert banned not in route_body, f"dispatch route must not wire skills: {banned}"
 
 
-def test_dockerfile_not_wired_for_skills():
+def test_dockerfile_ships_skills_but_not_agents():
+    # P4b-1: skills library + module are shipped; agent registry is NOT (P4b-2 / DOCK-03).
     df = (ROOT / "abigail" / "Dockerfile").read_text(encoding="utf-8")
-    assert "skills" not in df.lower(), "Dockerfile must not ship skills yet (P4b)"
+    assert "COPY skills /app/skills" in df
+    assert "COPY abigail/skills_lib /app/skills_lib" in df
+    assert "COPY agents" not in df, "agent registry must not be shipped yet (P4b-2/DOCK-03)"
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -10,6 +10,11 @@ COPY abigail/command_bus.py /app/command_bus.py
 COPY abigail/agent_loader.py /app/agent_loader.py
 COPY abigail/orchestration /app/orchestration
 COPY abigail/model_router /app/model_router
+# SKILLS-01 P4b-1: read-only skill discovery module + first-party skill library.
+# Shipping enables in-container discovery (and the already-wired advisory chat path).
+# Agent-dispatch skill wiring (P4b-2) and the agent registry (agents/) are NOT shipped.
+COPY abigail/skills_lib /app/skills_lib
+COPY skills /app/skills
 COPY abigail/entrypoint.sh /app/entrypoint.sh
 # Static UI (index.html, dashboard.html, intake.html)
 COPY static /app/static

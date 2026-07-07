@@ -15,7 +15,9 @@ from .discovery import (
     load_skill_body,
     select_skill,
     emit_manifest,
+    library_version,
     SKILLS_DIR,
 )
 
-__all__ = ["build_index", "load_skill_body", "select_skill", "emit_manifest", "SKILLS_DIR"]
+__all__ = ["build_index", "load_skill_body", "select_skill", "emit_manifest",
+           "library_version", "SKILLS_DIR"]

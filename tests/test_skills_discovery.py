@@ -114,3 +114,23 @@ def test_emit_manifest_metadata_only(tmp_path):
 def test_emit_manifest_refuses_committed_path():
     with pytest.raises(ValueError):
         D.emit_manifest(D.SKILLS_DIR / "manifest.json")
+
+
+# ── P4b-1: container-aware resolution + version marker ───────────────────────
+def test_skills_dir_resolution_env_override_and_candidates():
+    src = (ROOT / "abigail" / "skills_lib" / "discovery.py").read_text(encoding="utf-8")
+    assert "ABIGAIL_SKILLS_DIR" in src               # explicit override supported
+    assert "/app/skills" in src                      # container candidate present
+    # host default resolves to the real repo skills dir with the 10 skills
+    assert D.SKILLS_DIR.is_dir()
+    assert len(list(D.SKILLS_DIR.rglob("SKILL.md"))) == 10
+
+
+def test_version_marker_present_and_metadata_only():
+    v = D.library_version()
+    assert isinstance(v, dict)
+    assert v.get("version") and v.get("skills") == 10
+    assert set(v.get("departments", [])) == {"ENG", "SEC", "OPS", "GRC"}
+    # version.json is NOT a SKILL.md → never enters the discovery index
+    assert all(e["name"] != "version" for e in D.build_index())
+    assert len(D.build_index()) == 10
