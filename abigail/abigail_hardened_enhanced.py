@@ -18,7 +18,7 @@ SPRINT 6 ADDITIONS (all existing HAAP layers preserved):
 — Proverbs 24:3
 """
 
-import datetime, hashlib, json, logging, os, re, stat
+import datetime, hashlib, hmac, json, logging, os, re, stat
 import subprocess, sys, threading, time, types, uuid, webbrowser
 from pathlib import Path
 
@@ -202,7 +202,8 @@ def require_admin_token(req):
         return (False, 503, "Admin control unavailable: server auth not configured.")
     auth = req.headers.get("Authorization","").removeprefix("Bearer ").strip()
     token = auth or req.headers.get("X-HAAP-Token","").strip()
-    if not token or token != admin_token:
+    # RTR-09: constant-time comparison — no value-dependent timing side-channel.
+    if not token or not hmac.compare_digest(token, admin_token):
         return (False, 401, "Admin token required.")
     return (True, 200, None)
 
@@ -1257,6 +1258,14 @@ def build_web_app(session, kill_switch, active_backend):
     @flask_app.route("/api/agents/dispatch", methods=["POST","OPTIONS"])
     def api_agents_dispatch():
         if request.method == "OPTIONS": return jsonify({}), 200
+        # EP-02: admin-gated FIRST. Agent dispatch runs a custom system prompt through
+        # paid inference; unauthenticated access is wallet-DoS + a full governance
+        # bypass. Auth precedes body/agent lookup so agents cannot be enumerated.
+        _ok, _st, _err = require_admin_token(request)
+        if not _ok:
+            log_event("DISPATCH_AUTH_FAILED", {"status": _st})
+            return jsonify({"ok": False, "error": _err}), _st
+
         body       = request.get_json(force=True, silent=True) or {}
         agent_id   = (body.get("agent_id") or "").strip()
         task       = (body.get("task")     or "").strip()
@@ -1267,11 +1276,37 @@ def build_web_app(session, kill_switch, active_backend):
         if not agent_def:
             return jsonify({"ok":False,"error":f"Agent '{agent_id}' not found."}), 404
 
+        # EP-02: run the chat path's governance gates before ANY provider dispatch —
+        # Sentinel hard-block, HAAP, MM-03 approval, then SEC-02 cost.
+        _sv = _sentinel_inspect(task, f"dispatch_{agent_id}").get("verdict", "unknown")
+        if _sv in ("quarantined", "hard_locked"):
+            log_event("DISPATCH_SENTINEL_BLOCK", {"agent_id": agent_id, "verdict": _sv})
+            return jsonify({"ok": False, "error": "Blocked by Sentinel OverWatch.",
+                            "blocked": True}), 403
+
         try:
             haap_gate(task, agent_drs_ceiling=80)
         except HAAPViolation as e:
             log_event("DISPATCH_BLOCKED", {"agent_id":agent_id,"reason":str(e)[:200]})
             return jsonify({"ok":False,"error":str(e),"blocked":True}), 403
+
+        # MM-03 approval gate — stop high-risk before provider dispatch/spend.
+        if _ORCHESTRATION_BRIDGE_OK:
+            _octx = _build_shadow_ctx(
+                task, "dispatch", session, active_backend,
+                {k: v for k, v in body.items() if k not in ("task", "agent_id")})
+            if _octx is not None and _approval_gate_blocks(_octx.response_metadata):
+                log_event("DISPATCH_APPROVAL_REQUIRED", {"agent_id": agent_id})
+                return jsonify(build_approval_required_response(_octx.response_metadata, session)), 200
+
+        # SEC-02 cost gate — deterministic local spend gate before paid dispatch.
+        _cost_ok, _cost_meta = check_chat_cost_budget(task, "dispatch", session)
+        if not _cost_ok:
+            log_event("DISPATCH_COST_BLOCK", {"agent_id": agent_id,
+                                              "decision": _cost_meta.get("decision")})
+            return jsonify({"ok": False, "mode": "COST_BLOCKED",
+                            "error": "Blocked by Cost Governor — local spend ceiling reached.",
+                            "cost": _cost_meta}), 200
 
         score, signals = drs_score(task)
         mode, _, _     = drs_verdict(score)
