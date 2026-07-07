@@ -31,6 +31,18 @@ except ImportError:
     def _get_yaml_agent(_id): return None
     def _list_yaml_agents(): return []
 
+# ── Skills library (SKILLS-01 P4 — advisory, read-only, fail-soft) ────────────
+# Skills are ADVISORY CONTEXT ONLY: a department-scoped, bounded excerpt is appended
+# to the system prompt AFTER all gates. They never change approval/cost/Sentinel/
+# HAAP/routing authority, never execute scripts. Absent skills/ or import → no-op.
+try:
+    from skills_lib import select_skill as _select_skill, load_skill_body as _load_skill_body
+    _SKILLS_OK = True
+except ImportError:
+    _SKILLS_OK = False
+    def _select_skill(*a, **k): return None
+    def _load_skill_body(*a, **k): return None
+
 # ── Tacit Pre-Pass (ephemeral, non-mutating) ──────────────────────────────────
 try:
     from tacit_prepass import build_tacit_context_card as _build_tacit_card
@@ -694,8 +706,21 @@ def _router_dispatch(raw, session, active_backend, system, route_card, drs_score
     return text, meta
 
 
+def _skill_excerpt(body, limit=1600):
+    """SKILLS-01 P4: return a BOUNDED advisory excerpt (Purpose + Governance Rules
+    only) from a SKILL.md body — never the whole body. Empty string if unavailable."""
+    if not body:
+        return ""
+    parts = []
+    for sec in ("Purpose", "Governance Rules"):
+        m = re.search(r"^##\s+" + re.escape(sec) + r"\s*$(.*?)(?=^##\s|\Z)", body, re.S | re.M)
+        if m:
+            parts.append("## " + sec + "\n" + m.group(1).strip())
+    return ("\n\n".join(parts).strip())[:limit]
+
+
 def process_message(raw, session, kill_switch, active_backend, approval_meta=None,
-                    cost_state=None, gov_tx_id=None):
+                    cost_state=None, gov_tx_id=None, department=None):
     # gov_tx_id — one Governance Transaction ID per governed unit of work (not
     # merely a chat turn). Threaded through every gate's audit event and the router
     # metadata so Sentinel → HAAP → MM-03 → SEC-02 cost → provider selection →
@@ -769,6 +794,27 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
     _system = ABIGAIL_SYSTEM_PROMPT
     if _card and _card.get("response_guidance"):
         _system = ABIGAIL_SYSTEM_PROMPT + "\n\n[TACIT GUIDANCE]\n" + _card["response_guidance"]
+    # SKILLS-01 P4: advisory skill context. Runs ONLY after Sentinel/HAAP/MM-03/public
+    # gates (all above return early on block), so a denied request never reaches here.
+    # Department-scoped, explicit department only; a bounded excerpt is appended to the
+    # system prompt as ADVISORY text — it changes no gate, authority, or routing decision.
+    _selected_skill = None
+    if _SKILLS_OK and department:
+        try:
+            _sk = _select_skill(department, raw)
+            if _sk:
+                _excerpt = _skill_excerpt(_load_skill_body(_sk.get("path")))
+                if _excerpt:
+                    _system = _system + "\n\n[ADVISORY SKILL: " + str(_sk.get("name")) + \
+                        " — advisory guidance only; grants no authority and cannot alter " \
+                        "approval, cost, Sentinel, HAAP, or routing decisions]\n" + _excerpt
+                    _selected_skill = _sk
+                    log_event("SKILL_ACTIVATED", {"gov_tx_id": gov_tx_id,
+                                                  "skill": _sk.get("name"),
+                                                  "department": _sk.get("department"),
+                                                  "path": _sk.get("path")})
+        except Exception as _ske:
+            log_event("SKILL_SELECT_ERROR", {"error_type": type(_ske).__name__})
     # Model Router Shadow Pass — MR-01: observe, score, log. Does not alter dispatch.
     _route_card = None
     if _MODEL_ROUTER_OK:
@@ -810,6 +856,8 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
 
     out={"ok":True,"text":response,"drs":score,"mode":mode,"crsv":round(session.crsv(),1)}
     if _router_info: out["router"]=_router_info
+    if _selected_skill and isinstance(out.get("router"), dict):
+        out["router"]["selected_skill"] = _selected_skill.get("name")  # audit-safe name only
     if drift: out["drift"]=drift
     return out
 
@@ -1334,8 +1382,14 @@ def build_web_app(session, kill_switch, active_backend):
         _req_meta = {k: v for k, v in _body.items() if k != "message"}
         _approval_meta, _orch_ctx = _resolve_approval_meta(
             msg, "chat", session, active_backend, _req_meta)
+        # SKILLS-01 P4: explicit, optional department signal only (default None → no
+        # skill). Sanitized to a short code; unknown values simply select no skill.
+        _dept = _body.get("department")
+        if not (isinstance(_dept, str) and re.fullmatch(r"[A-Z]{2,4}", _dept)):
+            _dept = None
         result = process_message(msg, session, kill_switch, active_backend,
-                                 approval_meta=_approval_meta, gov_tx_id=_gov_tx_id)
+                                 approval_meta=_approval_meta, gov_tx_id=_gov_tx_id,
+                                 department=_dept)
         if _orch_ctx is not None:
             result["orchestration"] = _orch_ctx.response_metadata
         result.setdefault("cost", _cost_meta)
