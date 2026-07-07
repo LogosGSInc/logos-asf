@@ -111,13 +111,17 @@ def test_sentinel_block_before_skill(monkeypatch):
 
 
 # ── tripwire: dispatch route has no skill wiring; Dockerfile untouched ───────
-def test_dispatch_route_has_no_skill_wiring():
+def test_dispatch_skill_wiring_is_post_gate():
+    # P4b-2a: dispatch now wires advisory skills — but selection MUST come after the
+    # SEC-02 cost gate (i.e., after every gate), so a denied dispatch never activates.
     src = RUNTIME.read_text(encoding="utf-8")
     m = re.search(r"def api_agents_dispatch\(.*?\n(.*?)\n    @flask_app\.route", src, re.S)
     assert m, "could not isolate dispatch route"
-    route_body = m.group(1)
-    for banned in ("_select_skill", "SKILL_ACTIVATED", "_skill_excerpt"):
-        assert banned not in route_body, f"dispatch route must not wire skills: {banned}"
+    body = m.group(1)
+    assert "_select_skill" in body and "SKILL_ACTIVATED" in body   # wiring present
+    assert "check_chat_cost_budget" in body
+    assert body.index("check_chat_cost_budget") < body.index("_select_skill"), \
+        "skill selection must occur AFTER the cost gate (post-gate, advisory)"
 
 
 def test_dockerfile_ships_skills_but_not_agents():

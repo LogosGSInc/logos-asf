@@ -43,6 +43,11 @@ except ImportError:
     def _select_skill(*a, **k): return None
     def _load_skill_body(*a, **k): return None
 
+# SKILLS-01 P4b-2: agent department code → skill-library department (advisory only).
+# Only the four departments that currently have skills; any other agent dept → no
+# skill (safe default). Inert until an agent registry ships in-container (P4b-2b).
+_AGENT_DEPT_TO_SKILL = {"EN-01": "ENG", "SEC-01": "SEC", "OPS-01": "OPS", "GRC-01": "GRC"}
+
 # ── Tacit Pre-Pass (ephemeral, non-mutating) ──────────────────────────────────
 try:
     from tacit_prepass import build_tacit_context_card as _build_tacit_card
@@ -1413,12 +1418,14 @@ def build_web_app(session, kill_switch, active_backend):
     @flask_app.route("/api/agents/dispatch", methods=["POST","OPTIONS"])
     def api_agents_dispatch():
         if request.method == "OPTIONS": return jsonify({}), 200
+        # One governance transaction id correlates this dispatch across gates + audit.
+        _gov_tx_id = uuid.uuid4().hex[:16]
         # EP-02: admin-gated FIRST. Agent dispatch runs a custom system prompt through
         # paid inference; unauthenticated access is wallet-DoS + a full governance
         # bypass. Auth precedes body/agent lookup so agents cannot be enumerated.
         _ok, _st, _err = require_admin_token(request)
         if not _ok:
-            log_event("DISPATCH_AUTH_FAILED", {"status": _st})
+            log_event("DISPATCH_AUTH_FAILED", {"gov_tx_id": _gov_tx_id, "status": _st})
             return jsonify({"ok": False, "error": _err}), _st
 
         body       = request.get_json(force=True, silent=True) or {}
@@ -1435,14 +1442,14 @@ def build_web_app(session, kill_switch, active_backend):
         # Sentinel hard-block, HAAP, MM-03 approval, then SEC-02 cost.
         _sv = _sentinel_inspect(task, f"dispatch_{agent_id}").get("verdict", "unknown")
         if _sv in ("quarantined", "hard_locked"):
-            log_event("DISPATCH_SENTINEL_BLOCK", {"agent_id": agent_id, "verdict": _sv})
+            log_event("DISPATCH_SENTINEL_BLOCK", {"gov_tx_id": _gov_tx_id, "agent_id": agent_id, "verdict": _sv})
             return jsonify({"ok": False, "error": "Blocked by Sentinel OverWatch.",
                             "blocked": True}), 403
 
         try:
             haap_gate(task, agent_drs_ceiling=80)
         except HAAPViolation as e:
-            log_event("DISPATCH_BLOCKED", {"agent_id":agent_id,"reason":str(e)[:200]})
+            log_event("DISPATCH_BLOCKED", {"gov_tx_id": _gov_tx_id, "agent_id":agent_id,"reason":str(e)[:200]})
             return jsonify({"ok":False,"error":str(e),"blocked":True}), 403
 
         # MM-03/GOV-01 approval gate — stop high-risk (and fail CLOSED when governance
@@ -1452,14 +1459,14 @@ def build_web_app(session, kill_switch, active_backend):
             {k: v for k, v in body.items() if k not in ("task", "agent_id")})
         if _approval_gate_blocks(_dispatch_meta):
             log_event("DISPATCH_APPROVAL_REQUIRED",
-                      {"agent_id": agent_id,
+                      {"gov_tx_id": _gov_tx_id, "agent_id": agent_id,
                        "governance_status": _dispatch_meta.get("governance_status")})
             return jsonify(build_approval_required_response(_dispatch_meta, session)), 200
 
         # SEC-02 cost gate — deterministic local spend gate before paid dispatch.
         _cost_ok, _cost_meta = check_chat_cost_budget(task, "dispatch", session)
         if not _cost_ok:
-            log_event("DISPATCH_COST_BLOCK", {"agent_id": agent_id,
+            log_event("DISPATCH_COST_BLOCK", {"gov_tx_id": _gov_tx_id, "agent_id": agent_id,
                                               "decision": _cost_meta.get("decision")})
             return jsonify({"ok": False, "mode": "COST_BLOCKED",
                             "error": "Blocked by Cost Governor — local spend ceiling reached.",
@@ -1470,26 +1477,56 @@ def build_web_app(session, kill_switch, active_backend):
         system_prompt  = agent_def.get("system_prompt") or ABIGAIL_SYSTEM_PROMPT
         agent_name     = agent_def.get("name", agent_id)
 
+        # SKILLS-01 P4b-2: advisory skill context on the agent-dispatch path. Runs
+        # AFTER every gate above (all return early on block), so a denied dispatch
+        # never activates a skill. Department-scoped to the agent's department; a
+        # bounded excerpt is appended to the system prompt — it changes no gate,
+        # authority, or routing decision. Inert until an agent registry ships.
+        _selected_skill = None
+        if _SKILLS_OK:
+            _skdept = _AGENT_DEPT_TO_SKILL.get(str(agent_def.get("department") or ""))
+            if _skdept:
+                try:
+                    _sk = _select_skill(_skdept, task)
+                    if _sk:
+                        _ex = _skill_excerpt(_load_skill_body(_sk.get("path")))
+                        if _ex:
+                            system_prompt = system_prompt + "\n\n[ADVISORY SKILL: " + \
+                                str(_sk.get("name")) + " — advisory guidance only; grants no " \
+                                "authority and cannot alter approval, cost, Sentinel, HAAP, or " \
+                                "routing decisions]\n" + _ex
+                            _selected_skill = _sk
+                            log_event("SKILL_ACTIVATED", {"gov_tx_id": _gov_tx_id,
+                                                          "skill": _sk.get("name"),
+                                                          "department": _sk.get("department"),
+                                                          "path": _sk.get("path"),
+                                                          "agent_id": agent_id})
+                except Exception as _ske:
+                    log_event("SKILL_SELECT_ERROR", {"error_type": type(_ske).__name__})
+
         t = time.monotonic()
         try:
             text = BACKEND_DISPATCH.get(active_backend[0], call_groq)(
                 messages=[{"role":"user","content":task}],
                 system=system_prompt)
         except Exception as exc:
-            log_event("DISPATCH_ERROR", {"agent_id":agent_id,"error_type":type(exc).__name__})
+            log_event("DISPATCH_ERROR", {"gov_tx_id": _gov_tx_id, "agent_id":agent_id,"error_type":type(exc).__name__})
             return jsonify({"ok":False,"error":_safe_error(agent_id, exc)}), 502
 
         elapsed = round(time.monotonic() - t, 2)
         session.record_turn(task, score, signals)
         log_event("DISPATCH_COMPLETE", {
-            "agent_id":agent_id, "agent_name":agent_name,
+            "gov_tx_id": _gov_tx_id, "agent_id":agent_id, "agent_name":agent_name,
             "backend":active_backend[0], "drs":score, "mode":mode,
             "elapsed":elapsed, "crsv":round(session.crsv(), 1)})
 
-        return jsonify({
+        _resp = {
             "ok":True, "agent_id":agent_id, "agent_name":agent_name,
             "text":text, "drs":score, "mode":mode,
-            "crsv":round(session.crsv(), 1)})
+            "crsv":round(session.crsv(), 1)}
+        if _selected_skill:
+            _resp["selected_skill"] = _selected_skill.get("name")  # audit-safe name only
+        return jsonify(_resp)
 
     @flask_app.route("/api/agents/spawn",methods=["POST","OPTIONS"])
     def api_agents_spawn():
