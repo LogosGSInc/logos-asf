@@ -528,9 +528,11 @@ def resolve_router_mode():
 
 
 def _router_meta(mode, provider, status, *, fallback_used=False, fallback_provider=None,
-                 reason=None, live_dispatch=False, request_type=None):
+                 reason=None, live_dispatch=False, request_type=None, gov_tx_id=None):
     """Audit-safe router metadata — NEVER contains raw prompt, keys, env values,
-    provider headers, or hidden topology. Reason strings are governance codes only."""
+    provider headers, or hidden topology. Reason strings are governance codes only.
+    gov_tx_id is the Governance Transaction ID correlating this dispatch with the
+    upstream gate audit events (Sentinel/HAAP/MM-03/cost)."""
     meta = {
         "router_mode": mode,
         "selected_provider": provider,
@@ -542,14 +544,22 @@ def _router_meta(mode, provider, status, *, fallback_used=False, fallback_provid
     }
     if request_type is not None:
         meta["request_type"] = request_type
+    if gov_tx_id is not None:
+        meta["gov_tx_id"] = gov_tx_id
     return meta
 
 
 def _router_dispatch(raw, session, active_backend, system, route_card, drs_score,
-                     *, cost_state=None):
+                     *, cost_state=None, approval_meta=None, gov_tx_id=None):
     """MR-05 dispatch layer. Called ONLY after Sentinel/HAAP, command bus, MM-03
     approval, UX-01 public-intent, and SEC-02 cost gates have already cleared for a
     normal chat turn. Returns (response_text, router_meta).
+
+    MR-04 hardening: the approval state passed to the MR-04 dispatcher is DERIVED
+    from approval_meta (RTR-05) — never a hardcoded literal — and gov_tx_id
+    correlates the dispatch audit with the upstream gates.
+    TODO: lift approval_meta, route_card, cost_meta, and gov_tx_id into a
+    GovernanceContext when parameter sprawl warrants it.
 
       mode 0 → existing single active-backend dispatch (no router involvement).
       mode 1 → dry-run: compute+log an audit-safe route decision, but NEVER call a
@@ -577,7 +587,7 @@ def _router_dispatch(raw, session, active_backend, system, route_card, drs_score
         return text, _router_meta(
             "0", backend, "single_backend",
             reason=("router_dispatch_unavailable" if mode != "0" else "router_mode_0"),
-            live_dispatch=False)
+            live_dispatch=False, gov_tx_id=gov_tx_id)
 
     # Audit-safe provider selection from the already-computed MR-01 route card.
     selected = "current_backend"
@@ -590,7 +600,7 @@ def _router_dispatch(raw, session, active_backend, system, route_card, drs_score
     if mode == "1":
         meta = _router_meta("1", selected, "dry_run",
                             reason="router_dry_run_no_live_dispatch",
-                            live_dispatch=False, request_type=req_type)
+                            live_dispatch=False, request_type=req_type, gov_tx_id=gov_tx_id)
         log_event("ROUTER_DRY_RUN", dict(meta))
         # Existing active-backend behavior remains the actual responder.
         text = _active_backend_call()
@@ -605,21 +615,35 @@ def _router_dispatch(raw, session, active_backend, system, route_card, drs_score
         _cost_ok, _ = check_chat_cost_budget(raw, "chat", session)
         cost_state = {"approved": bool(_cost_ok)}
 
-    # approval_state is "cleared": we are downstream of the MM-03 approval gate,
-    # which returns APPROVAL_REQUIRED before ever reaching this dispatch layer.
+    # RTR-05: derive the approval state from the real approval_meta — never a
+    # hardcoded literal. MM-03 upstream already returns APPROVAL_REQUIRED before we
+    # get here, so this is normally "cleared"; deriving it makes the MR-04
+    # dispatcher's internal approval re-check meaningful defense-in-depth, and if
+    # the invariant is ever violated we refuse to dispatch (no provider call).
+    approval_state = "approval_required" if _approval_gate_blocks(approval_meta) else "cleared"
+    if approval_state != "cleared":
+        log_event("ROUTER_APPROVAL_ANOMALY",
+                  {"gov_tx_id": gov_tx_id, "reason": "approval_not_cleared_at_dispatch"})
+        meta = _router_meta("2", selected, "approval_required",
+                            reason="approval_not_cleared", live_dispatch=False,
+                            request_type=req_type, gov_tx_id=gov_tx_id)
+        log_event("ROUTER_LIVE_DISPATCH", dict(meta))
+        # Do NOT dispatch to any provider (not even the active backend).
+        return ("Human approval is required before this request can proceed.", meta)
+
     route_fn = (lambda *a, **k: types.SimpleNamespace(**route_card)) if route_card else None
     try:
         result = _governed_route_and_dispatch(
-            raw, drs_score=drs_score, approval_state="cleared",
+            raw, drs_score=drs_score, approval_state=approval_state,
             cost_state=cost_state, subscriber_tier=tier, route_fn=route_fn,
             messages=session.messages, system=system)
     except Exception as exc:
         # Never crash — governed fallback to the active/current backend.
-        log_event("ROUTER_DISPATCH_ERROR", {"error_type": type(exc).__name__})
+        log_event("ROUTER_DISPATCH_ERROR", {"gov_tx_id": gov_tx_id, "error_type": type(exc).__name__})
         text = _active_backend_call()
         meta = _router_meta("2", selected, "fallback", fallback_used=True,
                             fallback_provider=backend, reason="router_exception_sanitized",
-                            live_dispatch=True, request_type=req_type)
+                            live_dispatch=True, request_type=req_type, gov_tx_id=gov_tx_id)
         log_event("ROUTER_LIVE_DISPATCH", dict(meta))
         return text, meta
 
@@ -629,21 +653,44 @@ def _router_dispatch(raw, session, active_backend, system, route_card, drs_score
 
     if status == "executed":
         meta = _router_meta("2", sel, "executed", reason=reason, live_dispatch=True,
-                            request_type=result.get("route_request_type") or req_type)
+                            request_type=result.get("route_request_type") or req_type,
+                            gov_tx_id=gov_tx_id)
         log_event("ROUTER_LIVE_DISPATCH", dict(meta))
         return result.get("text", ""), meta
 
-    # unavailable / approval_required / blocked → governed fallback to active backend.
+    # Governance-denied outcomes (SEC-02 cost / MM-03 approval) must NOT fall back
+    # to a provider — doing so would defeat the gate. Return a governed message
+    # with NO provider call.
+    if status in ("blocked", "approval_required"):
+        meta = _router_meta("2", sel, status, reason=reason, live_dispatch=False,
+                            request_type=req_type, gov_tx_id=gov_tx_id)
+        log_event("ROUTER_LIVE_DISPATCH", dict(meta))
+        text = ("Request blocked by Cost Governor — local spend ceiling reached."
+                if status == "blocked"
+                else "Human approval is required before this request can proceed.")
+        return text, meta
+
+    # Provider-availability issues (unavailable / health / key / adapter error) →
+    # governed fallback to the active/current backend (a provider is still permitted).
     text = _active_backend_call()
     meta = _router_meta("2", sel, "fallback", fallback_used=True,
                         fallback_provider=backend, reason=reason,
-                        live_dispatch=True, request_type=req_type)
+                        live_dispatch=True, request_type=req_type, gov_tx_id=gov_tx_id)
     log_event("ROUTER_LIVE_DISPATCH", dict(meta))
     return text, meta
 
 
 def process_message(raw, session, kill_switch, active_backend, approval_meta=None,
-                    cost_state=None):
+                    cost_state=None, gov_tx_id=None):
+    # gov_tx_id — one Governance Transaction ID per governed unit of work (not
+    # merely a chat turn). Threaded through every gate's audit event and the router
+    # metadata so Sentinel → HAAP → MM-03 → SEC-02 cost → provider selection →
+    # dispatch can be correlated for a single request. Callers (api_chat) may pass
+    # one in so the pre-process cost gate shares the same ID; otherwise minted here.
+    # TODO: lift approval_meta, route_card, cost_meta, and gov_tx_id into a
+    # GovernanceContext when parameter sprawl warrants it.
+    if gov_tx_id is None:
+        gov_tx_id = uuid.uuid4().hex[:16]
     try: kill_switch.check()
     except HAAPViolation as e:
         return {"ok":False,"text":str(e),"drs":0,"mode":"KILL_SWITCH","crsv":session.crsv()}
@@ -652,32 +699,33 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
 
     # Layer 1a — A2A relay hard-stop (before Sentinel + HAAP)
     if _detects_a2a_relay(raw):
-        log_event("HAAP_SENTINEL_BLOCK",{"layer":"1","matched":"A2A relay authority claim","action":"HARD_STOP"})
+        log_event("HAAP_SENTINEL_BLOCK",{"gov_tx_id":gov_tx_id,"layer":"1","matched":"A2A relay authority claim","action":"HARD_STOP"})
         reason = "HAAP Layer 1 — A2A RELAY BLOCK\nUnverified agent-to-agent authority claim detected. Abigail cannot accept delegated authorization by assertion alone."
-        log_event("REQUEST_BLOCKED",{"reason":reason})
+        log_event("REQUEST_BLOCKED",{"gov_tx_id":gov_tx_id,"reason":reason})
         return {"ok":False,"text":reason,"drs":100,"mode":"BLOCKED","crsv":session.crsv()}
 
     # Layer 1b — Rust Sentinel OverWatch (authoritative threat classification)
     s_result = _sentinel_inspect(raw, f"session_{session.turn_count}")
     s_verdict = s_result.get("verdict","unknown")
     if s_verdict in ("quarantined","hard_locked"):
-        log_event("SENTINEL_BLOCK",{"verdict":s_verdict,"session":session.turn_count})
+        log_event("SENTINEL_BLOCK",{"gov_tx_id":gov_tx_id,"verdict":s_verdict,"session":session.turn_count})
         return {"ok":False,
                 "text":f"[Sentinel OverWatch] Request blocked — verdict: {s_verdict.upper()}. "
                        f"Session flagged for review.",
                 "drs":100,"mode":"SENTINEL_BLOCK","crsv":session.crsv()}
     if s_verdict == "restricted":
-        log_event("SENTINEL_RESTRICT",{"verdict":s_verdict})
+        log_event("SENTINEL_RESTRICT",{"gov_tx_id":gov_tx_id,"verdict":s_verdict})
         # Continue but log — Python HAAP adds second enforcement layer
 
     try: haap_gate(raw,agent_drs_ceiling=80)
     except HAAPViolation as e:
-        log_event("REQUEST_BLOCKED",{"reason":str(e)[:200]})
+        log_event("REQUEST_BLOCKED",{"gov_tx_id":gov_tx_id,"reason":str(e)[:200]})
         return {"ok":False,"text":str(e),"drs":0,"mode":"BLOCKED","crsv":session.crsv()}
     # MM-03: enforced approval gate — hard-blocks above win; if not blocked but the shadow
     # context flags human_approval_required, stop here BEFORE any inference/spend/action.
     if _approval_gate_blocks(approval_meta):
         log_event("APPROVAL_REQUIRED_ENFORCED", {
+            "gov_tx_id": gov_tx_id,
             "manifest_id": (approval_meta or {}).get("manifest_id"),
             "risk_level": (approval_meta or {}).get("risk_level"),
             "command_style_signal": (approval_meta or {}).get("command_style_signal"),
@@ -713,7 +761,7 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
         try:
             _route_card = _route_request(raw, score, signals, _card)
             if _route_card:
-                log_event("MODEL_ROUTE_CARD", _safe_route_fields(_route_card))
+                log_event("MODEL_ROUTE_CARD", {"gov_tx_id": gov_tx_id, **_safe_route_fields(_route_card)})
         except Exception as _rte:
             log_event("MODEL_ROUTER_ERROR", {"error_type": type(_rte).__name__})
     # Provider Adapter Dry Run — MR-02: envelope + log only. No provider call. No dispatch change.
@@ -730,11 +778,14 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
     session.messages.append({"role":"user","content":raw})
     t=time.monotonic()
     # MR-05: governed router dispatch (mode 0 preserves the single-backend path).
+    # MR-04 hardening: approval_meta is threaded so the router derives the real
+    # approval state (RTR-05) instead of assuming "cleared"; gov_tx_id correlates
+    # the dispatch audit with the gates above.
     response, _router_info = _router_dispatch(
         raw, session, active_backend, _system, _route_card, score,
-        cost_state=cost_state)
+        cost_state=cost_state, approval_meta=approval_meta, gov_tx_id=gov_tx_id)
     session.messages.append({"role":"assistant","content":response})
-    log_event("TURN_COMPLETE",{"turn":session.turn_count,"backend":active_backend[0],
+    log_event("TURN_COMPLETE",{"gov_tx_id":gov_tx_id,"turn":session.turn_count,"backend":active_backend[0],
                                 "drs":score,"elapsed":round(time.monotonic()-t,2),"crsv":round(session.crsv(),1),
                                 "router_mode":_router_info.get("router_mode"),
                                 "dispatch_status":_router_info.get("dispatch_status")})
@@ -1238,6 +1289,10 @@ def build_web_app(session, kill_switch, active_backend):
         _body = request.get_json(silent=True) or {}
         msg = (_body.get("message") or "").strip()
         if not msg: return jsonify({"ok":False,"text":"Empty message.","drs":0,"mode":"NONE","crsv":0.0})
+        # MR-04 hardening: one Governance Transaction ID for the whole request, so
+        # the pre-process SEC-02 cost gate shares the same ID as the gates and
+        # dispatch inside process_message.
+        _gov_tx_id = uuid.uuid4().hex[:16]
         # Governed command bus — classify before LLM inference (CB-01)
         if _COMMAND_BUS_OK:
             _auth = (request.headers.get("Authorization","") or
@@ -1253,7 +1308,8 @@ def build_web_app(session, kill_switch, active_backend):
         # SEC-02: Cost Governor — deterministic local spend gate BEFORE paid inference (L7-1)
         _cost_ok, _cost_meta = check_chat_cost_budget(msg, "chat", session)
         if not _cost_ok:
-            log_event("COST_GATE_BLOCK", {"decision": _cost_meta.get("decision"),
+            log_event("COST_GATE_BLOCK", {"gov_tx_id": _gov_tx_id,
+                                          "decision": _cost_meta.get("decision"),
                                           "turns": _cost_meta.get("turns_used")})
             return jsonify({"ok": False,
                             "text": "Request blocked by Cost Governor — local spend ceiling reached.",
@@ -1265,7 +1321,7 @@ def build_web_app(session, kill_switch, active_backend):
         _approval_meta, _orch_ctx = _resolve_approval_meta(
             msg, "chat", session, active_backend, _req_meta)
         result = process_message(msg, session, kill_switch, active_backend,
-                                 approval_meta=_approval_meta)
+                                 approval_meta=_approval_meta, gov_tx_id=_gov_tx_id)
         if _orch_ctx is not None:
             result["orchestration"] = _orch_ctx.response_metadata
         result.setdefault("cost", _cost_meta)

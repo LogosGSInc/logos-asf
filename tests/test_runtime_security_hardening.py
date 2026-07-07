@@ -178,7 +178,7 @@ def test_cost_gate_blocks_before_process_message(monkeypatch):
 
 # ── MM-02 preservation ──────────────────────────────────────────────────────
 def test_normal_chat_keeps_orchestration_and_cost(monkeypatch):
-    def _fake_pm(msg, session, ks, ab, approval_meta=None):
+    def _fake_pm(msg, session, ks, ab, approval_meta=None, **kwargs):
         return {"ok": True, "text": "stubbed reply", "drs": 0,
                 "mode": "SILENT_AUTONOMY", "crsv": 0.0}
 

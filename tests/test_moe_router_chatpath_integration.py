@@ -319,7 +319,7 @@ def test_router_metadata_contains_no_prompt_or_secret(monkeypatch):
     # only the audit-safe field set is present
     assert set(out["router"]) <= {
         "router_mode", "selected_provider", "dispatch_status", "fallback_used",
-        "fallback_provider", "reason", "live_dispatch", "request_type"}
+        "fallback_provider", "reason", "live_dispatch", "request_type", "gov_tx_id"}
 
 
 def test_no_provider_calls_in_pytest_across_modes(monkeypatch):
