@@ -1,6 +1,15 @@
 # SEC-03 — Full-Stack Abigail Security, Debug & AWS MVP Readiness Audit
 
-**Mode:** MANUAL_APPROVAL_ONLY · audit-first, patch-second. **No code was changed. Nothing was committed. Nothing was pushed.**
+**Mode:** MANUAL_APPROVAL_ONLY · audit-first, patch-second. The original audit
+(2026-07-06) changed no code. Blockers were subsequently remediated under
+individual operator approval (2026-07-07) — see **Blocker Remediation & Status
+Update** below. Still local-only; nothing pushed; sealed baseline untouched.
+
+> **STATUS (2026-07-07): AWS MVP status changed from NO-GO to CONDITIONAL GO,
+> pending control-plane and deployment prerequisites.** All six SEC-03 blockers
+> (2 Critical + 4 High) are remediated, tested, and committed locally. The
+> remaining conditions are deployment/control-plane prerequisites, not code
+> blockers — enumerated as an explicit release gate below.
 
 ---
 
@@ -28,10 +37,92 @@ exploitable live against the running container:
 remediated and re-tested. None of these were introduced by MR-05; they are
 pre-existing stack issues surfaced by this first full-stack audit.
 
-**Doctrine check ("Before AWS, Abigail must survive herself"):** not yet. Two
-routes (static file read; Sentinel control plane) do not "know their authority,"
-and one buyer-facing surface (`dashboard.html`) makes a "Live" claim that no test
-backs.
+**Doctrine check ("Before AWS, Abigail must survive herself"):** at original
+audit time, not yet. **As of 2026-07-07, yes for the blocker set** — the two
+authority-less routes now enforce auth, and the buyer-facing "Live" overclaim is
+corrected and provenance-labeled. Deployment/control-plane hardening remains (see
+release gate).
+
+---
+
+## Blocker Remediation & Status Update (2026-07-07)
+
+Remediation followed the audit-first doctrine: each fix was planned, approved by
+the operator individually, implemented as one focused commit, and verified
+(targeted + full regression, plus live runtime checks). Local commits only; no
+push; `~/Abigailv1@5cdfee1` and the evidence archive untouched; no secrets
+printed at any step.
+
+### 1 — Closed blockers (2 Critical + 4 High)
+
+| ID | Sev | Blocker | Fix (one-line) | Commit |
+|----|-----|---------|----------------|--------|
+| EP-01 | Critical | Unauth static path traversal → arbitrary file read (keys/tokens) | Containment helper + `send_from_directory`; realpath-anchored root | `b873b1f` |
+| DOCK-01 | Critical | Sentinel control plane published on `0.0.0.0` | Host publish scoped to `127.0.0.1`; internal bind unchanged | `e75e3c0` (A) + `f372794` (B) |
+| DOCK-02 | High | Sentinel audit disclosure + unauth state mutation; `/health` leak | Constant-time `X-Sentinel-Token` on all non-`/health` routes; fail-closed 503; `/health` trimmed; `operator_reset` compares real secret | `f372794` |
+| EP-02 | High | `/api/agents/dispatch` unauth paid inference + governance bypass | Admin-gated first, then Sentinel/HAAP/MM-03/cost before dispatch (RTR-09 constant-time admin compare folded in) | `4fb6358` |
+| GOV-01 | High | MM-03 approval gate fails OPEN when orchestration bridge unavailable | `_resolve_approval_meta` fails CLOSED with `governance_status=UNAVAILABLE` + `GOVERNANCE_UNAVAILABLE_FAIL_CLOSED` audit event | `cd84015` |
+| UI-01 | High | `dashboard.html` shows fabricated telemetry as "Live" | Provenance badges (LIVE/SIMULATED/CACHED/OFFLINE/LOCAL/REMOTE); LIVE only when a named endpoint backs the widget | `f8f1be1` |
+
+The invariant now holds end-to-end for remote requests:
+**Authentication → Governance Evaluation (fail-closed) → Approval → Cost → Dispatch.**
+
+### 2 — Remaining conditions (AWS MVP release gate — NOT code blockers)
+
+These are deployment/control-plane prerequisites. Each must be checked off before
+first public AWS exposure:
+
+- [ ] **EP-03** — authenticate the topology-disclosure read routes
+  (`/api/agents/departments`, `/api/agents`, `/api/agents/lifecycle`,
+  `/api/agents/<dept>/status`) or reduce to non-sensitive fields (Medium; still
+  open at the API layer).
+- [ ] **TLS / ACM** — terminate HTTPS (ALB + ACM or reverse proxy); no plaintext
+  public traffic. (AWS-04)
+- [ ] **Secrets Manager / SSM + KMS** — move provider keys and
+  `SENTINEL_ADMIN_TOKEN`/admin tokens off the flat `.abigail.env` for AWS. (AWS-02/08)
+- [ ] **IAM least privilege** — author task/execution roles; no broad policies. (AWS-09)
+- [ ] **ECR image hygiene** — private registry, immutable tags, image scanning,
+  add `.dockerignore` (DOCK-07); ship `swarm/`+`agents/` intentionally or keep
+  absent-by-design (DOCK-03); pin `pydantic` (DOCK-04). (AWS-10)
+- [ ] **Deployment environment separation** — dev/stage/prod split with a
+  promotion path; no single shared env file. (AWS-11)
+- [ ] **Logging + audit retention** — CloudWatch/central drain; rotation/WORM
+  retention for the audit chain. (AWS-05/14)
+- [ ] **Health checks + kill-switch reachability** mapped to ALB/ECS; incident
+  runbook. (AWS-12/13)
+
+Post-MVP (not gating): Ed25519 handoff signing (SWARM-02), content-derived risk
+(SWARM-03), model-ID env overrides (RTR-01), sensitive-tier local fallback
+(RTR-07), CORS pin (SEC-02), `datetime.utcnow()` deprecation, dynamic UI model
+labels (UI-02).
+
+### 3 — Production gate criteria (definition of "full GO")
+
+Full GO requires, in addition to every item in §2:
+1. A live **mode-2** governed router dispatch tested against real providers under
+   explicit operator approval (buyer-facing dynamic-routing claim precondition).
+2. A repeat SEC-03 sweep against the **AWS-deployed** stack (not just local
+   containers), confirming the blocker fixes hold in the deployed topology.
+3. No open Critical/High findings from that deployed-stack sweep.
+4. Documented incident response + rollback validated once end-to-end.
+
+Until all four hold, the posture is **CONDITIONAL GO** (proceed to AWS MVP
+*planning and provisioning*), never full production GO.
+
+### Evidence (verification sweep, 2026-07-07)
+
+| Area | Status | Evidence |
+|------|--------|----------|
+| SEC-03 blockers | Closed locally | 6 commits `b873b1f`, `e75e3c0`, `f372794`, `4fb6358`, `cd84015`, `f8f1be1` |
+| Backend regression | Green | `pytest -q` → **1588 passed, 0 failed** |
+| Sentinel auth (Rust) | Green | `cargo test --bin governance_spine_server` → **10 passed, 0 failed** |
+| EP-01 live | Pass | `GET /../../../../etc/hostname` → **404** |
+| DOCK-01 live | Pass | `docker inspect asf-sentinel` → `HostIp 127.0.0.1` only |
+| DOCK-02 live | Pass | `/health` = `{ok,service}` (200); `/inspect` **401** no-token / **200** with token |
+| EP-02 live | Pass | `POST /api/agents/dispatch` no-token → **401** |
+| UI-01 live | Pass | `dashboard.html` served 200, provenance banner present, 0 overclaims |
+| Push status | Not pushed | Local only, branch `sprint/mr05-router-chatpath` |
+| Sealed baseline | Untouched | `~/Abigailv1@5cdfee1` |
 
 ---
 
@@ -476,17 +567,31 @@ HEAD b4b6e5543e3e3f919c37306633689adca749b625
 
 ## AWS MVP Go / No-Go
 
-**NO-GO** for AWS MVP exposure until, at minimum:
-1. EP-01 (path traversal) is fixed and regression-tested.
-2. DOCK-01 (Sentinel `0.0.0.0`) is bound to localhost/private and DOCK-02 auth is
-   added.
-3. EP-02 (`/api/agents/dispatch`) is authenticated + governed.
-4. GOV-01 (approval fail-open) is made fail-closed.
-5. UI-01 (buyer-facing "Live" overclaim) is corrected.
+> **Original decision (2026-07-06): NO-GO.** Superseded — see below.
 
-**Buyer-facing claim boundary:** until the above clear and a live mode-2 test is
-run under operator approval, defensible claims are limited to: "governed control
-plane with dormant, bounded local swarm; model router integrated with dry-run
-provable (mode 1) and live dispatch behind an operator flag (mode 2)." Claims of
-production-live multi-agent autonomy, AWS readiness, or any compliance posture are
-**not** currently supported.
+**Current decision (2026-07-07): CONDITIONAL GO** — AWS MVP status changed from
+NO-GO to CONDITIONAL GO pending control-plane and deployment prerequisites.
+
+The five (six, counting DOCK-01's two parts) code blockers that drove the original
+NO-GO are all remediated, tested, and committed locally:
+1. EP-01 (path traversal) — fixed + regression-tested (`b873b1f`).
+2. DOCK-01 (Sentinel `0.0.0.0`) — bound to loopback (`e75e3c0`); DOCK-02 route
+   auth added (`f372794`).
+3. EP-02 (`/api/agents/dispatch`) — authenticated + governed (`4fb6358`).
+4. GOV-01 (approval fail-open) — now fails closed (`cd84015`).
+5. UI-01 (buyer-facing "Live" overclaim) — corrected + provenance-labeled (`f8f1be1`).
+
+**CONDITIONAL GO means:** proceed to AWS MVP *planning and provisioning*. It does
+**not** authorize public production exposure. Full GO requires clearing the
+**release gate** in §2 of *Blocker Remediation & Status Update* (EP-03, TLS/ACM,
+Secrets Manager, IAM least privilege, ECR hygiene, env separation, logging/audit
+retention, health/kill-switch reachability) and the **production gate criteria**
+in §3 (live mode-2 provider test + a repeat SEC-03 sweep against the deployed AWS
+stack with no open Critical/High).
+
+**Buyer-facing claim boundary:** defensible claims remain "governed control plane
+with dormant, bounded local swarm; hardened auth on all remote entry points;
+model router integrated with dry-run provable (mode 1) and live dispatch behind an
+operator flag (mode 2)." Claims of production-live multi-agent autonomy, AWS
+production readiness, or any compliance certification (SOC 2/HIPAA/FedRAMP) are
+**still not** supported until the release + production gates close.
