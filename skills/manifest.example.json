@@ -1,0 +1,31 @@
+{
+  "_note": "EXAMPLE ONLY — not the real manifest. The real skills/manifest.json is GENERATED from SKILL.md frontmatter by an approved read-only generator (a later, separately-approved step). Do not hand-author or commit a real manifest.json in P2. This example exists solely to illustrate the schema shape and to be validated in tests.",
+  "version": 1,
+  "generated": "EXAMPLE-TIMESTAMP (generator stamps ISO-8601 at build time)",
+  "skills": [
+    {
+      "name": "code-reviewer",
+      "description": "Review a diff or code excerpt for correctness, security, and clarity; return severity-ranked findings. Advisory only.",
+      "department": "ENG",
+      "authority_level": "advisory",
+      "risk_level": "low",
+      "path": "skills/ENG/code-reviewer/SKILL.md"
+    },
+    {
+      "name": "threat-model-helper",
+      "description": "Draft a lightweight STRIDE-style threat model for a supplied design — assets, threats, mitigations. Advisory only.",
+      "department": "SEC",
+      "authority_level": "advisory",
+      "risk_level": "low",
+      "path": "skills/SEC/threat-model-helper/SKILL.md"
+    },
+    {
+      "name": "audit-event-summarizer",
+      "description": "Summarize a supplied batch of governance/audit events into an audit-safe briefing. Advisory only.",
+      "department": "GRC",
+      "authority_level": "advisory",
+      "risk_level": "low",
+      "path": "skills/GRC/audit-event-summarizer/SKILL.md"
+    }
+  ]
+}

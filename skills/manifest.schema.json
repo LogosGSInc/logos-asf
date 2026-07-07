@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Abigail Skills Manifest",
+  "description": "GENERATED index of first-party skills — metadata ONLY, never full SKILL.md bodies. The real manifest is produced from skills/**/SKILL.md frontmatter by an approved, read-only generator (NOT part of SKILLS-01 P2). Hand-authoring the manifest is prohibited to prevent drift.",
+  "type": "object",
+  "required": ["version", "generated", "skills"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "generated": { "type": "string", "description": "ISO-8601 timestamp stamped by the generator" },
+    "skills": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/skillEntry" }
+    }
+  },
+  "definitions": {
+    "skillEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Metadata surfaced for discovery. additionalProperties:false forbids body content (Purpose/Procedure/etc.) from ever entering the manifest.",
+      "required": ["name", "description", "department", "authority_level", "risk_level", "path"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "description": { "type": "string", "maxLength": 600 },
+        "department": { "type": "string", "pattern": "^[A-Z]{2,4}$" },
+        "authority_level": { "type": "string", "enum": ["advisory"] },
+        "risk_level": { "type": "string", "enum": ["low", "medium", "high"] },
+        "path": { "type": "string", "pattern": "^skills/[A-Z]{2,4}/[a-z0-9-]+/SKILL\\.md$" }
+      }
+    }
+  }
+}
