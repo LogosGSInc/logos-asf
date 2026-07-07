@@ -62,6 +62,16 @@
     state.lastRefresh = new Date();
     var rs = document.getElementById("refreshStatus");
     if (rs) rs.textContent = "Refreshed " + state.lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    renderOnRefresh();
+  }
+
+  // Polled refresh must NEVER clobber in-progress input. The chat stream and the
+  // Settings inputs are re-rendered only on explicit tab switch / send, not on the
+  // 15s poll. This preserves the textarea value + focus while the user types.
+  function renderOnRefresh() {
+    if (activeTab === "workspace") return;            // chat has no polled data
+    var ae = document.activeElement;
+    if (ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT")) return; // user is typing
     renderActive();
   }
 

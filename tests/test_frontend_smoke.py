@@ -93,6 +93,17 @@ def test_advanced_mode_and_reason_modal_scaffolding():
     assert "reason is REQUIRED" in js or "reason is required" in js.lower()
 
 
+# ── polled refresh must not clobber in-progress input (chat-reset regression) ─
+def test_refresh_preserves_input():
+    js = (STATIC / "abigail.js").read_text(encoding="utf-8")
+    assert "renderOnRefresh" in js
+    # the poll path must guard against wiping the chat/settings inputs
+    assert 'activeTab === "workspace"' in js
+    assert 'ae.tagName === "TEXTAREA"' in js
+    # the 15s interval must call the guarded path, not a blind full re-render
+    assert "setInterval(refresh" in js
+
+
 # ── JS parses ────────────────────────────────────────────────────────────────
 @pytest.mark.skipif(not shutil.which("node"), reason="node not available")
 def test_app_js_syntax_ok():
