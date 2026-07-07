@@ -94,7 +94,10 @@ try:
 except ImportError:
     _ORCHESTRATION_BRIDGE_OK = False
     def _build_shadow_ctx(*a, **kw): return None
-    def _approval_gate_blocks(*a, **kw): return False
+    def _approval_gate_blocks(response_metadata=None, *a, **kw):
+        # GOV-01: mirror the real predicate — pure dict logic, no bridge required.
+        # NEVER hardwire False: a synthetic fail-closed meta must still block.
+        return bool(response_metadata and response_metadata.get("human_approval_required"))
 
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
@@ -1099,6 +1102,37 @@ fetchStatus();setInterval(fetchStatus,15000);
 </script></body></html>"""
 
 
+# ── GOV-01: fail-closed approval resolution ────────────────────────────────────
+# Invariant: "unable to evaluate approval" is NEVER "approval granted". If the
+# orchestration bridge is unavailable or the shadow context cannot be built, the
+# request is treated as approval-required (governance UNAVAILABLE) so enforcement
+# denies it before any inference/spend. Applied at the externally reachable web
+# entry points; the local CLI trust boundary is unchanged.
+def _resolve_approval_meta(text, mode, session, active_backend, req_meta):
+    """Return (approval_meta, orch_ctx). Fails CLOSED: on bridge-unavailable or
+    shadow-context build failure, synthesize approval-required metadata carrying a
+    machine-readable governance_status/failure_reason AND emit a dedicated audit
+    event, so this condition is distinguishable from a legitimate human-approval
+    request. orch_ctx is None whenever governance could not be evaluated."""
+    def _fail_closed(failure_reason):
+        log_event("GOVERNANCE_UNAVAILABLE_FAIL_CLOSED",
+                  {"mode": mode, "failure_reason": failure_reason})
+        return ({
+            "human_approval_required": True,
+            "governance_status": "UNAVAILABLE",
+            "failure_reason": failure_reason,
+            "risk_level": "unknown",
+            "request_type": "governance_unavailable",
+        }, None)
+
+    if not _ORCHESTRATION_BRIDGE_OK:
+        return _fail_closed("orchestration_bridge_unavailable")
+    ctx = _build_shadow_ctx(text, mode, session, active_backend, req_meta)
+    if ctx is None:
+        return _fail_closed("shadow_context_unavailable")
+    return (ctx.response_metadata, ctx)
+
+
 # ── EP-01: static-file path-traversal containment ─────────────────────────────
 def _safe_static_relpath(static_root, filename):
     """Return `filename` as a path provably contained within `static_root`, or None
@@ -1225,14 +1259,11 @@ def build_web_app(session, kill_switch, active_backend):
                             "text": "Request blocked by Cost Governor — local spend ceiling reached.",
                             "drs": 0, "mode": "COST_BLOCKED", "crsv": session.crsv(),
                             "cost": _cost_meta})
-        # MM-02: Shadow orchestration context — audit-safe, additive, fail-soft (CB-02)
-        _orch_ctx = None
-        _approval_meta = None
-        if _ORCHESTRATION_BRIDGE_OK:
-            _req_meta = {k: v for k, v in _body.items() if k != "message"}
-            _orch_ctx = _build_shadow_ctx(msg, "chat", session, active_backend, _req_meta)
-            if _orch_ctx is not None:
-                _approval_meta = _orch_ctx.response_metadata  # MM-03: enforced downstream
+        # MM-02/MM-03/GOV-01: resolve approval metadata, failing CLOSED if governance
+        # cannot be evaluated (bridge down or shadow-context build failure).
+        _req_meta = {k: v for k, v in _body.items() if k != "message"}
+        _approval_meta, _orch_ctx = _resolve_approval_meta(
+            msg, "chat", session, active_backend, _req_meta)
         result = process_message(msg, session, kill_switch, active_backend,
                                  approval_meta=_approval_meta)
         if _orch_ctx is not None:
@@ -1290,14 +1321,16 @@ def build_web_app(session, kill_switch, active_backend):
             log_event("DISPATCH_BLOCKED", {"agent_id":agent_id,"reason":str(e)[:200]})
             return jsonify({"ok":False,"error":str(e),"blocked":True}), 403
 
-        # MM-03 approval gate — stop high-risk before provider dispatch/spend.
-        if _ORCHESTRATION_BRIDGE_OK:
-            _octx = _build_shadow_ctx(
-                task, "dispatch", session, active_backend,
-                {k: v for k, v in body.items() if k not in ("task", "agent_id")})
-            if _octx is not None and _approval_gate_blocks(_octx.response_metadata):
-                log_event("DISPATCH_APPROVAL_REQUIRED", {"agent_id": agent_id})
-                return jsonify(build_approval_required_response(_octx.response_metadata, session)), 200
+        # MM-03/GOV-01 approval gate — stop high-risk (and fail CLOSED when governance
+        # cannot be evaluated) before provider dispatch/spend.
+        _dispatch_meta, _ = _resolve_approval_meta(
+            task, "dispatch", session, active_backend,
+            {k: v for k, v in body.items() if k not in ("task", "agent_id")})
+        if _approval_gate_blocks(_dispatch_meta):
+            log_event("DISPATCH_APPROVAL_REQUIRED",
+                      {"agent_id": agent_id,
+                       "governance_status": _dispatch_meta.get("governance_status")})
+            return jsonify(build_approval_required_response(_dispatch_meta, session)), 200
 
         # SEC-02 cost gate — deterministic local spend gate before paid dispatch.
         _cost_ok, _cost_meta = check_chat_cost_budget(task, "dispatch", session)
