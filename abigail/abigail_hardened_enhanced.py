@@ -658,9 +658,21 @@ def _router_dispatch(raw, session, active_backend, system, route_card, drs_score
         log_event("ROUTER_LIVE_DISPATCH", dict(meta))
         return result.get("text", ""), meta
 
-    # Governance-denied outcomes (SEC-02 cost / MM-03 approval) must NOT fall back
-    # to a provider — doing so would defeat the gate. Return a governed message
-    # with NO provider call.
+    # ── Governance denials are TERMINAL ────────────────────────────────────────
+    # Fallback is permitted ONLY for infrastructure failures AFTER governance has
+    # authorized execution. A policy decision must never degrade into execution.
+    #
+    #   Condition                              | Fallback to active backend?
+    #   ---------------------------------------|----------------------------
+    #   Provider unavailable / router exception|  YES  (availability)
+    #   Cost governor denied ("blocked")       |  NO   (policy)
+    #   Approval required                      |  NO   (policy)
+    #   Sentinel block                         |  NO   (policy, handled upstream)
+    #   HAAP block                             |  NO   (policy, handled upstream)
+    #
+    # Sentinel/HAAP/MM-03 policy denials already return from process_message before
+    # this layer; the two the dispatcher can still surface here are cost ("blocked")
+    # and approval_required — both TERMINAL: return a governed message, NO provider.
     if status in ("blocked", "approval_required"):
         meta = _router_meta("2", sel, status, reason=reason, live_dispatch=False,
                             request_type=req_type, gov_tx_id=gov_tx_id)
@@ -671,7 +683,9 @@ def _router_dispatch(raw, session, active_backend, system, route_card, drs_score
         return text, meta
 
     # Provider-availability issues (unavailable / health / key / adapter error) →
-    # governed fallback to the active/current backend (a provider is still permitted).
+    # governed fallback to the active/current backend. Permitted because governance
+    # ALREADY authorized execution above; this is graceful degradation on an
+    # infrastructure failure, not a policy override.
     text = _active_backend_call()
     meta = _router_meta("2", sel, "fallback", fallback_used=True,
                         fallback_provider=backend, reason=reason,
