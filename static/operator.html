@@ -787,14 +787,19 @@ async function fetchAuditTail() {
   }
 }
 
-/* ── LIVE: /api/agents/departments ── */
+/* ── LIVE: /api/agents/departments (EP-03: admin-gated topology) ── */
 async function fetchDepartments() {
   try {
-    const r = await fetch(apiUrl('/api/agents/departments'));
+    // EP-03: topology is admin-gated. Send the operator admin token (shared with
+    // the console Settings); without it the fetch 401s and we fall back to the
+    // clearly-labeled mock dept nav rather than exposing unauth topology.
+    let tok = ''; try { tok = localStorage.getItem('abigail.adminToken') || ''; } catch (e) {}
+    const opts = tok ? { headers: { Authorization: 'Bearer ' + tok } } : {};
+    const r = await fetch(apiUrl('/api/agents/departments'), opts);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     renderDeptNav(await r.json(), false);
   } catch {
-    renderDeptNav(null, true);
+    renderDeptNav(null, true);   // OFFLINE / mock (labeled) — no unauth topology shown
   }
 }
 

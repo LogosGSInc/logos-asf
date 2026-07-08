@@ -1407,10 +1407,20 @@ def build_web_app(session, kill_switch, active_backend):
 
     @flask_app.route("/api/agents/departments")
     def api_departments():
+        # EP-03: topology is admin-gated (fail closed). Not for unauthenticated callers.
+        _ok, _st, _err = require_admin_token(request)
+        if not _ok:
+            log_event("TOPOLOGY_AUTH_FAILED", {"route": "departments", "status": _st})
+            return jsonify({"ok": False, "error": _err}), _st
         return jsonify({"departments":ASF_DEPARTMENTS,"count":len(ASF_DEPARTMENTS),"governed_by":"abigail.cp00"})
 
     @flask_app.route("/api/agents")
     def api_agents_list():
+        # EP-03: agent registry topology is admin-gated (fail closed).
+        _ok, _st, _err = require_admin_token(request)
+        if not _ok:
+            log_event("TOPOLOGY_AUTH_FAILED", {"route": "agents", "status": _st})
+            return jsonify({"ok": False, "error": _err}), _st
         agents = _list_yaml_agents()
         return jsonify({"agents":agents,"count":len(agents),
                         "loader_ok":_AGENT_LOADER_OK,"governed_by":"abigail.cp00"})
@@ -1617,6 +1627,11 @@ def build_web_app(session, kill_switch, active_backend):
 
     @flask_app.route("/api/agents/<dept>/status")
     def api_dept_status(dept):
+        # EP-03: per-department lifecycle state is admin-gated (fail closed).
+        _ok, _st, _err = require_admin_token(request)
+        if not _ok:
+            log_event("TOPOLOGY_AUTH_FAILED", {"route": "dept_status", "status": _st})
+            return jsonify({"ok": False, "error": _err}), _st
         d = _normalize_dept(dept)
         if not d: return jsonify({"error":f"Unknown department: {dept}"}), 400
         with _DEPT_LOCK:
@@ -1625,6 +1640,11 @@ def build_web_app(session, kill_switch, active_backend):
 
     @flask_app.route("/api/agents/lifecycle")
     def api_dept_lifecycle_all():
+        # EP-03: all-department lifecycle topology is admin-gated (fail closed).
+        _ok, _st, _err = require_admin_token(request)
+        if not _ok:
+            log_event("TOPOLOGY_AUTH_FAILED", {"route": "lifecycle", "status": _st})
+            return jsonify({"ok": False, "error": _err}), _st
         with _DEPT_LOCK:
             snap = {d: _DEPT_STATE.get(d,{"status":"active","since":None,"by":None}) for d in sorted(VALID_DEPTS)}
         return jsonify({"departments":snap, "count":len(snap)})
