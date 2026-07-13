@@ -77,7 +77,7 @@ def test_shadow_context_governed_state_has_state_id():
 def test_shadow_context_response_metadata_has_all_required_keys():
     c = _ctx()
     expected = {
-        "manifest_id", "state_id", "modality", "risk_level",
+        "gov_tx_id", "manifest_id", "state_id", "modality", "risk_level",
         "source_trust_class", "human_approval_required",
         "command_style_signal", "max_steps", "max_tokens_estimate",
         "orchestration_mode",

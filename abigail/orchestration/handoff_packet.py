@@ -19,7 +19,7 @@ from .audit import canonical_json, sha256_hex, now_utc, new_packet_id
 # Fields included in the canonical payload hash.
 # Excludes: payload_hash, previous_packet_hash, signature_*, audit_safe.
 _CANONICAL_PAYLOAD_FIELDS = (
-    "packet_id", "manifest_id", "created_at", "from_agent", "to_agent",
+    "packet_id", "manifest_id", "gov_tx_id", "created_at", "from_agent", "to_agent",
     "mission", "constraints", "authority_scope", "allowed_tools",
     "forbidden_tools", "allowed_outputs", "forbidden_outputs",
     "evidence_requirements", "budget", "stop_conditions",
@@ -67,6 +67,7 @@ def build_handoff_packet(
     canonical_content = {
         "packet_id":            packet_id,
         "manifest_id":          manifest.manifest_id,
+        "gov_tx_id":            manifest.gov_tx_id,
         "created_at":           created_at,
         "from_agent":           from_agent,
         "to_agent":             to_agent,
@@ -89,6 +90,7 @@ def build_handoff_packet(
     return SignedHandoffPacket(
         packet_id=packet_id,
         manifest_id=manifest.manifest_id,
+        gov_tx_id=manifest.gov_tx_id,
         created_at=created_at,
         from_agent=from_agent,
         to_agent=to_agent,
@@ -120,6 +122,7 @@ def packet_canonical_payload_dict(packet: SignedHandoffPacket) -> dict:
     return {
         "packet_id":            raw["packet_id"],
         "manifest_id":          raw["manifest_id"],
+        "gov_tx_id":            raw["gov_tx_id"],
         "created_at":           raw["created_at"],
         "from_agent":           raw["from_agent"],
         "to_agent":             raw["to_agent"],

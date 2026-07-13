@@ -140,9 +140,11 @@ def build_shadow_orchestration_context(
             worker_outputs_refs=[],
             supervisor_decision=supervisor_decision,
             audit_refs=[manifest.manifest_id],
+            gov_tx_id=manifest.gov_tx_id,
         )
 
         response_metadata = {
+            "gov_tx_id": manifest.gov_tx_id,
             "manifest_id": manifest.manifest_id,
             "state_id": state.state_id,
             "modality": manifest.modality,

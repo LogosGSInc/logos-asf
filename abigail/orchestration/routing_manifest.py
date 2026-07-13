@@ -49,11 +49,16 @@ def build_routing_manifest(
     input_payload: bytes = b"",
     policy_refs: list = None,
     supervisor: str = "abigail",
+    gov_tx_id: str = "",
 ) -> RoutingManifest:
     """
     Build a governed RoutingManifest. Computes human_approval_required automatically.
     Stores SHA-256 of input_payload as input_hash — no raw content stored.
     Raises ValueError if any invariant would be violated.
+
+    gov_tx_id: single governance transaction ID for end-to-end correlation. Leave
+    empty to mint a fresh one (the common case — one manifest opens the transaction);
+    pass an existing id to attach this manifest to a transaction already in flight.
     """
     required_tools = list(required_tools or [])
     forbidden_tools = list(forbidden_tools or [])
@@ -88,6 +93,7 @@ def build_routing_manifest(
         input_hash=hash_input(input_payload),
         policy_refs=list(policy_refs or []),
         audit_safe=True,
+        gov_tx_id=gov_tx_id,
     )
 
 

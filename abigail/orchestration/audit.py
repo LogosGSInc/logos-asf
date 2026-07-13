@@ -41,6 +41,14 @@ def now_utc() -> str:
     return datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
 
 
+def new_gov_tx_id() -> str:
+    """Single governance transaction ID threaded end-to-end across a routed
+    skill invocation: manifest → handoff packet(s) → governed state → audit.
+    Generated once at the manifest (the origin) and only ever copied downstream —
+    never regenerated — so every record in one transaction shares this id."""
+    return f"GTX-{uuid.uuid4().hex[:16].upper()}"
+
+
 def new_manifest_id() -> str:
     return f"MANIFEST-{uuid.uuid4().hex[:12].upper()}"
 

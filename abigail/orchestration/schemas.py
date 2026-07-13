@@ -17,6 +17,8 @@ Sprint banner: Do not test whether Abigail can answer. Test whether Abigail can 
 from dataclasses import dataclass, field
 from typing import Optional
 
+from .audit import new_gov_tx_id
+
 
 # ── Governed enumerations ─────────────────────────────────────────────────────
 
@@ -114,8 +116,14 @@ class RoutingManifest:
     input_hash: str
     policy_refs: list
     audit_safe: bool = True
+    # Single governance transaction ID. The manifest is the ORIGIN of a governance
+    # transaction: if none is supplied, one is minted here and threaded, unchanged,
+    # into every downstream handoff packet, governed state, and audit record.
+    gov_tx_id: str = ""
 
     def __post_init__(self):
+        if not self.gov_tx_id.strip():
+            self.gov_tx_id = new_gov_tx_id()
         if self.modality not in VALID_MODALITIES:
             raise ValueError(
                 f"Invalid modality: {self.modality!r}. "
@@ -198,6 +206,9 @@ class SignedHandoffPacket:
     signature_public_key_ref: str
     signature_placeholder: str
     audit_safe: bool = True
+    # Copied verbatim from the originating RoutingManifest — the builder threads it
+    # and it is covered by payload_hash, so any tampering breaks hash-chain integrity.
+    gov_tx_id: str = ""
 
     def __post_init__(self):
         if self.from_agent not in AUTHORIZED_SUPERVISORS:
@@ -286,6 +297,9 @@ class SingleGovernedState:
     worker_outputs_refs: list
     supervisor_decision: str
     audit_refs: list
+    # Copied verbatim from the manifest that opened this transaction — correlates
+    # this state with its manifest, handoff packets, and audit records.
+    gov_tx_id: str = ""
 
     def __post_init__(self):
         if self.current_stage not in VALID_PIPELINE_STAGES:

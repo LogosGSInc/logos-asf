@@ -60,6 +60,16 @@ except ImportError:
     _provider_registry = None
     def _safe_provider_fields(e): return {}
 
+# ── MR-05: MoE router → chat-path integration (governed live dispatch) ─────────
+try:
+    from model_router.dispatcher import governed_route_and_dispatch as _governed_route_and_dispatch
+    _MOE_DISPATCH_OK = True
+except ImportError:
+    _MOE_DISPATCH_OK = False
+    def _governed_route_and_dispatch(*a, **kw):
+        return {"dispatch_status":"unavailable","provider_selected":None,
+                "reason":"moe_dispatch_unavailable","fallback_provider":None}
+
 # ── Governed Command Bus (CB-01, pre-inference operator command detection) ─────
 try:
     from command_bus import try_operator_command as _try_operator_command_fn
@@ -244,6 +254,7 @@ def build_approval_required_response(approval_meta, session):
         "approval": {
             "human_approval_required": True,
             "enforced": True,
+            "gov_tx_id": m.get("gov_tx_id"),
             "manifest_id": m.get("manifest_id"),
             "state_id": m.get("state_id"),
             "risk_level": m.get("risk_level"),
@@ -487,6 +498,80 @@ class SessionState:
         return None
 
 
+# ── MR-05: MoE router mode + mode-aware provider dispatch ──────────────────────
+def _resolve_moe_mode():
+    """ABIGAIL_MOE_ROUTER_MODE: '0' single-backend, '1' dry-run router, '2' live router.
+    Invalid values fail closed to '0' with an audit-safe warning."""
+    m = os.environ.get("ABIGAIL_MOE_ROUTER_MODE", "0").strip()
+    if m not in ("0", "1", "2"):
+        log_event("MOE_ROUTER_CONFIG_WARNING", {"invalid_value_len": len(m), "fell_back_to": "0"})
+        return "0"
+    return m
+
+
+def _moe_dispatch(raw, session, active_backend, system, score):
+    """MR-05: mode-aware provider dispatch. Returns (response_text, router_meta).
+    Runs only after all upstream gates (Sentinel/HAAP, command bus, PUBLIC_ASSIST,
+    MM-03 approval, SEC-02 cost) have already cleared. router_meta is audit-safe."""
+    mode = _resolve_moe_mode()
+    backend = active_backend[0]
+
+    def _single(provider=None):
+        p = provider or backend
+        try:
+            return BACKEND_DISPATCH.get(p, call_groq)(messages=session.messages, system=system)
+        except Exception as exc:
+            log_event("BACKEND_ERROR", {"backend": p, "error_type": type(exc).__name__})
+            return _safe_error(p, exc)
+
+    # Mode 0 (or router unavailable) — existing single-backend behavior
+    if mode == "0" or not _MOE_DISPATCH_OK:
+        return _single(), {"router_mode": "0", "selected_provider": backend,
+                           "dispatch_status": "single_backend", "live_dispatch": False,
+                           "fallback_used": False}
+
+    # Mode 1 — dry-run router selection; NEVER calls the selected provider adapter
+    if mode == "1":
+        sel = backend
+        try:
+            card = _route_request(raw, score, [], None)
+            if card is not None:
+                sel = getattr(card, "selected_provider", backend)
+        except Exception as exc:
+            log_event("MOE_ROUTER_ERROR", {"mode": "1", "error_type": type(exc).__name__})
+        log_event("MOE_ROUTE_DECISION", {"router_mode": "1", "selected_provider": sel,
+                                         "dispatch_status": "dry_run", "live_dispatch": False})
+        return _single(), {"router_mode": "1", "selected_provider": sel,
+                           "dispatch_status": "dry_run", "live_dispatch": False,
+                           "fallback_used": False, "reason": "dry_run_no_provider_call"}
+
+    # Mode 2 — live governed router dispatch (approval/cost already cleared upstream)
+    tier = os.environ.get("ABIGAIL_SUBSCRIBER_TIER", "paid").strip() or "paid"
+    try:
+        gr = _governed_route_and_dispatch(raw, drs_score=score, approval_state="cleared",
+                                          cost_state={"approved": True}, subscriber_tier=tier,
+                                          messages=session.messages, system=system)
+    except Exception as exc:
+        log_event("MOE_ROUTER_ERROR", {"mode": "2", "error_type": type(exc).__name__})
+        return _single(), {"router_mode": "2", "selected_provider": backend,
+                           "dispatch_status": "router_error_fallback", "live_dispatch": True,
+                           "fallback_used": True, "fallback_provider": backend}
+    sel = gr.get("provider_selected")
+    if gr.get("dispatch_status") == "executed":
+        meta = {"router_mode": "2", "selected_provider": sel, "dispatch_status": "executed",
+                "live_dispatch": True, "fallback_used": False}
+        resp = gr.get("text") or ""
+    else:
+        fb = gr.get("fallback_provider") or backend
+        resp = _single(fb)
+        meta = {"router_mode": "2", "selected_provider": sel,
+                "dispatch_status": gr.get("dispatch_status"), "reason": gr.get("reason"),
+                "live_dispatch": True, "fallback_used": True, "fallback_provider": fb}
+    log_event("MOE_ROUTE_DECISION", {k: meta.get(k) for k in
+              ("router_mode", "selected_provider", "dispatch_status", "fallback_used")})
+    return resp, meta
+
+
 # ── Shared dispatch ───────────────────────────────────────────────────────────
 def process_message(raw, session, kill_switch, active_backend, approval_meta=None):
     try: kill_switch.check()
@@ -523,6 +608,7 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
     # context flags human_approval_required, stop here BEFORE any inference/spend/action.
     if _approval_gate_blocks(approval_meta):
         log_event("APPROVAL_REQUIRED_ENFORCED", {
+            "gov_tx_id": (approval_meta or {}).get("gov_tx_id"),
             "manifest_id": (approval_meta or {}).get("manifest_id"),
             "risk_level": (approval_meta or {}).get("risk_level"),
             "command_style_signal": (approval_meta or {}).get("command_style_signal"),
@@ -574,21 +660,20 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
             log_event("PROVIDER_ADAPTER_ERROR", {"error_type": type(_pae).__name__})
     session.messages.append({"role":"user","content":raw})
     t=time.monotonic()
-    try:
-        response=BACKEND_DISPATCH.get(active_backend[0],call_groq)(
-            messages=session.messages,system=_system)
-    except Exception as exc:
-        response=_safe_error(active_backend[0],exc)
-        log_event("BACKEND_ERROR",{"backend":active_backend[0],"error_type":type(exc).__name__})
+    # MR-05: mode-aware dispatch (single-backend / dry-run router / live governed router)
+    response, _router_meta = _moe_dispatch(raw, session, active_backend, _system, score)
     session.messages.append({"role":"assistant","content":response})
-    log_event("TURN_COMPLETE",{"turn":session.turn_count,"backend":active_backend[0],
+    log_event("TURN_COMPLETE",{"turn":session.turn_count,
+                                "backend":_router_meta.get("selected_provider",active_backend[0]),
+                                "router_mode":_router_meta.get("router_mode"),
                                 "drs":score,"elapsed":round(time.monotonic()-t,2),"crsv":round(session.crsv(),1)})
     # PUBLIC disclosure clamp — strip internal topology from unauthenticated responses
     if score <= 20 and _public_response_overexposed(response):
         log_event("PUBLIC_DISCLOSURE_CLAMP",{"action":"REDACTED_TO_PUBLIC_FALLBACK","turn":session.turn_count})
         response = _public_safe_fallback()
 
-    out={"ok":True,"text":response,"drs":score,"mode":mode,"crsv":round(session.crsv(),1)}
+    out={"ok":True,"text":response,"drs":score,"mode":mode,"crsv":round(session.crsv(),1),
+         "router":_router_meta}
     if drift: out["drift"]=drift
     return out
 
