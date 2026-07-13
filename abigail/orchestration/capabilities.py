@@ -149,6 +149,13 @@ GOVERNANCE_REVIEWER = _register(
 
 # ── Capability query helpers ──────────────────────────────────────────────────
 
+def all_capability_profiles() -> dict:
+    """Return a shallow copy of every registered capability profile, keyed by
+    worker_class. Read-only view — mutating the returned dict does not affect the
+    registry. Single source of truth for the workers the broker governs."""
+    return dict(_PROFILES)
+
+
 def get_capability_profile(worker_class: str) -> CapabilityProfile:
     if worker_class not in _PROFILES:
         raise KeyError(

@@ -43,9 +43,22 @@ from .runtime_bridge import (
 )
 from .capabilities import (
     get_capability_profile,
+    all_capability_profiles,
     check_modality_supported,
     check_risk_level_allowed,
     requires_human_approval_for,
+)
+from .control_plane_registry import (
+    ControlPlaneRegistry,
+    WorkerDescriptor,
+    ControlPlaneAuthError,
+    build_default_control_plane_registry,
+    LIFECYCLE_STATES,
+    HEALTH_STATES,
+    AVAILABILITY_STATES,
+    GOVERNANCE_STATUSES,
+    FORBIDDEN_REGISTRY_CAPABILITIES,
+    CONTROL_PLANE_VERSION,
 )
 
 __all__ = [
@@ -81,7 +94,18 @@ __all__ = [
     "approval_gate_blocks",
     "BRIDGE_VERSION",
     "get_capability_profile",
+    "all_capability_profiles",
     "check_modality_supported",
     "check_risk_level_allowed",
     "requires_human_approval_for",
+    "ControlPlaneRegistry",
+    "WorkerDescriptor",
+    "ControlPlaneAuthError",
+    "build_default_control_plane_registry",
+    "LIFECYCLE_STATES",
+    "HEALTH_STATES",
+    "AVAILABILITY_STATES",
+    "GOVERNANCE_STATUSES",
+    "FORBIDDEN_REGISTRY_CAPABILITIES",
+    "CONTROL_PLANE_VERSION",
 ]

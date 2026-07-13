@@ -91,6 +91,18 @@ except ImportError:
     def _build_shadow_ctx(*a, **kw): return None
     def _approval_gate_blocks(*a, **kw): return False
 
+# ── Curated Control Plane Registry — safe read-only exposure of Skills to Ops ───
+try:
+    from orchestration.control_plane_registry import (
+        build_default_control_plane_registry as _build_control_plane_registry,
+        ControlPlaneAuthError as _ControlPlaneAuthError,
+    )
+    _CONTROL_PLANE_OK = True
+except ImportError:
+    _CONTROL_PLANE_OK = False
+    class _ControlPlaneAuthError(Exception): pass
+    def _build_control_plane_registry(*a, **kw): return None
+
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
 LOG_FILE     = HOME / ".abigail_audit.jsonl"
@@ -1157,6 +1169,25 @@ def build_web_app(session, kill_switch, active_backend):
         agents = _list_yaml_agents()
         return jsonify({"agents":agents,"count":len(agents),
                         "loader_ok":_AGENT_LOADER_OK,"governed_by":"abigail.cp00"})
+
+    @flask_app.route("/api/control-plane/workers")
+    def api_control_plane_workers():
+        """Read-only, admin-authenticated view of the curated Control Plane Registry.
+        Describes governed workers to Operations — it never dispatches. Dispatch stays
+        exclusively with the broker. Fail-closed: no admin token, no listing."""
+        _ok, _st, _err = require_admin_token(request)
+        if not _ok:
+            log_event("CONTROL_PLANE_AUTH_REJECTED", {"ip": request.remote_addr, "status": _st})
+            return jsonify({"error": _err}), _st
+        if not _CONTROL_PLANE_OK:
+            return jsonify({"error": "Control plane registry unavailable."}), 503
+        token = (request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+                 or request.headers.get("X-HAAP-Token", "").strip())
+        try:
+            reader = _build_control_plane_registry().authenticate(token)
+        except _ControlPlaneAuthError:
+            return jsonify({"error": "Control plane access denied."}), 401
+        return jsonify(reader.snapshot())
 
     @flask_app.route("/api/agents/dispatch", methods=["POST","OPTIONS"])
     def api_agents_dispatch():
