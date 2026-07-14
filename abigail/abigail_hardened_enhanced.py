@@ -1197,6 +1197,13 @@ def build_web_app(session, kill_switch, active_backend):
     @flask_app.route("/api/agents/dispatch", methods=["POST","OPTIONS"])
     def api_agents_dispatch():
         if request.method == "OPTIONS": return jsonify({}), 200
+        # Fail-closed admin auth BEFORE any content gate or model inference: this route
+        # runs a governed agent persona through live, billable inference and must not be
+        # reachable unauthenticated. Same pattern as /api/agents/spawn.
+        _ok,_st,_err = require_admin_token(request)
+        if not _ok:
+            log_event("DISPATCH_AUTH_REJECTED",{"ip":request.remote_addr,"status":_st})
+            return jsonify({"error":_err}),_st
         body       = request.get_json(force=True, silent=True) or {}
         agent_id   = (body.get("agent_id") or "").strip()
         task       = (body.get("task")     or "").strip()
