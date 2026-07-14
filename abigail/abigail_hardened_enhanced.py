@@ -602,13 +602,18 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
     # Layer 1b — Rust Sentinel OverWatch (authoritative threat classification)
     s_result = _sentinel_inspect(raw, f"session_{session.turn_count}")
     s_verdict = s_result.get("verdict","unknown")
-    if s_verdict in ("quarantined","hard_locked"):
+    # Rust Sentinel emits UPPERCASE verdicts (APPROVED / RESTRICTED / QUARANTINED /
+    # HARD_LOCKED); normalize case here so Sentinel's authoritative block actually fires
+    # instead of silently falling through to the weaker Python regex layer. The raw verdict
+    # is preserved verbatim in the audit log for fidelity.
+    s_verdict_norm = str(s_verdict).strip().lower()
+    if s_verdict_norm in ("quarantined","hard_locked"):
         log_event("SENTINEL_BLOCK",{"verdict":s_verdict,"session":session.turn_count})
         return {"ok":False,
-                "text":f"[Sentinel OverWatch] Request blocked — verdict: {s_verdict.upper()}. "
+                "text":f"[Sentinel OverWatch] Request blocked — verdict: {s_verdict_norm.upper()}. "
                        f"Session flagged for review.",
                 "drs":100,"mode":"SENTINEL_BLOCK","crsv":session.crsv()}
-    if s_verdict == "restricted":
+    if s_verdict_norm == "restricted":
         log_event("SENTINEL_RESTRICT",{"verdict":s_verdict})
         # Continue but log — Python HAAP adds second enforcement layer
 
