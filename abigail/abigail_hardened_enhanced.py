@@ -700,6 +700,78 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
 # Every agent gets: Docker isolation + Python venv + constitutional JSON.
 # DRS ceiling maps to resource limits. Ceiling > 60 = JIT required.
 
+# ── Slice A: interim scope ceilings (until Slice C adds scope to the YAMLs) ─────
+# No agent definition declares scope today (0/125 YAMLs), so these are the ceilings a
+# caller may NOT exceed for a definition-less agent. They equal the pre-existing safe
+# defaults, so legitimate default-tier spawns are unaffected — but any body-supplied
+# value ABOVE them is a caller-side escalation attempt and is rejected + audited.
+#   agency_level=2       : the modal department authority; only ENG/OPS are authored at 3,
+#                          so 2 is the safe least-privilege cap for an undeclared agent.
+#   drs_ceiling=40       : the existing default and the minimal resource tier (0.5cpu/256m);
+#                          >40 raises risk tolerance/resources, and >60 is already JIT-blocked.
+#   permitted_resources  : the single least-privilege workspace path; any extra path is escalation.
+_INTERIM_MAX_AGENCY_LEVEL   = 2
+_INTERIM_MAX_DRS_CEILING    = 40
+_INTERIM_PERMITTED_RESOURCES = ["/workspace"]
+
+
+def _safe_int(v):
+    try: return int(v)
+    except (TypeError, ValueError): return None
+
+
+def _resolve_agent_scope(body, agent_def):
+    """Slice A — the agent definition (or the interim ceiling when it declares nothing)
+    is authoritative. A body-supplied value that EXCEEDS the allowed value is a caller-side
+    escalation attempt and is REJECTED, not clamped (clamping silently permits probing).
+
+    Returns (scope, violations). scope is the resolved {agency_level, drs_ceiling,
+    permitted_resources} to use; violations is a list of {field, requested, allowed, ...}.
+    A non-empty violations list means the request must be refused.
+    """
+    violations = []
+
+    # agency_level — higher = more authority
+    allowed_agency = _safe_int(agent_def.get("agency_level")) or _INTERIM_MAX_AGENCY_LEVEL
+    agency = allowed_agency
+    if body.get("agency_level") is not None:
+        req = _safe_int(body.get("agency_level"))
+        if req is None or req > allowed_agency:
+            violations.append({"field":"agency_level","requested":body.get("agency_level"),
+                               "allowed":allowed_agency})
+        else:
+            agency = req
+
+    # drs_ceiling — higher = more risk tolerance / more resources
+    allowed_ceiling = _safe_int(agent_def.get("drs_ceiling")) or _INTERIM_MAX_DRS_CEILING
+    ceiling = allowed_ceiling
+    if body.get("drs_ceiling") is not None:
+        req = _safe_int(body.get("drs_ceiling"))
+        if req is None or req > allowed_ceiling:
+            violations.append({"field":"drs_ceiling","requested":body.get("drs_ceiling"),
+                               "allowed":allowed_ceiling})
+        else:
+            ceiling = req
+
+    # permitted_resources — requesting any path outside the allowed set is escalation
+    allowed_res = list(agent_def.get("permitted_resources") or _INTERIM_PERMITTED_RESOURCES)
+    resources = allowed_res
+    if body.get("permitted_resources") is not None:
+        req_res = body.get("permitted_resources")
+        if not isinstance(req_res, list):
+            violations.append({"field":"permitted_resources","requested":req_res,
+                               "allowed":allowed_res})
+        else:
+            disallowed = [r for r in req_res if r not in allowed_res]
+            if disallowed:
+                violations.append({"field":"permitted_resources","requested":req_res,
+                                   "allowed":allowed_res,"disallowed":disallowed})
+            else:
+                resources = req_res
+
+    return {"agency_level":agency,"drs_ceiling":ceiling,"permitted_resources":resources}, violations
+
+
 def _build_constitution(dept_id, agency_level, permitted, drs_ceiling):
     return {
         "_type":"agent_constitution_v1",
@@ -1266,11 +1338,19 @@ def build_web_app(session, kill_switch, active_backend):
         if not task: return jsonify({"error":"task required."}),400
         try: haap_gate(task,agent_drs_ceiling=60)
         except HAAPViolation as e: return jsonify({"error":str(e),"blocked":True}),403
-        # Pull YAML definition as defaults; request body overrides
+        # Slice A: the agent definition (or interim ceiling) is authoritative. A body value
+        # that EXCEEDS it is a scope-escalation attempt — reject and audit, never clamp+run.
         agent_def = _get_yaml_agent(dept_id) or {}
-        agency_level = int(body.get("agency_level") or agent_def.get("agency_level", 2))
-        drs_ceiling  = int(body.get("drs_ceiling")  or agent_def.get("drs_ceiling",  40))
-        permitted    = body.get("permitted_resources") or agent_def.get("permitted_resources", ["/workspace"])
+        _scope, _violations = _resolve_agent_scope(body, agent_def)
+        if _violations:
+            log_event("SCOPE_ESCALATION_REJECTED",
+                      {"dept_id":dept_id,"ip":request.remote_addr,"violations":_violations})
+            return jsonify({"ok":False,"blocked":True,"reason":"SCOPE_ESCALATION",
+                            "error":"Requested scope exceeds this agent's authorized bounds.",
+                            "violations":_violations}), 403
+        agency_level = _scope["agency_level"]
+        drs_ceiling  = _scope["drs_ceiling"]
+        permitted    = _scope["permitted_resources"]
         extra_env    = {}
         sys_prompt   = agent_def.get("system_prompt", "")
         if sys_prompt:
