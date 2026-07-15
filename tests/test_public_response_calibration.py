@@ -34,13 +34,16 @@ class _Sess:
     def record_turn(self, *a, **k):
         self.turn_count += 1
 
+    def append_message(self, role, content):
+        self.messages.append({"role": role, "content": content})
+
     def drift_warning(self):
         return None
 
 
 def _no_net(monkeypatch):
     monkeypatch.setattr(A, "_sentinel_inspect",
-                        lambda *a, **k: {"ok": True, "verdict": "unknown", "approved": True})
+                        lambda *a, **k: {"ok": True, "verdict": "APPROVED", "approved": True})
 
 
 # ── classifier unit tests ────────────────────────────────────────────────────

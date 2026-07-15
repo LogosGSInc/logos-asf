@@ -5,3 +5,4 @@ groq==1.4.0
 httpx==0.28.1
 prompt_toolkit==3.0.52
 pyyaml
+cryptography==49.0.0

@@ -30,7 +30,7 @@ def _budget(monkeypatch):
 def _neutralize(monkeypatch):
     """No network (Rust Sentinel offline) and a detectable fake Groq dispatch."""
     monkeypatch.setattr(A, "_sentinel_inspect",
-                        lambda *a, **k: {"ok": True, "verdict": "unknown", "approved": True})
+                        lambda *a, **k: {"ok": True, "verdict": "APPROVED", "approved": True})
     monkeypatch.setattr(A, "try_grounded_answer", lambda *a, **k: None)
     calls = {"groq": 0}
 
@@ -61,6 +61,9 @@ class _Sess:
 
     def record_turn(self, *a, **k):
         self.turn_count += 1
+
+    def append_message(self, role, content):
+        self.messages.append({"role": role, "content": content})
 
     def drift_warning(self):
         return None
