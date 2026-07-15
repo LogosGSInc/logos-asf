@@ -28,3 +28,4 @@ Thumbs.db
 
 # AG-01 generated swarm job artifacts (local, do not commit)
 runtime/
+.claude/worktrees/
