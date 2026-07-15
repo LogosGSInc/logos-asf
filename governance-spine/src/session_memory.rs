@@ -15,6 +15,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -405,15 +406,109 @@ pub struct SessionStartAdvice {
 
 pub struct StrategicMemory {
     actors: HashMap<String, ActorProfile>,
+    /// GS-BUILD-01: disk location for the durable snapshot. `None` ==> in-memory
+    /// only (the legacy behaviour, retained for tests and for deployments that
+    /// have not set SENTOW_MEMORY_PATH). `Some(path)` ==> every mutation is
+    /// snapshotted to disk and the map is reloaded from disk on construction,
+    /// so cross-session actor profiles survive a process restart.
+    memory_path: Option<PathBuf>,
 }
 
 impl StrategicMemory {
+    /// In-memory-only store (no durability). Retained for tests and for the
+    /// no-path deployment case; prefer `with_path` in production.
     pub fn new() -> Self {
-        Self { actors: HashMap::new() }
+        Self { actors: HashMap::new(), memory_path: None }
     }
 
-    /// Called when a session ends — Sentinel hands fingerprint to Abigail
-    pub fn ingest_session(&mut self, actor_id: &str, fingerprint: SessionFingerprint) {
+    /// GS-BUILD-01: durable store. If `path` is `Some` and the file exists, the
+    /// actor map is reloaded from it (a corrupt/unreadable file is logged and
+    /// treated as an empty start rather than crashing the gate — availability
+    /// over a hard fail on a non-security-critical read). Subsequent mutations
+    /// are persisted via `persist()`.
+    pub fn with_path(path: Option<PathBuf>) -> Self {
+        let actors = match &path {
+            Some(p) if p.exists() => match std::fs::read_to_string(p) {
+                Ok(raw) => match serde_json::from_str::<HashMap<String, ActorProfile>>(&raw) {
+                    Ok(map) => {
+                        eprintln!("[MEMORY] StrategicMemory loaded {} actor profile(s) from {}",
+                            map.len(), p.display());
+                        map
+                    }
+                    Err(e) => {
+                        eprintln!("[MEMORY] WARN: could not parse {} ({}); starting empty",
+                            p.display(), e);
+                        HashMap::new()
+                    }
+                },
+                Err(e) => {
+                    eprintln!("[MEMORY] WARN: could not read {} ({}); starting empty",
+                        p.display(), e);
+                    HashMap::new()
+                }
+            },
+            _ => HashMap::new(),
+        };
+        Self { actors, memory_path: path }
+    }
+
+    /// True when this store is backed by disk (mutations survive a restart).
+    pub fn is_durable(&self) -> bool {
+        self.memory_path.is_some()
+    }
+
+    /// Number of distinct actor profiles currently held (observability).
+    pub fn actor_count(&self) -> usize {
+        self.actors.len()
+    }
+
+    /// Total sessions recorded for an actor (0 if unknown).
+    pub fn total_sessions(&self, actor_id: &str) -> u32 {
+        self.actors.get(actor_id).map(|p| p.total_sessions).unwrap_or(0)
+    }
+
+    /// Escalated sessions recorded for an actor (0 if unknown).
+    pub fn escalated_sessions(&self, actor_id: &str) -> u32 {
+        self.actors.get(actor_id).map(|p| p.escalated_sessions).unwrap_or(0)
+    }
+
+    /// Atomically snapshot the actor map to disk. Returns `true` only when a
+    /// durable write actually completed. No configured path ==> `false`
+    /// (in-memory only). Write goes to a temp file then rename, so a crash
+    /// mid-write cannot leave a truncated snapshot.
+    fn persist(&self) -> bool {
+        let path = match &self.memory_path {
+            Some(p) => p,
+            None => return false,
+        };
+        let json = match serde_json::to_string(&self.actors) {
+            Ok(j) => j,
+            Err(e) => { eprintln!("[MEMORY] ERROR: serialize failed ({})", e); return false; }
+        };
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    eprintln!("[MEMORY] ERROR: mkdir {} failed ({})", parent.display(), e);
+                    return false;
+                }
+            }
+        }
+        let tmp = path.with_extension("json.tmp");
+        if let Err(e) = std::fs::write(&tmp, json.as_bytes()) {
+            eprintln!("[MEMORY] ERROR: write {} failed ({})", tmp.display(), e);
+            return false;
+        }
+        if let Err(e) = std::fs::rename(&tmp, path) {
+            eprintln!("[MEMORY] ERROR: rename into {} failed ({})", path.display(), e);
+            return false;
+        }
+        true
+    }
+
+    /// Called when a session ends — Sentinel hands fingerprint to Abigail.
+    /// GS-BUILD-01: returns whether the updated profile was durably persisted
+    /// to disk (`false` in the in-memory-only configuration).
+    pub fn ingest_session(&mut self, actor_id: &str, fingerprint: SessionFingerprint) -> bool {
         let now = Utc::now();
 
         let profile = self.actors
@@ -444,6 +539,11 @@ impl StrategicMemory {
 
         // Re-evaluate threat level
         Self::evaluate_actor(profile);
+
+        // GS-BUILD-01: durably snapshot the mutated map so this profile
+        // survives a restart. Poisoned-turn carry-over across sessions is now
+        // the write path GS-2.4-REVISED will gate.
+        self.persist()
     }
 
     /// Advise Sentinel when a new session starts
