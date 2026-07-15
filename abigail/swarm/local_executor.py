@@ -17,9 +17,9 @@ import os
 from pathlib import Path
 
 from orchestration.routing_manifest import build_routing_manifest
-from orchestration.handoff_packet import build_handoff_packet
+from orchestration.handoff_packet import build_handoff_packet, require_valid_packet
 from orchestration.schemas import SignedHandoffPacket
-from orchestration.audit import now_utc
+from orchestration.audit import now_utc, new_gov_tx_id
 
 from .job_spec import ContainmentMode, FORBIDDEN_ACTIONS
 
@@ -39,6 +39,7 @@ class DeptResult:
     artifact_path: str
     status: str                # complete | approval_required | blocked
     content: str = ""
+    gov_tx_id: str = ""        # single job-level governance transaction id (P0-5)
 
 
 # ── external containment / kill switch ─────────────────────────────────────────
@@ -129,25 +130,42 @@ def _draft(dept, task, packet):
     return hdr + body
 
 
-def execute_worker(packet, dept, task=None):
+def execute_worker(packet, dept, task=None, draft_fn=None):
     """Execute a bounded department worker. REQUIRES a scoped handoff packet that
-    references a routing manifest. The worker sees only the packet — never the full
-    user prompt or transcript — and cannot self-route or self-approve."""
+    references a routing manifest AND authenticates (P0-4). The worker sees only the
+    packet — never the full user prompt or transcript — and cannot self-route or
+    self-approve.
+
+    The receiving side verifies the packet's Ed25519 signature before doing any work:
+    an unsigned, tampered, or untrusted-key packet is refused with SwarmDenied. `draft_fn`
+    lets a caller inject a real (e.g. governed-LLM) worker; it defaults to the bounded
+    deterministic local draft."""
     if packet is None or not isinstance(packet, SignedHandoffPacket):
         raise SwarmDenied("worker requires a scoped SignedHandoffPacket")
     if not packet.manifest_id:
         raise SwarmDenied("worker requires a RoutingManifest (manifest_id missing)")
-    return _draft(dept, task or packet.mission, packet)
+    # P0-4: authenticate the packet on the receiving side — never accept unconditionally.
+    try:
+        require_valid_packet(packet)
+    except Exception as exc:
+        raise SwarmDenied(f"handoff packet rejected: {exc}") from exc
+    fn = draft_fn or _draft
+    return fn(dept, task or packet.mission, packet)
 
 
 # ── the governed executor ───────────────────────────────────────────────────────
 class LocalExecutor:
-    def __init__(self, registry, containment, workspace, cost_gate=None, approval_gate=None):
+    def __init__(self, registry, containment, workspace, cost_gate=None, approval_gate=None,
+                 draft_fn=None):
         self.registry = registry
         self.containment = containment
         self.workspace = Path(workspace)
         self.cost_gate = cost_gate or default_cost_gate
         self.approval_gate = approval_gate or default_approval_gate
+        # draft_fn(dept, task, packet) -> str. Defaults to the deterministic local draft;
+        # a caller (e.g. the governed /api/swarm/dispatch route) may inject a real
+        # governed-LLM worker so the swarm returns actual work product, not a template.
+        self.draft_fn = draft_fn
         self.audit = []
 
     def _audit(self, event, **fields):
@@ -164,7 +182,7 @@ class LocalExecutor:
                     reason="AG-01 forbids external actions (local-only)")
         return {"status": "blocked", "action": action, "reason": "external_action_forbidden"}
 
-    def dispatch_department(self, job, dept, risk_level="low"):
+    def dispatch_department(self, job, dept, risk_level="low", gov_tx_id=None):
         task = job.department_tasks[dept]
         artifact = job.artifact_for(dept)
         worker_id, authored = self.registry.resolve_department_worker(dept)
@@ -181,7 +199,9 @@ class LocalExecutor:
                         worker=worker_id, reason="agent_not_activated")
             raise SwarmDenied(f"{worker_id} is not activated for local execution")
 
-        # 3) MM-01 routing manifest (required before any worker runs)
+        # 3) MM-01 routing manifest (required before any worker runs).
+        # P0-5: thread the single job-level gov_tx_id so every department in the job
+        # shares ONE governance transaction id (do not let each dept mint its own).
         manifest = build_routing_manifest(
             task_intent=f"swarm_department_task:{dept}",
             request_type="chat_inference",
@@ -189,6 +209,7 @@ class LocalExecutor:
             source_trust_class="operator_direct",
             risk_level=risk_level,
             input_payload=task.encode("utf-8"),
+            gov_tx_id=gov_tx_id or "",
         )
 
         # 4) SEC-02 cost gate — before any (would-be provider-backed) worker path
@@ -217,8 +238,9 @@ class LocalExecutor:
             input_refs=[f"job:{job.job_id}", f"dept:{dept}"],
         )
 
-        # 7) bounded worker execution (deterministic, local)
-        content = execute_worker(packet, dept, task)
+        # 7) bounded worker execution — packet is signature-verified inside execute_worker
+        # (P0-4). Uses the injected draft_fn (e.g. governed LLM) when provided.
+        content = execute_worker(packet, dept, task, draft_fn=self.draft_fn)
 
         # 8) write only inside approved workspace, only if containment allows writes
         artifact_path = ""
@@ -236,9 +258,11 @@ class LocalExecutor:
         self._audit("DISPATCH_COMPLETE", job_id=job.job_id, department=dept,
                     worker=worker_id, backed_by_authored_agent=authored,
                     manifest_id=manifest.manifest_id, packet_id=packet.packet_id,
+                    gov_tx_id=manifest.gov_tx_id, packet_verified=True,
                     artifact=artifact, artifact_path=artifact_path)
         return DeptResult(dept, worker_id, authored, manifest.manifest_id,
-                          packet.packet_id, artifact, artifact_path, "complete", content)
+                          packet.packet_id, artifact, artifact_path, "complete", content,
+                          gov_tx_id=manifest.gov_tx_id)
 
     def _safe_target(self, artifact):
         """Resolve an artifact path and refuse anything escaping the workspace."""
@@ -248,7 +272,15 @@ class LocalExecutor:
             raise SwarmDenied(f"write outside approved workspace refused: {artifact}")
         return target
 
-    def run_job(self, job, risk_level="low"):
-        """Dispatch every department in the job. Returns list[DeptResult]."""
-        return [self.dispatch_department(job, dept, risk_level=risk_level)
+    def run_job(self, job, risk_level="low", gov_tx_id=None):
+        """Dispatch every department in the job. Returns list[DeptResult].
+
+        P0-5: one gov_tx_id is minted once at job start and threaded into every
+        department dispatch, so the whole job is a single governance transaction that
+        can be traced end-to-end in the audit log."""
+        job_gov_tx_id = gov_tx_id or new_gov_tx_id()
+        self._audit("JOB_START", job_id=job.job_id, gov_tx_id=job_gov_tx_id,
+                    departments=list(job.departments), mode=job.mode)
+        return [self.dispatch_department(job, dept, risk_level=risk_level,
+                                         gov_tx_id=job_gov_tx_id)
                 for dept in job.departments]

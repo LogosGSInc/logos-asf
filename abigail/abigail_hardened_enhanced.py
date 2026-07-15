@@ -103,6 +103,21 @@ except ImportError:
     class _ControlPlaneAuthError(Exception): pass
     def _build_control_plane_registry(*a, **kw): return None
 
+# ── Governed Local Swarm (AG-01) — P0-5: one real end-to-end governed dispatch path ──
+try:
+    from swarm import (
+        SwarmRegistry as _SwarmRegistry,
+        JobSpec as _JobSpec,
+        ContainmentController as _ContainmentController,
+        ContainmentMode as _ContainmentMode,
+        ActivationState as _ActivationState,
+        LocalExecutor as _LocalExecutor,
+        supervisor_merge as _supervisor_merge,
+    )
+    _SWARM_OK = True
+except ImportError:
+    _SWARM_OK = False
+
 VERSION      = "1.2.0-sprint6-docker-sandbox"
 HOME         = Path.home()
 LOG_FILE     = HOME / ".abigail_audit.jsonl"
@@ -111,6 +126,12 @@ ENV_FILE     = HOME / ".abigail.env"
 GROQ_TIMEOUT = 60
 
 SENTINEL_URL     = os.environ.get("SENTINEL_URL", "http://sentinel:8080")
+# P0-1 (ABIGAIL-SPRINT-01): the authoritative Rust Sentinel is REQUIRED by default.
+# When it is unreachable the request is hard-blocked (fail-closed) rather than silently
+# downgraded to the weaker Python regex layer. Operators may opt out explicitly with
+# SENTINEL_REQUIRED=0, in which case the Python HAAP layer runs as defense-in-depth and
+# the skip is always audited (never silent).
+SENTINEL_REQUIRED = os.environ.get("SENTINEL_REQUIRED", "1").strip() == "1"
 AGENT_BASE_IMAGE = os.environ.get("AGENT_BASE_IMAGE", "python:3.11-slim")
 AGENT_NETWORK    = os.environ.get("AGENT_NETWORK", "logos-asf_default")
 AGENT_TIMEOUT    = int(os.environ.get("AGENT_TIMEOUT_SECONDS", 120))
@@ -496,11 +517,22 @@ class KillSwitch:
     def check(self):
         if self.is_active: raise HAAPViolation("[KILL-SWITCH ACTIVE] All execution halted.")
 
+# P0-3 (ABIGAIL-SPRINT-01): bound the conversation history so it cannot grow unbounded
+# and be resent in full on every provider call. Keeps the last N messages (user+assistant).
+SESSION_HISTORY_WINDOW = max(2, int(os.environ.get("ABIGAIL_SESSION_HISTORY_WINDOW", "20") or 20))
+
+
 class SessionState:
     def __init__(self): self.turn_count=0; self.cumulative_drs=0; self.messages=[]; self.flags=[]
     def record_turn(self,user_input,score,signals):
         self.turn_count+=1; self.cumulative_drs+=score
         if signals: self.flags.append({"turn":self.turn_count,"score":score,"signals":signals})
+    def append_message(self, role, content):
+        """Append a turn message and trim to the history window so resent context stays
+        bounded (P0-3). Older messages are dropped, not silently retained forever."""
+        self.messages.append({"role":role,"content":content})
+        if len(self.messages) > SESSION_HISTORY_WINDOW:
+            self.messages = self.messages[-SESSION_HISTORY_WINDOW:]
     def crsv(self): return self.cumulative_drs/self.turn_count if self.turn_count else 0.0
     def drift_warning(self):
         a=self.crsv()
@@ -508,6 +540,38 @@ class SessionState:
         if a>=40: return f"[OverWatch] CRSV={a:.1f} — Elevated drift. Monitor active."
         if a>=25: return f"[OverWatch] CRSV={a:.1f} — Sustained medium-risk trajectory flagged."
         return None
+
+
+class SessionRegistry:
+    """Keyed session store — one SessionState per session key (P0-3). Replaces the single
+    process-wide SessionState so conversation history, CRSV, and turn counters cannot bleed
+    across clients. In-process dict for now (proves isolation before Sprint 02 swaps in a
+    shared backend such as Redis); the key is threaded explicitly from the HTTP layer."""
+    def __init__(self, default=None, max_sessions=2048):
+        self._store = {}
+        self._lock = threading.Lock()
+        self._max = max(1, int(max_sessions))
+        if default is not None:
+            self._store["default"] = default
+    def get_or_create(self, key):
+        key = key or "default"
+        with self._lock:
+            s = self._store.get(key)
+            if s is None:
+                if len(self._store) >= self._max:
+                    # Bound memory: evict an arbitrary non-default session.
+                    for k in list(self._store.keys()):
+                        if k != "default":
+                            del self._store[k]; break
+                s = SessionState()
+                self._store[key] = s
+            return s
+    def peek(self, key):
+        with self._lock:
+            return self._store.get(key or "default")
+    def __len__(self):
+        with self._lock:
+            return len(self._store)
 
 
 # ── MR-05: MoE router mode + mode-aware provider dispatch ──────────────────────
@@ -585,7 +649,8 @@ def _moe_dispatch(raw, session, active_backend, system, score):
 
 
 # ── Shared dispatch ───────────────────────────────────────────────────────────
-def process_message(raw, session, kill_switch, active_backend, approval_meta=None):
+def process_message(raw, session, kill_switch, active_backend, approval_meta=None,
+                    step_up_ok=False):
     try: kill_switch.check()
     except HAAPViolation as e:
         return {"ok":False,"text":str(e),"drs":0,"mode":"KILL_SWITCH","crsv":session.crsv()}
@@ -600,22 +665,75 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
         return {"ok":False,"text":reason,"drs":100,"mode":"BLOCKED","crsv":session.crsv()}
 
     # Layer 1b — Rust Sentinel OverWatch (authoritative threat classification)
+    # P0-1/P0-2 (ABIGAIL-SPRINT-01): every verdict maps to exactly one of proceed /
+    # step-up / block. There is no implicit default fall-through. An unreachable Sentinel
+    # fails CLOSED (does not silently downgrade to the Python regex layer). The Rust
+    # Sentinel emits UPPERCASE verdicts (APPROVED / RESTRICTED / QUARANTINED /
+    # HARD_LOCKED / HAAP_GATED); the raw verdict is preserved verbatim in the audit log.
     s_result = _sentinel_inspect(raw, f"session_{session.turn_count}")
     s_verdict = s_result.get("verdict","unknown")
-    # Rust Sentinel emits UPPERCASE verdicts (APPROVED / RESTRICTED / QUARANTINED /
-    # HARD_LOCKED); normalize case here so Sentinel's authoritative block actually fires
-    # instead of silently falling through to the weaker Python regex layer. The raw verdict
-    # is preserved verbatim in the audit log for fidelity.
     s_verdict_norm = str(s_verdict).strip().lower()
-    if s_verdict_norm in ("quarantined","hard_locked"):
-        log_event("SENTINEL_BLOCK",{"verdict":s_verdict,"session":session.turn_count})
-        return {"ok":False,
-                "text":f"[Sentinel OverWatch] Request blocked — verdict: {s_verdict_norm.upper()}. "
-                       f"Session flagged for review.",
-                "drs":100,"mode":"SENTINEL_BLOCK","crsv":session.crsv()}
-    if s_verdict_norm == "restricted":
-        log_event("SENTINEL_RESTRICT",{"verdict":s_verdict})
-        # Continue but log — Python HAAP adds second enforcement layer
+    # Reachability is keyed on our own offline marker, NOT on an "ok" field — a live Rust
+    # response for a block verdict does not carry ok=True.
+    sentinel_reachable = s_verdict_norm != "sentinel_offline"
+
+    if not sentinel_reachable:
+        if SENTINEL_REQUIRED:
+            log_event("SENTINEL_UNREACHABLE_BLOCK",
+                      {"verdict":s_verdict,"session":session.turn_count,
+                       "sentinel_url":SENTINEL_URL,"error":str(s_result.get("error",""))[:200]})
+            return {"ok":False,
+                    "text":"[Sentinel OverWatch] Request blocked — the authoritative "
+                           "governance tier is unreachable and SENTINEL_REQUIRED is enforced. "
+                           "This is a fail-closed refusal, not a normal governance verdict.",
+                    "drs":100,"mode":"SENTINEL_UNREACHABLE","crsv":session.crsv()}
+        # Explicit operator opt-out — proceed on the Python defense-in-depth layers, but
+        # never silently: record that the authoritative tier was skipped.
+        log_event("SENTINEL_DEGRADED_OPEN",
+                  {"verdict":s_verdict,"session":session.turn_count,
+                   "note":"SENTINEL_REQUIRED=0 — proceeding on Python HAAP backstop only"})
+    else:
+        # Reachable — route the verdict. Block verdicts win outright.
+        if s_verdict_norm in ("quarantined","hard_locked"):
+            log_event("SENTINEL_BLOCK",{"verdict":s_verdict,"session":session.turn_count})
+            return {"ok":False,
+                    "text":f"[Sentinel OverWatch] Request blocked — verdict: {s_verdict_norm.upper()}. "
+                           f"Session flagged for review.",
+                    "drs":100,"mode":"SENTINEL_BLOCK","crsv":session.crsv()}
+        if s_verdict_norm == "haap_gated":
+            # HAAP gate — block pending human re-authorization; do not silently pass.
+            log_event("SENTINEL_HAAP_GATED",{"verdict":s_verdict,"session":session.turn_count})
+            return {"ok":False,
+                    "text":"[Sentinel OverWatch] HAAP gate — human re-authorization is "
+                           "required before this request may proceed.",
+                    "drs":100,"mode":"HAAP_GATED","crsv":session.crsv()}
+        if s_verdict_norm == "restricted":
+            # Route to a step-up gate — do NOT continue as normal. Proceed only if the
+            # caller presented a valid step-up authorization; otherwise stop and demand it.
+            if step_up_ok:
+                log_event("SENTINEL_RESTRICT_STEPUP_CLEARED",
+                          {"verdict":s_verdict,"session":session.turn_count,
+                           "enhanced_logging":True})
+                # fall through to the Python HAAP layer as second enforcement
+            else:
+                log_event("SENTINEL_STEP_UP_REQUIRED",
+                          {"verdict":s_verdict,"session":session.turn_count})
+                return {"ok":False,
+                        "text":"[Sentinel OverWatch] Elevated risk (RESTRICTED) — step-up "
+                               "authorization required. Re-send with a valid step-up "
+                               "(admin/HAAP) token to proceed.",
+                        "drs":80,"mode":"STEP_UP_REQUIRED","crsv":session.crsv()}
+        elif s_verdict_norm == "approved":
+            pass  # proceed to the Python defense-in-depth layers
+        else:
+            # Any other / unrecognized non-APPROVED verdict fails CLOSED (P0-2: no verdict
+            # falls through to an implicit allow).
+            log_event("SENTINEL_UNKNOWN_VERDICT_BLOCK",
+                      {"verdict":s_verdict,"session":session.turn_count})
+            return {"ok":False,
+                    "text":f"[Sentinel OverWatch] Request blocked — unrecognized verdict "
+                           f"'{s_verdict_norm}'. Fail-closed default.",
+                    "drs":100,"mode":"SENTINEL_BLOCK","crsv":session.crsv()}
 
     try: haap_gate(raw,agent_drs_ceiling=80)
     except HAAPViolation as e:
@@ -675,11 +793,11 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
             log_event("PROVIDER_DRY_RUN_CARD", _safe_provider_fields(_req_env.model_dump()))
         except Exception as _pae:
             log_event("PROVIDER_ADAPTER_ERROR", {"error_type": type(_pae).__name__})
-    session.messages.append({"role":"user","content":raw})
+    session.append_message("user", raw)
     t=time.monotonic()
     # MR-05: mode-aware dispatch (single-backend / dry-run router / live governed router)
     response, _router_meta = _moe_dispatch(raw, session, active_backend, _system, score)
-    session.messages.append({"role":"assistant","content":response})
+    session.append_message("assistant", response)
     log_event("TURN_COMPLETE",{"turn":session.turn_count,
                                 "backend":_router_meta.get("selected_provider",active_backend[0]),
                                 "router_mode":_router_meta.get("router_mode"),
@@ -1161,6 +1279,34 @@ def build_web_app(session, kill_switch, active_backend):
     if not _os.path.isdir(STATIC_DIR):
         STATIC_DIR = "/app/static"  # Docker path
 
+    # P0-3: per-session state. The chat path resolves an isolated SessionState per key
+    # (X-Session-ID header, else body session_id, else remote_addr) instead of the single
+    # shared object. The passed-in `session` is seeded as the "default" (used by the CLI
+    # and the operator/admin agent routes). Exposed on the app for verification.
+    sessions = SessionRegistry(default=session)
+    flask_app._session_registry = sessions
+
+    def _resolve_chat_session(explicit_key=None):
+        key = (explicit_key
+               or request.headers.get("X-Session-ID", "").strip()
+               or (request.remote_addr or "default"))
+        return sessions.get_or_create(key), key
+
+    def _valid_step_up(req):
+        """P0-2: a valid step-up authorization is a presented token matching the
+        configured admin or demo token. Fail-closed: no configured token => no step-up."""
+        presented = (req.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+                     or req.headers.get("X-HAAP-Token", "").strip())
+        if not presented:
+            return False
+        for name in ("ABIGAIL_ADMIN_TOKEN", "ABIGAIL_DEMO_TOKEN"):
+            configured = os.environ.get(name, "").strip()
+            if configured and not ("GENERATE" in configured or "PLACEHOLDER" in configured):
+                import hmac as _hmac
+                if _hmac.compare_digest(presented, configured):
+                    return True
+        return False
+
     @flask_app.route("/")
     def index():
         p = _os.path.join(STATIC_DIR, "index.html")
@@ -1196,37 +1342,41 @@ def build_web_app(session, kill_switch, active_backend):
         _body = request.get_json(silent=True) or {}
         msg = (_body.get("message") or "").strip()
         if not msg: return jsonify({"ok":False,"text":"Empty message.","drs":0,"mode":"NONE","crsv":0.0})
+        # P0-3: resolve the isolated per-client session before any state is touched.
+        _sess, _skey = _resolve_chat_session(_body.get("session_id"))
+        # P0-2: is a valid step-up authorization present (used only if Sentinel RESTRICTs)?
+        _step_up_ok = _valid_step_up(request)
         # Governed command bus — classify before LLM inference (CB-01)
         if _COMMAND_BUS_OK:
             _auth = (request.headers.get("Authorization","") or
                      request.headers.get("X-HAAP-Token",""))
-            _status = {"backend":active_backend[0],"crsv":session.crsv(),
-                       "turns":session.turn_count,"kill_switch":kill_switch.is_active,
+            _status = {"backend":active_backend[0],"crsv":_sess.crsv(),
+                       "turns":_sess.turn_count,"kill_switch":kill_switch.is_active,
                        "version":VERSION,"sandbox":"docker+venv"}
             _cmd = _try_operator_command_fn(
                 msg, request.remote_addr, _auth,
-                haap_gate, log_event, _status, session)
+                haap_gate, log_event, _status, _sess)
             if _cmd is not None:
                 return jsonify(_cmd)
         # SEC-02: Cost Governor — deterministic local spend gate BEFORE paid inference (L7-1)
-        _cost_ok, _cost_meta = check_chat_cost_budget(msg, "chat", session)
+        _cost_ok, _cost_meta = check_chat_cost_budget(msg, "chat", _sess)
         if not _cost_ok:
             log_event("COST_GATE_BLOCK", {"decision": _cost_meta.get("decision"),
                                           "turns": _cost_meta.get("turns_used")})
             return jsonify({"ok": False,
                             "text": "Request blocked by Cost Governor — local spend ceiling reached.",
-                            "drs": 0, "mode": "COST_BLOCKED", "crsv": session.crsv(),
+                            "drs": 0, "mode": "COST_BLOCKED", "crsv": _sess.crsv(),
                             "cost": _cost_meta})
         # MM-02: Shadow orchestration context — audit-safe, additive, fail-soft (CB-02)
         _orch_ctx = None
         _approval_meta = None
         if _ORCHESTRATION_BRIDGE_OK:
             _req_meta = {k: v for k, v in _body.items() if k != "message"}
-            _orch_ctx = _build_shadow_ctx(msg, "chat", session, active_backend, _req_meta)
+            _orch_ctx = _build_shadow_ctx(msg, "chat", _sess, active_backend, _req_meta)
             if _orch_ctx is not None:
                 _approval_meta = _orch_ctx.response_metadata  # MM-03: enforced downstream
-        result = process_message(msg, session, kill_switch, active_backend,
-                                 approval_meta=_approval_meta)
+        result = process_message(msg, _sess, kill_switch, active_backend,
+                                 approval_meta=_approval_meta, step_up_ok=_step_up_ok)
         if _orch_ctx is not None:
             result["orchestration"] = _orch_ctx.response_metadata
         result.setdefault("cost", _cost_meta)
@@ -1265,6 +1415,108 @@ def build_web_app(session, kill_switch, active_backend):
         except _ControlPlaneAuthError:
             return jsonify({"error": "Control plane access denied."}), 401
         return jsonify(reader.snapshot())
+
+    @flask_app.route("/api/swarm/dispatch", methods=["POST","OPTIONS"])
+    def api_swarm_dispatch():
+        """P0-5: one real end-to-end governed swarm dispatch path.
+
+        Runs the full governed chain — RoutingManifest → SEC-02 cost gate → MM-03 approval
+        gate → Ed25519-SIGNED SignedHandoffPacket → signature-VERIFIED worker (a real
+        governed LLM call, not a template) → supervisor merge → audit — under ONE
+        job-level gov_tx_id threaded into every step. Admin-gated and fail-closed, like
+        the other dispatch surfaces. Demo-safe: active_dryrun, no writes, no outbound."""
+        if request.method == "OPTIONS": return jsonify({}), 200
+        _ok,_st,_err = require_admin_token(request)
+        if not _ok:
+            log_event("SWARM_DISPATCH_AUTH_REJECTED", {"ip":request.remote_addr,"status":_st})
+            return jsonify({"error":_err}), _st
+        if not _SWARM_OK:
+            return jsonify({"ok":False,"error":"Governed swarm unavailable."}), 503
+        body = request.get_json(force=True, silent=True) or {}
+        task = (body.get("task") or "").strip()
+        _depts_in = body.get("departments")
+        if not isinstance(_depts_in, list) or not _depts_in:
+            _depts_in = [body.get("department") or "ENG"]
+        depts = [str(d).strip().upper() for d in _depts_in if str(d).strip()]
+        risk_level = (body.get("risk_level") or "low").strip().lower()
+        if not task:
+            return jsonify({"ok":False,"error":"task required."}), 400
+        if not depts:
+            return jsonify({"ok":False,"error":"at least one department required."}), 400
+
+        # Reuse the existing HAAP/DRS gate — do not duplicate gate logic (fail-closed).
+        try:
+            haap_gate(task, agent_drs_ceiling=60)
+        except HAAPViolation as e:
+            log_event("SWARM_DISPATCH_BLOCKED", {"dept":dept,"reason":str(e)[:200]})
+            return jsonify({"ok":False,"error":str(e),"blocked":True}), 403
+
+        # Governed LLM worker: bounded, packet-scoped. Injected into the executor so the
+        # swarm returns actual work product instead of a deterministic template.
+        def _governed_llm_worker(_dept, _task, _packet):
+            _system = (f"You are the {_dept} department worker in Abigail's governed local "
+                       f"swarm (AG-01). Produce a bounded, demo-only draft for the task. "
+                       f"No external actions, no outbound contact, no spend. "
+                       f"Scope: {_packet.authority_scope}.")
+            return BACKEND_DISPATCH.get(active_backend[0], call_groq)(
+                messages=[{"role":"user","content":_task}], system=_system)
+
+        job_id = f"SWARM-{uuid.uuid4().hex[:8].upper()}"
+        try:
+            job = _JobSpec(
+                job_id=job_id,
+                title=f"Governed dispatch: {', '.join(depts)}",
+                description="Bounded demo-only governed swarm dispatch (dry-run, no writes).",
+                approved_workspace=f"runtime/jobs/{job_id}",
+                departments=list(depts),
+                department_tasks={d: task for d in depts},
+                expected_artifacts={d: f"{d.lower()}_draft.md" for d in depts},
+                mode="active_dryrun",
+            )
+        except ValueError as e:
+            return jsonify({"ok":False,"error":f"invalid job: {e}"}), 400
+
+        registry = _SwarmRegistry()
+        containment = _ContainmentController(_ContainmentMode.RUNNING)
+        for _d in depts:
+            _wid, _ = registry.resolve_department_worker(_d)
+            registry.activate(_wid, _ActivationState.ACTIVE_DRYRUN)
+        executor = _LocalExecutor(registry, containment, workspace=job.approved_workspace,
+                                  draft_fn=_governed_llm_worker)
+        try:
+            results = executor.run_job(job, risk_level=risk_level)
+            merge = _supervisor_merge(job, results, executor)
+        except Exception as exc:
+            log_event("SWARM_DISPATCH_ERROR", {"job_id":job_id,"error_type":type(exc).__name__})
+            return jsonify({"ok":False,"error":_safe_error("swarm", exc)}), 502
+
+        gov_tx_ids = {r.gov_tx_id for r in results if r.gov_tx_id}
+        single_gov_tx_id = next(iter(gov_tx_ids), "") if len(gov_tx_ids) == 1 else ""
+        log_event("SWARM_DISPATCH_COMPLETE",
+                  {"job_id":job_id,"gov_tx_id":single_gov_tx_id,
+                   "single_gov_tx_id":len(gov_tx_ids) == 1,
+                   "decision":merge.decision,"departments":[r.department for r in results]})
+        return jsonify({
+            "ok": True,
+            "job_id": job_id,
+            "gov_tx_id": single_gov_tx_id,
+            "single_gov_tx_id": len(gov_tx_ids) == 1,
+            "supervisor_decision": merge.decision,
+            "governed": True,
+            "results": [{
+                "department": r.department,
+                "worker_id": r.worker_id,
+                "backed_by_authored_agent": r.backed_by_authored_agent,
+                "manifest_id": r.manifest_id,
+                "packet_id": r.packet_id,
+                "gov_tx_id": r.gov_tx_id,
+                "status": r.status,
+                # status == "complete" is only reachable after execute_worker's
+                # require_valid_packet() Ed25519 check passed (P0-4).
+                "packet_verified": r.status == "complete",
+                "content": r.content,
+            } for r in results],
+        })
 
     @flask_app.route("/api/agents/dispatch", methods=["POST","OPTIONS"])
     def api_agents_dispatch():
