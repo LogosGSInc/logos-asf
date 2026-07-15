@@ -194,8 +194,13 @@ fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
             let escalated  = parse_json_field(&body, "escalated")
                 .map(|v| v == "true").unwrap_or(false);
             pipeline.end_session(&session_id, &actor_id);
+            // GS-FIX-01: end_session folds the session fingerprint into StrategicMemory,
+            // which is an in-process HashMap — nothing is written to disk. Reporting
+            // "persisted":true here asserted a durability property the system does not
+            // have. Report the truthful state until GS-BUILD-01 lands a durable store
+            // (at which point this flips to the real write result, not a constant).
             ok_json(&format!(
-                "{{\"ok\":true,\"actor_id\":\"{}\",\"session_id\":\"{}\",\"persisted\":true,\"escalated\":{}}}",
+                "{{\"ok\":true,\"actor_id\":\"{}\",\"session_id\":\"{}\",\"persisted\":false,\"durability\":\"in-memory-only\",\"escalated\":{}}}",
                 actor_id, session_id, escalated
             ))
         }
