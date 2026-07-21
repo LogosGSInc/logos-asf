@@ -4,6 +4,8 @@ WORKDIR /app
 
 COPY abigail/abigail_hardened_enhanced.py /app/abigail_hardened_enhanced.py
 COPY abigail/tacit_prepass.py /app/tacit_prepass.py
+COPY abigail/agent_loader.py /app/agent_loader.py
+COPY agents /app/agents
 COPY abigail/entrypoint.sh /app/entrypoint.sh
 # Static UI (index.html, dashboard.html, intake.html)
 COPY static /app/static

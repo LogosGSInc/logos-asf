@@ -1,9 +1,18 @@
 # agent_loader.py — LOGOS Governance Systems Inc.
 # Loads YAML agent definitions and surfaces system prompts for dispatch.
+import os
 import yaml
 from pathlib import Path
 
-AGENTS_DIR = Path(__file__).parent.parent / "agents"
+_default_agents_dir = Path(__file__).resolve().parent / "agents"
+_host_agents_dir = Path(__file__).resolve().parent.parent / "agents"
+
+AGENTS_DIR = Path(
+    os.environ.get(
+        "ABIGAIL_AGENTS_DIR",
+        str(_default_agents_dir if _default_agents_dir.exists() else _host_agents_dir),
+    )
+)
 
 
 def load_all_agents() -> dict:

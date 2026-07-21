@@ -75,8 +75,9 @@ HISTORY_FILE = HOME / ".abigail_history"
 ENV_FILE     = HOME / ".abigail.env"
 GROQ_TIMEOUT = 60
 
-SENTINEL_URL     = os.environ.get("SENTINEL_URL", "http://sentinel:8080")
-AGENT_BASE_IMAGE = os.environ.get("AGENT_BASE_IMAGE", "python:3.11-slim")
+SENTINEL_URL           = os.environ.get("SENTINEL_URL", "http://sentinel:8080")
+SENTINEL_SERVICE_TOKEN = os.environ.get("SENTINEL_SERVICE_TOKEN", "").strip()
+AGENT_BASE_IMAGE       = os.environ.get("AGENT_BASE_IMAGE", "python:3.11-slim")
 AGENT_NETWORK    = os.environ.get("AGENT_NETWORK", "logos-asf_default")
 AGENT_TIMEOUT    = int(os.environ.get("AGENT_TIMEOUT_SECONDS", 120))
 
@@ -159,7 +160,8 @@ BACKENDS = {
 
 def _safe_error(ctx,exc): return f"[{ctx} error — {type(exc).__name__}]"
 
-def call_groq(messages, system, model="meta-llama/llama-4-scout-17b-16e-instruct"):
+def call_groq(messages, system, model=None):
+    model = model or os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
     try:
         from groq import Groq
         r=Groq(api_key=_require_env_key("GROQ_API_KEY"),timeout=GROQ_TIMEOUT).chat.completions.create(
@@ -360,18 +362,45 @@ def process_message(raw, session, kill_switch, active_backend):
         log_event("REQUEST_BLOCKED",{"reason":reason})
         return {"ok":False,"text":reason,"drs":100,"mode":"BLOCKED","crsv":session.crsv()}
 
-    # Layer 1b — Rust Sentinel OverWatch (authoritative threat classification)
-    s_result = _sentinel_inspect(raw, f"session_{session.turn_count}")
-    s_verdict = s_result.get("verdict","unknown")
-    if s_verdict in ("quarantined","hard_locked"):
-        log_event("SENTINEL_BLOCK",{"verdict":s_verdict,"session":session.turn_count})
-        return {"ok":False,
-                "text":f"[Sentinel OverWatch] Request blocked — verdict: {s_verdict.upper()}. "
-                       f"Session flagged for review.",
-                "drs":100,"mode":"SENTINEL_BLOCK","crsv":session.crsv()}
-    if s_verdict == "restricted":
-        log_event("SENTINEL_RESTRICT",{"verdict":s_verdict})
-        # Continue but log — Python HAAP adds second enforcement layer
+    # Layer 1b — Rust Sentinel OverWatch is the authoritative entry gate.
+    # Only explicit APPROVED or RESTRICTED verdicts may reach Abigail execution.
+    sentinel_session_id = f"session_{session.turn_count}_{uuid.uuid4().hex[:12]}"
+    s_result = _sentinel_inspect(raw, sentinel_session_id)
+    s_verdict = str(s_result.get("verdict", "UNKNOWN")).strip().upper()
+
+    if s_verdict not in ("APPROVED", "RESTRICTED"):
+        log_event("SENTINEL_FAIL_CLOSED", {
+            "verdict": s_verdict,
+            "session_id": sentinel_session_id,
+            "sentinel_ok": bool(s_result.get("ok", False)),
+            "error": str(s_result.get("error", ""))[:200],
+            "action": "HARD_STOP",
+        })
+        return {
+            "ok": False,
+            "text": (
+                "[Sentinel OverWatch] Governance authorization was not granted. "
+                f"Execution stopped with verdict: {s_verdict}."
+            ),
+            "drs": 100,
+            "mode": "SENTINEL_FAIL_CLOSED",
+            "crsv": session.crsv(),
+        }
+
+    if s_verdict == "APPROVED":
+        log_event("SENTINEL_APPROVED", {
+            "verdict": s_verdict,
+            "session_id": sentinel_session_id,
+            "action": "PROCEED_TO_HAAP",
+        })
+
+    if s_verdict == "RESTRICTED":
+        log_event("SENTINEL_RESTRICT", {
+            "verdict": s_verdict,
+            "session_id": sentinel_session_id,
+            "tool_calls_disabled": s_result.get("tool_calls_disabled"),
+            "enhanced_logging": s_result.get("enhanced_logging"),
+        })
 
     try: haap_gate(raw,agent_drs_ceiling=80)
     except HAAPViolation as e:
@@ -530,10 +559,22 @@ def _sentinel_health():
 
 def _sentinel_inspect(payload:str, session_id:str) -> dict:
     """Route inbound message through Rust Sentinel /inspect before Python DRS."""
+    if not SENTINEL_SERVICE_TOKEN:
+        log_event("SENTINEL_AUTH_MISCONFIGURED", {"endpoint":"/inspect"})
+        return {"ok":False,"verdict":"sentinel_auth_missing",
+                "approved":False,"error":"Sentinel service token missing"}
     try:
         import httpx
-        r=httpx.post(f"{SENTINEL_URL}/inspect",
-                     json={"payload":payload,"session_id":session_id},timeout=5)
+        r=httpx.post(
+            f"{SENTINEL_URL}/inspect",
+            headers={"Authorization":f"Bearer {SENTINEL_SERVICE_TOKEN}"},
+            json={"payload":payload,"session_id":session_id},
+            timeout=5)
+        if r.status_code != 200:
+            log_event("SENTINEL_INSPECT_REJECTED",
+                      {"status":r.status_code})
+            return {"ok":False,"verdict":"sentinel_rejected",
+                    "approved":False,"status":r.status_code}
         return r.json()
     except Exception as e:
         log_event("SENTINEL_INSPECT_ERROR",{"error":str(e)})
@@ -713,6 +754,26 @@ def run_web(session, kill_switch, active_backend, port=7070):
     flask_app=Flask(__name__)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
+    def _request_authority():
+        """Resolve caller authority. Missing configured tokens never grant access."""
+        auth = request.headers.get("Authorization", "").strip()
+        token = auth[7:].strip() if auth.lower().startswith("bearer ") else auth
+        token = token or request.headers.get("X-HAAP-Token", "").strip()
+
+        admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN", "").strip()
+        demo_token = os.environ.get("ABIGAIL_DEMO_TOKEN", "").strip()
+
+        if not admin_token or not demo_token:
+            return "MISCONFIGURED"
+        if token == admin_token:
+            return "ADMIN"
+        if token == demo_token:
+            return "DEMO"
+        return "UNAUTHENTICATED"
+
+    def _authorized(*allowed_roles):
+        return _request_authority() in allowed_roles
+
     if _has_cors:
         _CORS(flask_app, resources={r"/api/*":{
             "origins":["https://logosGSInc.github.io","https://LogosGSInc.github.io",
@@ -806,6 +867,9 @@ def run_web(session, kill_switch, active_backend, port=7070):
     @flask_app.route("/api/agents/dispatch", methods=["POST","OPTIONS"])
     def api_agents_dispatch():
         if request.method == "OPTIONS": return jsonify({}), 200
+        if not _authorized("ADMIN", "DEMO"):
+            log_event("DISPATCH_AUTH_REJECTED", {"ip": request.remote_addr})
+            return jsonify({"ok":False,"error":"Valid admin or demo token required."}), 401
         body       = request.get_json(force=True, silent=True) or {}
         agent_id   = (body.get("agent_id") or "").strip()
         task       = (body.get("task")     or "").strip()
@@ -815,6 +879,42 @@ def run_web(session, kill_switch, active_backend, port=7070):
         agent_def = _get_yaml_agent(agent_id)
         if not agent_def:
             return jsonify({"ok":False,"error":f"Agent '{agent_id}' not found."}), 404
+
+        # Authoritative Sentinel Corridor-In gate.
+        sentinel_session_id = f"dispatch_{agent_id}_{uuid.uuid4().hex[:12]}"
+        s_result = _sentinel_inspect(task, sentinel_session_id)
+        s_verdict = str(s_result.get("verdict", "UNKNOWN")).strip().upper()
+
+        if s_verdict not in ("APPROVED", "RESTRICTED"):
+            log_event("DISPATCH_SENTINEL_FAIL_CLOSED", {
+                "agent_id": agent_id,
+                "verdict": s_verdict,
+                "session_id": sentinel_session_id,
+                "sentinel_ok": bool(s_result.get("ok", False)),
+                "error": str(s_result.get("error", ""))[:200],
+                "action": "HARD_STOP",
+            })
+            return jsonify({
+                "ok": False,
+                "blocked": True,
+                "error": (
+                    "Sentinel OverWatch did not grant execution authority. "
+                    f"Verdict: {s_verdict}."
+                ),
+                "mode": "SENTINEL_FAIL_CLOSED",
+            }), 503 if s_verdict in (
+                "SENTINEL_OFFLINE",
+                "SENTINEL_AUTH_MISSING",
+                "SENTINEL_REJECTED",
+                "UNKNOWN",
+            ) else 403
+
+        log_event("DISPATCH_SENTINEL_APPROVED", {
+            "agent_id": agent_id,
+            "verdict": s_verdict,
+            "session_id": sentinel_session_id,
+            "action": "PROCEED_TO_HAAP",
+        })
 
         try:
             haap_gate(task, agent_drs_ceiling=80)
@@ -851,10 +951,7 @@ def run_web(session, kill_switch, active_backend, port=7070):
     @flask_app.route("/api/agents/spawn",methods=["POST","OPTIONS"])
     def api_agents_spawn():
         if request.method=="OPTIONS": return jsonify({}),200
-        auth=request.headers.get("Authorization","").removeprefix("Bearer ").strip()
-        token=auth or request.headers.get("X-HAAP-Token","")
-        admin_token=os.environ.get("ABIGAIL_ADMIN_TOKEN","")
-        if admin_token and token!=admin_token:
+        if not _authorized("ADMIN"):
             log_event("SPAWN_AUTH_REJECTED",{"ip":request.remote_addr})
             return jsonify({"error":"Admin HAAP token required."}),401
         body=request.get_json(force=True,silent=True) or {}
@@ -898,10 +995,7 @@ def run_web(session, kill_switch, active_backend, port=7070):
     VALID_DEPTS = {"EXE","ENG","PRD","SEC","LGL","FIN","OPS","REV","MKT","HR","DAT","GRC"}
 
     def _admin_ok():
-        auth = request.headers.get("Authorization","").removeprefix("Bearer ").strip()
-        token = auth or request.headers.get("X-HAAP-Token","")
-        admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN","")
-        return (not admin_token) or (token == admin_token)
+        return _authorized("ADMIN")
 
     def _normalize_dept(dept):
         d = (dept or "").strip().upper()
@@ -943,6 +1037,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
 
     @flask_app.route("/api/agents/<dept>/status")
     def api_dept_status(dept):
+        if not _authorized("ADMIN", "DEMO"):
+            return jsonify({"error":"Valid admin or demo token required."}), 401
         d = _normalize_dept(dept)
         if not d: return jsonify({"error":f"Unknown department: {dept}"}), 400
         with _DEPT_LOCK:
@@ -951,6 +1047,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
 
     @flask_app.route("/api/agents/lifecycle")
     def api_dept_lifecycle_all():
+        if not _authorized("ADMIN", "DEMO"):
+            return jsonify({"error":"Valid admin or demo token required."}), 401
         with _DEPT_LOCK:
             snap = {d: _DEPT_STATE.get(d,{"status":"active","since":None,"by":None}) for d in sorted(VALID_DEPTS)}
         return jsonify({"departments":snap, "count":len(snap)})
@@ -958,10 +1056,8 @@ def run_web(session, kill_switch, active_backend, port=7070):
     @flask_app.route("/api/audit-tail")  # alias for dashboard
     @flask_app.route("/api/audit/tail")
     def api_audit_tail():
-        auth=request.headers.get("Authorization","").removeprefix("Bearer ").strip()
-        token=auth or request.headers.get("X-HAAP-Token","")
-        admin_token=os.environ.get("ABIGAIL_ADMIN_TOKEN","")
-        if admin_token and token!=admin_token: return jsonify({"error":"Admin token required."}),401
+        if not _authorized("ADMIN"):
+            return jsonify({"error":"Admin token required."}),401
         n=min(int(request.args.get("n",50)),500)
         events=[]
         if LOG_FILE.exists():
@@ -1027,17 +1123,25 @@ def handle_command(cmd, session, kill_switch, active_backend):
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
-def startup_checks(default_backend):
+def startup_checks(default_backend, web_mode=False):
     _secure_touch(LOG_FILE); _secure_touch(HISTORY_FILE); _load_env_file(ENV_FILE)
     env_key=BACKENDS.get(default_backend,{}).get("env")
     if env_key:
         try: _require_env_key(env_key)
         except RuntimeError as e: print(f"\033[31m{e}\033[0m\n"); sys.exit(1)
-    # Preflight: warn if tokens not set (won't block startup, but security gap)
+    # Web control plane must fail closed when authority tokens are missing or placeholders.
+    invalid_tokens = []
     for tok_name in ("ABIGAIL_ADMIN_TOKEN","ABIGAIL_DEMO_TOKEN"):
-        val = os.environ.get(tok_name,"")
-        if not val or "GENERATE" in val or "PLACEHOLDER" in val:
-            print(f"\033[33m[WARN] {tok_name} not set — all requests treated as dev-anonymous\033[0m")
+        val = os.environ.get(tok_name,"").strip()
+        if not val or "GENERATE" in val.upper() or "PLACEHOLDER" in val.upper():
+            invalid_tokens.append(tok_name)
+
+    if invalid_tokens:
+        names = ", ".join(invalid_tokens)
+        if web_mode:
+            print(f"\033[31m[SECURITY ERROR] Refusing web startup: invalid or missing {names}\033[0m")
+            sys.exit(1)
+        print(f"\033[33m[WARN] Invalid or missing tokens for CLI-only mode: {names}\033[0m")
     log_event("SYSTEM_START",{"version":VERSION,"backend":default_backend,
                                "pid":os.getpid(),"sandbox":"docker+venv"})
 
@@ -1046,7 +1150,7 @@ def startup_checks(default_backend):
 def main():
     DEFAULT_BACKEND=os.environ.get("ABIGAIL_BACKEND","groq")
     web_mode="--web" in sys.argv
-    startup_checks(DEFAULT_BACKEND)
+    startup_checks(DEFAULT_BACKEND, web_mode=web_mode)
     kill_switch=KillSwitch(); session=SessionState(); active_backend=[DEFAULT_BACKEND]
     if web_mode:
         port=7070
