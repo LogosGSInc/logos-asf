@@ -1,3 +1,4 @@
+pub mod verdict_ledger;
 pub mod capability;
 pub mod governance_signal;
 pub mod crypto;

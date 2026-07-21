@@ -1,3 +1,4 @@
+use crate::verdict_ledger::SentinelVerdictLedger;
 use crate::{
     sentinel::Sentinel,
     corridor::Corridor,
@@ -72,6 +73,7 @@ pub struct GovernancePipeline {
     // GovMem V2: runtime identity metadata (populated from env vars, metadata only)
     govmem_agent_id: String,
     govmem_department_id: String,
+    verdict_ledger: SentinelVerdictLedger,
 }
 
 impl GovernancePipeline {
@@ -141,6 +143,7 @@ impl GovernancePipeline {
             govmem,
             govmem_agent_id,
             govmem_department_id,
+            verdict_ledger: SentinelVerdictLedger::new(),
         })
     }
 
@@ -165,7 +168,7 @@ impl GovernancePipeline {
     ///   OIM: observe → Arbiter
     ///   [SessionMemory] ingest highest-severity signal → accumulate
     ///   if memory.force_checkpoint → override to at least S2
-    pub fn inbound(&self, user_input: &str, session_id: &str) -> EnforcementResult {
+    pub fn inbound(&self, user_input: &str, session_id: &str, gov_tx_id: &str) -> EnforcementResult {
         // ── STEP 0: Initialize session memory if new ───────────────
         let threshold_modifier = self.init_session_memory(session_id);
 
@@ -260,7 +263,10 @@ impl GovernancePipeline {
                     "Authorization token rejected. Contact operator.".to_string(),
                 );
             }
-            _ => {} // Authorized or TokenVerified — continue to OIM
+            _ => {
+                // Authorized or TokenVerified — turn cleared every gate.
+                self.verdict_ledger.record(gov_tx_id, &s_signal);
+            }
         }
 
         // OIM: Integrity monitor

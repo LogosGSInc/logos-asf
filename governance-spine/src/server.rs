@@ -160,7 +160,8 @@ fn handle(
             } else if session_id.trim().is_empty() {
                 err_json(400, "session_id required")
             } else {
-                let r = pipeline.inbound(&payload, &session_id);
+                let gov_tx_id = format!("GTX-{}", uuid::Uuid::new_v4().simple());
+                let r = pipeline.inbound(&payload, &session_id, &gov_tx_id);
                 ok_json(&verdict_json(&r, &session_id))
             }
         }
