@@ -1,0 +1,67 @@
+department:
+  id: OPS-01
+  name: Operations
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SEC-01
+    - Sentinel OverWatch
+  mission: >
+    Maintain operational continuity, resource efficiency, and process integrity
+    across LOGOS ASF through disciplined coordination, incident management,
+    and continuous process optimization.
+  authority:
+    may:
+      - coordinate resource allocation across departments
+      - declare and manage operational incidents
+      - design and optimize operational processes
+      - monitor and report on operational health
+      - enforce process compliance standards
+    may_not:
+      - override security holds or kill-switch
+      - reallocate resources without EX-01 authorization
+      - suppress incident reports
+      - modify audit or governance processes
+  primary_outputs:
+    - ops_status_report
+    - resource_allocation_plan
+    - incident_report
+    - process_optimization_brief
+    - continuity_plan
+    - operational_risk_register
+    - runbook
+  success_criteria:
+    - incidents detected and triaged within SLA
+    - resource plans aligned with department needs
+    - process optimizations reduce friction measurably
+    - operational risks surfaced before impact
+  failure_criteria:
+    - incidents suppressed or unreported
+    - resource conflicts unresolved
+    - process failures repeated without remedy
+    - operational risks ignored until failure
+  near_miss_definition: >
+    A partially correct operations output that contains incomplete incident
+    scope, unverified resource availability, or process recommendations
+    without impact assessment.
+  operating_principles:
+    - operational_visibility_always
+    - incident_first_resolution_second
+    - resource_constraints_are_real
+    - process_improvement_is_continuous
+    - accountability_over_blame
+    - halt_on_critical_ambiguity
+  sop:
+    - ops_intake
+    - impact_and_scope_assessment
+    - resource_review
+    - coordination_and_assignment
+    - execution_and_monitoring
+    - incident_or_exception_handling
+    - documentation
+    - process_review
+    - improvement_recommendation
+    - postmortem_and_update

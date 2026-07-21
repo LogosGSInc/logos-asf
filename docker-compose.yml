@@ -14,9 +14,12 @@ services:
       dockerfile: Dockerfile
     container_name: asf-sentinel
     ports:
-      - "${SENTINEL_HOST_PORT:-9091}:8080"
+      - "127.0.0.1:${SENTINEL_HOST_PORT:-9091}:8080"
+    env_file:
+      - ./.abigail.env
     environment:
       - RUST_LOG=info
+      - SENTINEL_SERVICE_TOKEN=${SENTINEL_SERVICE_TOKEN}
       - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
       - SENTOW_HAAP_DRS_CEILING=${SENTOW_HAAP_DRS_CEILING:-60}
       - SENTOW_MEMORY_PATH=/app/audit/strategic_memory.json
@@ -37,7 +40,10 @@ services:
       dockerfile: abigail/Dockerfile
     container_name: asf-abby
     ports:
-      - "7070:7070"
+
+      # Host-side exposure is localhost-only (SEC01-L3-3); the container itself is the
+      # isolation boundary, so the app binds 0.0.0.0 *inside* the container (below). origin/sprint/full-doctrine-mode
+      - "127.0.0.1:7070:7070"
     env_file:
       - ./.abigail.env
     volumes:
@@ -48,6 +54,14 @@ services:
       - ABIGAIL_BACKEND=${ABIGAIL_BACKEND:-groq}
       - ABIGAIL_HEADLESS=1
       - SENTINEL_URL=http://sentinel:8080
+      - SENTINEL_SERVICE_TOKEN=${SENTINEL_SERVICE_TOKEN}
+      # SEC-02: inside a container the app must bind all interfaces so Docker's
+      # (localhost-only) published port can reach it. Container = isolation boundary.
+      - ABIGAIL_BIND_HOST=0.0.0.0
+      - ABIGAIL_ALLOW_NONLOCAL_BIND=1
+      # Operator console: honor governed operator commands (status/help) — still
+      # HAAP/command-bus governed; privileged routes remain admin-token fail-closed.
+      - ABIGAIL_ALLOW_LOCAL_OPERATOR_COMMANDS=1
       # BYOAPIKEY — all providers, operator supplies the key they have
       # Auth tokens
       - ABIGAIL_ADMIN_TOKEN=${ABIGAIL_ADMIN_TOKEN}

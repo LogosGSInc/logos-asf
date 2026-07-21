@@ -17,6 +17,8 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
 
+use sha2::{Digest, Sha256};
+
 use governance_spine::{
     GovernancePipeline,
     EnforcementResult,
@@ -57,26 +59,52 @@ fn parse_json_field(json: &str, key: &str) -> Option<String> {
 
 const MAX_BODY_BYTES: usize = 262_144; // 256 KB — prevents OOM on adversarial oversized payloads
 
-fn read_body(reader: &mut BufReader<&mut TcpStream>) -> String {
+fn read_request(reader: &mut BufReader<&mut TcpStream>) -> (HashMap<String, String>, String) {
     let mut headers = HashMap::new();
     let mut line = String::new();
+
     loop {
         line.clear();
         reader.read_line(&mut line).unwrap_or(0);
         let t = line.trim();
         if t.is_empty() { break; }
         if let Some(p) = t.find(':') {
-            headers.insert(t[..p].trim().to_lowercase(), t[p+1..].trim().to_string());
+            headers.insert(
+                t[..p].trim().to_lowercase(),
+                t[p + 1..].trim().to_string(),
+            );
         }
     }
-    let len: usize = headers.get("content-length")
+
+    let declared_len: usize = headers.get("content-length")
         .and_then(|v| v.parse().ok())
-        .unwrap_or(0)
-        .min(MAX_BODY_BYTES); // enforce ceiling
-    let mut body = vec![0u8; len];
+        .unwrap_or(0);
+
+    if declared_len > MAX_BODY_BYTES {
+        return (headers, String::new());
+    }
+
+    let mut body = vec![0u8; declared_len];
     use std::io::Read;
     reader.read_exact(&mut body).unwrap_or(());
-    String::from_utf8_lossy(&body).to_string()
+
+    (headers, String::from_utf8_lossy(&body).to_string())
+}
+
+fn token_digest(value: &str) -> [u8; 32] {
+    let digest = Sha256::digest(value.as_bytes());
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&digest);
+    out
+}
+
+fn authorized(headers: &HashMap<String, String>, expected_token: &str) -> bool {
+    let provided = headers.get("authorization")
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .unwrap_or("");
+
+    !provided.is_empty() && token_digest(provided) == token_digest(expected_token)
 }
 
 fn verdict_json(result: &EnforcementResult, session_id: &str) -> String {
@@ -99,7 +127,11 @@ fn verdict_json(result: &EnforcementResult, session_id: &str) -> String {
     }
 }
 
-fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
+fn handle(
+    stream: &mut TcpStream,
+    pipeline: &Arc<GovernancePipeline>,
+    service_token: &Arc<String>,
+) {
     let mut reader = BufReader::new(stream as &mut TcpStream);
     let mut req = String::new();
     reader.read_line(&mut req).unwrap_or(0);
@@ -107,8 +139,12 @@ fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
     if parts.len() < 2 { return; }
     let method = parts[0];
     let path   = parts[1];
+    let (headers, body) = read_request(&mut reader);
 
-    let response = match (method, path) {
+    let response = if path != "/health" && !authorized(&headers, service_token.as_str()) {
+        err_json(401, "service authentication required")
+    } else {
+        match (method, path) {
 
         ("GET", "/health") => ok_json(&format!(
             "{{\"ok\":true,\"service\":\"sentinel-overwatch\",\"audit_entries\":{},\"chain_length\":{}}}",
@@ -116,12 +152,13 @@ fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
         )),
 
         ("POST", "/inspect") => {
-            let body       = read_body(&mut reader);
             let payload    = parse_json_field(&body, "payload").unwrap_or_default();
             let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_else(|| "default".into());
+                .unwrap_or_default();
             if payload.is_empty() {
                 err_json(400, "payload required")
+            } else if session_id.trim().is_empty() {
+                err_json(400, "session_id required")
             } else {
                 let r = pipeline.inbound(&payload, &session_id);
                 ok_json(&verdict_json(&r, &session_id))
@@ -129,12 +166,13 @@ fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
         }
 
         ("POST", "/outbound") => {
-            let body       = read_body(&mut reader);
             let payload    = parse_json_field(&body, "payload").unwrap_or_default();
             let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_else(|| "default".into());
+                .unwrap_or_default();
             if payload.is_empty() {
                 err_json(400, "payload required")
+            } else if session_id.trim().is_empty() {
+                err_json(400, "session_id required")
             } else {
                 let r = pipeline.outbound(&payload, &session_id);
                 ok_json(&verdict_json(&r, &session_id))
@@ -152,22 +190,28 @@ fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
         }
 
         ("POST", "/session/reset") => {
-            let body  = read_body(&mut reader);
             let sid   = parse_json_field(&body, "session_id").unwrap_or_default();
             let token = parse_json_field(&body, "operator_token").unwrap_or_default();
+            if sid.trim().is_empty() {
+                err_json(400, "session_id required")
+            } else {
             match pipeline.operator_reset(&sid, &token) {
                 Ok(_)  => ok_json(&format!(
                     "{{\"ok\":true,\"session_id\":\"{}\",\"reset\":true}}", sid)),
                 Err(e) => err_json(403, e),
             }
+            }
         }
 
         ("POST", "/session/start") => {
-            let body       = read_body(&mut reader);
             let actor_id   = parse_json_field(&body, "actor_id")
                 .unwrap_or_else(|| "anonymous".into());
             let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_else(|| actor_id.clone());
+                .unwrap_or_default();
+
+            if session_id.trim().is_empty() {
+                return write_response(reader, err_json(400, "session_id required"));
+            }
 
             // Return real session state from pipeline memory (not hardcoded "Clean")
             let state = pipeline.current_state(&session_id);
@@ -186,17 +230,29 @@ fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
         }
 
         ("POST", "/session/end") => {
-            let body       = read_body(&mut reader);
             let actor_id   = parse_json_field(&body, "actor_id")
                 .unwrap_or_else(|| "anonymous".into());
             let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_else(|| actor_id.clone());
+                .unwrap_or_default();
+            if session_id.trim().is_empty() {
+                return write_response(reader, err_json(400, "session_id required"));
+            }
             let escalated  = parse_json_field(&body, "escalated")
                 .map(|v| v == "true").unwrap_or(false);
-            pipeline.end_session(&session_id, &actor_id);
+            // GS-BUILD-01: report the real persistence outcome, decoupled into
+            // two honest facts:
+            //   persisted  — did THIS call durably write a session profile to
+            //                SENTOW_MEMORY_PATH (true only with real session data
+            //                + a successful disk write).
+            //   durability — the store's configuration ("disk" vs
+            //                "in-memory-only"), independent of this call.
+            // This replaces the previous unconditional "persisted":true (GS-FIX-01)
+            // without re-introducing a claim-without-a-write.
+            let persisted = pipeline.end_session(&session_id, &actor_id);
+            let durability = if pipeline.memory_is_durable() { "disk" } else { "in-memory-only" };
             ok_json(&format!(
-                "{{\"ok\":true,\"actor_id\":\"{}\",\"session_id\":\"{}\",\"persisted\":true,\"escalated\":{}}}",
-                actor_id, session_id, escalated
+                "{{\"ok\":true,\"actor_id\":\"{}\",\"session_id\":\"{}\",\"persisted\":{},\"durability\":\"{}\",\"escalated\":{}}}",
+                actor_id, session_id, persisted, durability, escalated
             ))
         }
 
@@ -212,13 +268,34 @@ fn handle(stream: &mut TcpStream, pipeline: &Arc<GovernancePipeline>) {
         }
 
         _ => err_json(404, "not found"),
+        }
     };
 
     let s = reader.get_mut();
     let _ = s.write_all(response.as_bytes());
 }
 
+fn write_response(mut reader: BufReader<&mut TcpStream>, response: String) {
+    let s = reader.get_mut();
+    let _ = s.write_all(response.as_bytes());
+}
+
 fn main() {
+    let service_token = std::env::var("SENTINEL_SERVICE_TOKEN")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if service_token.is_empty()
+        || service_token.to_uppercase().contains("PLACEHOLDER")
+        || service_token.to_uppercase().contains("GENERATE")
+    {
+        eprintln!("[SECURITY ERROR] SENTINEL_SERVICE_TOKEN missing or invalid");
+        std::process::exit(1);
+    }
+
+    let service_token = Arc::new(service_token);
+
     let addr = std::env::var("SENTOW_BIND")
         .unwrap_or_else(|_| "0.0.0.0:8080".into());
     let industry = std::env::var("SENTOW_INDUSTRY_PROFILE")
@@ -238,7 +315,8 @@ fn main() {
     for stream in listener.incoming() {
         if let Ok(mut s) = stream {
             let p = pipeline.clone();
-            thread::spawn(move || handle(&mut s, &p));
+            let token = service_token.clone();
+            thread::spawn(move || handle(&mut s, &p, &token));
         }
     }
 }

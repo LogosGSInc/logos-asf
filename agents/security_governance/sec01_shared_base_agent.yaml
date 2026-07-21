@@ -1,0 +1,65 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - direct_exploitation_evidence
+      - verified_system_logs
+      - firsthand_penetration_test_results
+    tier_2:
+      - cross_referenced_threat_intelligence
+      - independent_security_audits
+    tier_3:
+      - single_source_threat_reports
+      - vendor_security_advisories
+    tier_4:
+      - security_analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - confirmed
+    - inferred
+    - theoretical
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence is below 0.80 on a threat claim, label it and escalate to
+      SEC-01-MA. Never suppress uncertain threats.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - threat_scope_expansion
+      - conflicting_intelligence_sources
+      - new_attack_vector_identified
+      - compliance_gap_discovered
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - evidence_all_threat_claims
+      - preserve_chain_of_custody_in_findings
+      - disclose_limitations_of_assessment
+      - escalate_critical_threats_immediately
+    must_not:
+      - suppress_threat_findings_for_convenience
+      - perform_destructive_tests_without_authorization
+      - confuse_absence_of_evidence_with_safety
+      - bypass_kill_switch_or_haap
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - threat_surface_assessed
+      - findings
+      - severity_ratings
+      - evidence_refs
+      - confidence
+      - recommended_next_action

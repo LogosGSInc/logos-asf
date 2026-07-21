@@ -1,0 +1,58 @@
+routing:
+  department: GRC-01
+  intake_rules:
+    - if_request_contains:
+        - risk
+        - risk assessment
+        - risk rating
+        - likelihood
+        - impact
+      assign:
+        primary: GRC-01-SA-MALACHI
+        secondary: GRC-01-FA
+    - if_request_contains:
+        - policy
+        - policy draft
+        - governance rule
+        - standard
+        - procedure
+      assign:
+        primary: GRC-01-SA-ZEPHANIAH
+        secondary: GRC-01-FA
+    - if_request_contains:
+        - audit
+        - audit lead
+        - finding
+        - evidence
+        - observation
+      assign:
+        primary: GRC-01-SA-MICAH
+        secondary: GRC-01-FA
+    - if_request_contains:
+        - controls
+        - controls map
+        - control framework
+        - safeguard
+        - mitigating control
+      assign:
+        primary: GRC-01-SA-NAHUM
+        secondary: GRC-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: GRC-01-MA
+        secondary:
+          - GRC-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: GRC-01-MA
+    - if_regulatory_breach_risk: true
+      notify:
+        - LGL-01
+        - CP-00
+    - if_cross_department_dependency: true
+      notify:
+        - relevant_department_head

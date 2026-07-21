@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:source-registry:v1.0.0",
+  "title": "LOGOS ASF — Training Source Registry",
+  "description": "Constitutional data contract governing which sources may enter the Abigail training pipeline. No source may enter TR-04B unless it is present here with registry_status=approved, the requested use is listed in allowed_uses, hp_decision_status=approved, a sha256_manifest is present, and a clearance ledger entry exists (TR-04A.4, not implemented in this file).",
+  "version": "1.0.0",
+  "effective_date": "2026-06-26",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "registry_id",
+    "version",
+    "effective_date",
+    "classification",
+    "authority",
+    "constitutional_constraint",
+    "entries"
+  ],
+
+  "properties": {
+
+    "registry_id": {
+      "type": "string",
+      "description": "Stable identifier for this registry instance.",
+      "minLength": 1
+    },
+
+    "version": {
+      "type": "string",
+      "description": "Semantic version of this registry document.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+
+    "effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO 8601 date on which this registry version became authoritative."
+    },
+
+    "classification": {
+      "type": "string",
+      "description": "Handling classification for this document.",
+      "minLength": 1
+    },
+
+    "authority": {
+      "type": "object",
+      "description": "Human Principal who owns and authorizes this registry.",
+      "required": ["human_principal_id", "display_name", "short_code", "signature_mark"],
+      "properties": {
+        "human_principal_id": { "type": "string" },
+        "display_name":       { "type": "string" },
+        "short_code":         { "type": "string" },
+        "signature_mark":     { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "constitutional_constraint": {
+      "type": "string",
+      "description": "Binding statement of what this registry enforces. Must be preserved verbatim across versions.",
+      "minLength": 1
+    },
+
+    "entries": {
+      "type": "array",
+      "description": "Ordered list of registered training data sources. Each entry represents one source evaluated for pipeline eligibility.",
+      "items": { "$ref": "#/$defs/SourceEntry" },
+      "minItems": 1
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "$defs": {
+
+    "SourceEntry": {
+      "type": "object",
+      "description": "A single registered training data source with its clearance posture, provenance, and allowed-use declaration.",
+      "required": [
+        "source_id",
+        "source_name",
+        "source_type",
+        "lane",
+        "license_family",
+        "commercial_use_allowed",
+        "requires_attribution",
+        "sharealike_risk",
+        "no_derivatives_risk",
+        "pii_risk",
+        "copyright_risk",
+        "registry_status",
+        "allowed_uses",
+        "reg01_status",
+        "lgl01_status",
+        "hp_decision_status",
+        "hp_decision_timestamp",
+        "license_evidence_uri",
+        "license_checked_at",
+        "license_checked_by",
+        "component_whitelist",
+        "drift_risk_level",
+        "requires_operator_approval",
+        "sha256_manifest",
+        "govmem_namespace",
+        "notes"
+      ],
+
+      "properties": {
+
+        "source_id": {
+          "type": "string",
+          "description": "Stable identifier for this source. Format: L<lane>-<NNN>.",
+          "pattern": "^L[1-7]-[0-9]{3}$"
+        },
+
+        "source_name": {
+          "type": "string",
+          "description": "Human-readable name of this source.",
+          "minLength": 1
+        },
+
+        "source_type": {
+          "type": "string",
+          "description": "Machine-readable category describing the origin and format of this source.",
+          "minLength": 1
+        },
+
+        "lane": {
+          "type": "integer",
+          "description": "Trust lane (1=fully owned, 7=maximum scrutiny/experimental). Determines default clearance posture and operator approval requirements.",
+          "enum": [1, 2, 3, 4, 5, 6, 7]
+        },
+
+        "license_family": {
+          "type": "string",
+          "description": "License category governing permitted uses.",
+          "minLength": 1
+        },
+
+        "commercial_use_allowed": {
+          "type": "boolean",
+          "description": "Whether the license explicitly permits commercial use."
+        },
+
+        "requires_attribution": {
+          "type": "boolean",
+          "description": "Whether using this source requires attribution to the original author or publisher."
+        },
+
+        "sharealike_risk": {
+          "type": "boolean",
+          "description": "Whether this source carries a share-alike (copyleft) risk that could affect derivative works."
+        },
+
+        "no_derivatives_risk": {
+          "type": "boolean",
+          "description": "Whether this source carries a no-derivatives restriction that could affect training use."
+        },
+
+        "pii_risk": {
+          "type": "string",
+          "description": "Assessed PII exposure risk of this source.",
+          "enum": ["none", "low", "medium", "high", "blocked"]
+        },
+
+        "copyright_risk": {
+          "type": "string",
+          "description": "Assessed copyright clearance risk of this source.",
+          "enum": ["none", "low", "medium", "high", "blocked", "uncertain"]
+        },
+
+        "registry_status": {
+          "type": "string",
+          "description": "Current lifecycle status of this source in the registry. Only 'approved' sources may enter TR-04B.",
+          "enum": [
+            "draft",
+            "reg01_pending",
+            "lgl01_pending",
+            "ea00_pending",
+            "hp_pending",
+            "approved",
+            "rejected",
+            "archived",
+            "blocked"
+          ]
+        },
+
+        "allowed_uses": {
+          "type": "array",
+          "description": "Exhaustive list of pipeline uses permitted for this source. A source may only be used for a purpose that appears here. Blocked sources must declare an empty list.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "rag",
+              "sft_candidate",
+              "synthetic_seed",
+              "evaluation_reference",
+              "pretraining_candidate"
+            ]
+          },
+          "uniqueItems": true
+        },
+
+        "reg01_status": {
+          "type": "string",
+          "description": "REG-01 (registry intake review) clearance status.",
+          "enum": ["not_required", "pending", "approved", "rejected", "blocked"]
+        },
+
+        "lgl01_status": {
+          "type": "string",
+          "description": "LGL-01 (legal review) clearance status.",
+          "enum": ["not_required", "pending", "approved", "rejected", "blocked"]
+        },
+
+        "hp_decision_status": {
+          "type": "string",
+          "description": "Human Principal decision status. 'approved' is required before any source enters TR-04B.",
+          "enum": ["not_required", "pending", "approved", "rejected", "blocked"]
+        },
+
+        "hp_decision_timestamp": {
+          "type": ["string", "null"],
+          "description": "ISO 8601 timestamp of the Human Principal decision. Null if pending or not yet decided.",
+          "format": "date-time"
+        },
+
+        "license_evidence_uri": {
+          "type": "string",
+          "description": "URI or reference document evidencing the license determination. May be a file path, URL, or descriptive reference.",
+          "minLength": 1
+        },
+
+        "license_checked_at": {
+          "type": ["string", "null"],
+          "description": "ISO 8601 date of the most recent license review. Null if review has not occurred.",
+          "format": "date"
+        },
+
+        "license_checked_by": {
+          "type": ["string", "null"],
+          "description": "Identifier of the reviewer who performed the license check. Null if not yet reviewed."
+        },
+
+        "component_whitelist": {
+          "type": "array",
+          "description": "For composite or synthetic sources: list of source_ids that may serve as inputs. Empty for non-composite sources.",
+          "items": { "type": "string" }
+        },
+
+        "drift_risk_level": {
+          "type": "string",
+          "description": "Risk that content in this source could cause behavioral drift in a trained model.",
+          "enum": ["low", "medium", "high", "blocked"]
+        },
+
+        "requires_operator_approval": {
+          "type": "boolean",
+          "description": "Whether each individual use of this source requires explicit operator approval beyond the standing registry approval."
+        },
+
+        "sha256_manifest": {
+          "type": "string",
+          "description": "SHA-256 manifest string or sentinel value for the source artifact bundle. Must be replaced with a real content hash before TR-04B ingestion. 'PENDING_SOURCE_MANIFEST' is accepted at registration time only.",
+          "minLength": 1
+        },
+
+        "govmem_namespace": {
+          "type": "string",
+          "description": "GovMem/skill-forge namespace path where provenance and clearance records for this source are stored.",
+          "minLength": 1
+        },
+
+        "notes": {
+          "type": "string",
+          "description": "Free-text governance notes. Should include handling constraints, known risks, and any conditional approval details."
+        },
+
+        "synthetic_origin": {
+          "type": "boolean",
+          "description": "Required for entries with source_type=synthetic_instruction_data. Indicates that this source was generated rather than collected."
+        },
+
+        "prompt_hash": {
+          "type": ["string", "null"],
+          "description": "SHA-256 hash of the prompt template(s) used to generate this synthetic source. Required for concrete synthetic output batches. Null at registry seed declaration stage."
+        },
+
+        "generation_agent_id": {
+          "type": ["string", "null"],
+          "description": "Identifier of the agent or pipeline that generated this synthetic source. Required for concrete synthetic output batches. Null at registry seed declaration stage."
+        },
+
+        "dep_keystone_ingress_id": {
+          "type": ["string", "null"],
+          "description": "Optional reference to a DEP.KEYSTONE / GovSec V2 ingress record (DKI-<descriptor>-<seq>) that cleared this source for training pipeline entry. Populated after TR-04D ingress gate clearance."
+        }
+
+      },
+
+      "additionalProperties": false,
+
+      "x-invariants": {
+        "tr04b_requires_approved_status":        "No source may enter TR-04B unless registry_status=approved.",
+        "tr04b_requires_allowed_use":            "No source may enter TR-04B unless the requested use is listed in allowed_uses.",
+        "tr04b_requires_hp_approval":            "No source may enter TR-04B unless hp_decision_status=approved.",
+        "tr04b_requires_sha256_manifest":        "No source may enter TR-04B unless sha256_manifest is a real SHA-256 content hash (not a sentinel value).",
+        "tr04b_requires_clearance_ledger_entry": "No source may enter TR-04B unless a clearance ledger entry exists. Ledger implementation is TR-04A.4 (not created in this file).",
+        "blocked_sources_have_empty_uses":       "Sources with registry_status=blocked must declare allowed_uses as an empty array.",
+        "synthetic_must_label_origin":           "Sources with source_type=synthetic_instruction_data must include synthetic_origin=true.",
+        "lane_integrity":                        "source_id prefix L<N> must match the lane field value."
+      }
+    }
+
+  }
+}

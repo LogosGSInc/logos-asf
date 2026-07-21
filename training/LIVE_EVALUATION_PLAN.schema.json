@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:live-evaluation-plan:v1.0.0",
+  "title": "LOGOS ASF — TR-06C Live Evaluation Plan",
+  "description": "Contract for a collection of live evaluation cases against one candidate. Defines the execution-plan artifact that an operator-approved executor would later consume. In TR-06C, execution_allowed=false and executor_status=disabled. No inference occurs here.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-27",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "live_eval_plan_id",
+    "schema_version",
+    "created_at",
+    "candidate_artifact_id",
+    "source_metadata_reports",
+    "cases",
+    "execution_allowed",
+    "executor_status",
+    "executor_adapter",
+    "operator_approval_required",
+    "promotion_blocked",
+    "promotion_decision_emitted",
+    "blocked_actions",
+    "notes"
+  ],
+
+  "properties": {
+
+    "live_eval_plan_id": {
+      "type": "string",
+      "description": "Deterministic ID. Format: LP-<sha256[:16]>. Stable for same candidate + sorted case IDs.",
+      "minLength": 1
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "candidate_artifact_id": {
+      "type": "string",
+      "description": "The MA-* artifact this plan evaluates.",
+      "minLength": 1
+    },
+
+    "source_metadata_reports": {
+      "type": "array",
+      "description": "TR-06A/B evaluation report IDs (ER-*) that this live eval plan builds on.",
+      "items": { "type": "string" }
+    },
+
+    "cases": {
+      "type": "array",
+      "description": "Ordered list of live evaluation case objects. Each must conform to LIVE_EVALUATION_CASE.schema.json.",
+      "items": {
+        "type": "object",
+        "required": ["live_eval_case_id", "case_category", "execution_allowed"],
+        "properties": {
+          "live_eval_case_id":         { "type": "string" },
+          "case_category":             { "type": "string" },
+          "execution_allowed":         { "type": "boolean", "const": false }
+        }
+      }
+    },
+
+    "execution_allowed": {
+      "type": "boolean",
+      "description": "Always false in TR-06C. Plan cannot be executed without operator-approved executor.",
+      "const": false
+    },
+
+    "executor_status": {
+      "type": "string",
+      "description": "Always 'disabled' in TR-06C.",
+      "const": "disabled"
+    },
+
+    "executor_adapter": {
+      "type": "string",
+      "description": "Always 'disabled_stub' in TR-06C. No real provider adapter is wired.",
+      "const": "disabled_stub"
+    },
+
+    "operator_approval_required": {
+      "type": "boolean",
+      "description": "Always true. Operator must approve before execution can be enabled.",
+      "const": true
+    },
+
+    "promotion_blocked": {
+      "type": "boolean",
+      "description": "Always true. No live eval plan can emit a promotion decision.",
+      "const": true
+    },
+
+    "promotion_decision_emitted": {
+      "type": "boolean",
+      "description": "Always false. TR-06C never emits a promotion decision.",
+      "const": false
+    },
+
+    "blocked_actions": {
+      "type": "array",
+      "description": "Explicit list of actions this plan cannot perform.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+
+    "notes": {
+      "type": "string",
+      "description": "Free-text notes about this plan."
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "execution_disabled_const":         "execution_allowed is const:false. Plans cannot be executed in TR-06C.",
+    "executor_status_disabled_const":   "executor_status is const:'disabled'. No real executor is wired.",
+    "executor_adapter_stub_const":      "executor_adapter is const:'disabled_stub'. No provider adapter is active.",
+    "promotion_blocked_const":          "promotion_blocked is const:true. No plan can produce a promotion decision.",
+    "promotion_decision_never_emitted": "promotion_decision_emitted is const:false.",
+    "blocked_actions_nonempty":         "blocked_actions must list at least one prohibited action.",
+    "no_provider_calls":                "No provider calls occur through this plan in TR-06C.",
+    "no_model_weights":                 "No model weights are referenced by path in TR-06C plans.",
+    "no_tr07":                          "TR-07 shadow/canary was not started here.",
+    "no_training":                      "No real training occurs in TR-06C."
+  }
+}

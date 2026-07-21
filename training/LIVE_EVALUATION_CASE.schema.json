@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:live-evaluation-case:v1.0.0",
+  "title": "LOGOS ASF — TR-06C Live Evaluation Case",
+  "description": "Contract for one future live behavioral evaluation case against a registered Abigail candidate. Defines the prompt, expected and forbidden behaviors, and rubric. Execution is constitutionally disabled in TR-06C: requires_live_inference=true but execution_allowed=false. No inference is performed here.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-27",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "live_eval_case_id",
+    "schema_version",
+    "created_at",
+    "case_category",
+    "candidate_artifact_id",
+    "input_prompt",
+    "expected_behavior",
+    "forbidden_behavior",
+    "rubric",
+    "requires_live_inference",
+    "execution_allowed",
+    "operator_approval_required",
+    "promotion_blocked",
+    "promotion_decision_emitted",
+    "metadata_prerequisites",
+    "notes"
+  ],
+
+  "properties": {
+
+    "live_eval_case_id": {
+      "type": "string",
+      "description": "Deterministic ID. Format: LC-<sha256[:16]>. Stable for same candidate/category/prompt.",
+      "minLength": 1
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "case_category": {
+      "type": "string",
+      "description": "Which TR-06A gate this live eval case targets. Mirrors evaluation_gate enum.",
+      "enum": [
+        "constitutional_fidelity",
+        "haap_refusal_behavior",
+        "routing_correctness",
+        "audit_safe_json_ir_output",
+        "store1_govmem_boundary_preservation",
+        "dep_keystone_govsec_provenance_completeness",
+        "source_registry_clearance_completeness",
+        "clearance_ledger_completeness",
+        "dry_run_integrity",
+        "synthetic_provenance_integrity",
+        "promotion_blocking_invariants"
+      ]
+    },
+
+    "candidate_artifact_id": {
+      "type": "string",
+      "description": "The MA-* artifact from the TR-05 model registry that this case targets.",
+      "minLength": 1
+    },
+
+    "input_prompt": {
+      "type": "string",
+      "description": "The prompt to be sent to the candidate in a future live eval execution. Eval data only — not training data.",
+      "minLength": 1
+    },
+
+    "expected_behavior": {
+      "type": "string",
+      "description": "Natural-language description of what the candidate should do. Used by human reviewers and future automated rubric checkers.",
+      "minLength": 1
+    },
+
+    "forbidden_behavior": {
+      "type": "string",
+      "description": "Natural-language description of what the candidate must not do. Any occurrence of forbidden behavior → block result.",
+      "minLength": 1
+    },
+
+    "rubric": {
+      "type": "object",
+      "description": "Structured scoring criteria. pass_criteria, fail_criteria, and block_criteria are required.",
+      "required": ["pass_criteria", "fail_criteria", "block_criteria"],
+      "properties": {
+        "pass_criteria":  { "type": "string", "minLength": 1 },
+        "fail_criteria":  { "type": "string", "minLength": 1 },
+        "block_criteria": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+
+    "requires_live_inference": {
+      "type": "boolean",
+      "description": "Always true for TR-06C cases. These cases require the candidate to be invoked.",
+      "const": true
+    },
+
+    "execution_allowed": {
+      "type": "boolean",
+      "description": "Always false in TR-06C. Execution is constitutionally disabled until an operator-approved executor is enabled.",
+      "const": false
+    },
+
+    "operator_approval_required": {
+      "type": "boolean",
+      "description": "Always true. Operator must approve execution before any live eval runs.",
+      "const": true
+    },
+
+    "promotion_blocked": {
+      "type": "boolean",
+      "description": "Always true. No live eval case can emit a promotion decision.",
+      "const": true
+    },
+
+    "promotion_decision_emitted": {
+      "type": "boolean",
+      "description": "Always false. TR-06C never emits a promotion decision.",
+      "const": false
+    },
+
+    "metadata_prerequisites": {
+      "type": "array",
+      "description": "List of TR-06A/B metadata evaluation gate names or report IDs that must pass before this live eval case can be scheduled.",
+      "items": { "type": "string" }
+    },
+
+    "notes": {
+      "type": "string",
+      "description": "Free-text notes about this case's purpose and scope."
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "execution_disabled_const":          "execution_allowed is const:false. TR-06C cases cannot be executed without an operator-approved executor.",
+    "requires_live_inference_const":     "requires_live_inference is const:true. These cases are defined precisely because they require live inference — they cannot be evaluated from metadata alone.",
+    "promotion_blocked_const":           "promotion_blocked is const:true. No live eval case can promote, unblock, or modify promotion_status.",
+    "promotion_decision_never_emitted":  "promotion_decision_emitted is const:false. No promotion pathway is created by a TR-06C case.",
+    "input_prompt_is_eval_data":         "input_prompt holds evaluation prompt text. It is NOT training data and must not enter the training corpus.",
+    "no_provider_calls":                 "No provider SDK calls occur in TR-06C. The executor is disabled.",
+    "no_model_weights":                  "No model weights are loaded, referenced by path, or created in TR-06C.",
+    "no_tr07":                           "TR-07 shadow/canary was not started here.",
+    "no_training":                       "No real training occurs in TR-06C.",
+    "no_store1":                         "No Store 1 writes occur in TR-06C."
+  }
+}

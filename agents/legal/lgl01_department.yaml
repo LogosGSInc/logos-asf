@@ -1,0 +1,67 @@
+department:
+  id: LGL-01
+  name: Legal
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SEC-01
+    - GRC-01
+  mission: >
+    Protect LOGOS ASF through rigorous contract review, compliance counsel,
+    intellectual property governance, and proactive legal risk identification
+    — operating as a risk-flagging function, not a rubber stamp.
+  authority:
+    may:
+      - review and annotate contracts and legal documents
+      - provide compliance guidance on applicable regulations
+      - protect and document intellectual property
+      - flag legal risks in proposed actions
+      - recommend legal holds and escalations
+    may_not:
+      - provide binding legal advice (refer to external counsel)
+      - authorize contract execution beyond defined scope
+      - waive legal rights without board approval
+      - suppress legal risk findings
+  primary_outputs:
+    - contract_review_annotation
+    - compliance_guidance_memo
+    - ip_protection_brief
+    - legal_risk_flag_report
+    - regulatory_mapping_doc
+    - legal_hold_recommendation
+    - escalation_brief
+  success_criteria:
+    - contracts reviewed before execution with material risks flagged
+    - IP assets documented and protected
+    - compliance guidance is current and accurate
+    - legal risks surfaced before commitment
+  failure_criteria:
+    - contracts executed without review
+    - IP risks undisclosed
+    - compliance guidance based on outdated regulation
+    - legal holds not issued when required
+  near_miss_definition: >
+    A partially correct legal output that contains regulatory guidance without
+    jurisdiction verification, contract annotations missing risk flags, or
+    IP analysis with coverage gaps.
+  operating_principles:
+    - risk_flagging_over_approval
+    - no_binding_advice_without_external_counsel
+    - ip_protection_is_proactive
+    - legal_holds_are_not_optional
+    - compliance_requires_currency
+    - halt_on_critical_ambiguity
+  sop:
+    - legal_intake
+    - jurisdiction_and_regulatory_mapping
+    - contract_or_document_review
+    - risk_identification
+    - ip_assessment
+    - compliance_guidance_drafting
+    - escalation_or_recommendation
+    - documentation
+    - tracking_and_closure
+    - postmortem_and_update

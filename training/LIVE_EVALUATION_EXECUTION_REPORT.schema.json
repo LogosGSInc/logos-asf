@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:live-evaluation-execution-report:v1.0.0",
+  "title": "LOGOS ASF — TR-06D Live Evaluation Execution Report",
+  "description": "Contract for the result of executing a TR-06C live evaluation plan against a deterministic local stub adapter. In TR-06D, only stub adapters are allowed. No real model inference, provider calls, or model weight loads occur.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-27",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "execution_report_id",
+    "schema_version",
+    "created_at",
+    "live_eval_plan_id",
+    "candidate_artifact_id",
+    "adapter_id",
+    "adapter_type",
+    "adapter_mode",
+    "execution_status",
+    "cases_executed",
+    "case_results",
+    "requires_live_inference",
+    "real_model_inference_performed",
+    "provider_calls_performed",
+    "model_weights_loaded",
+    "promotion_blocked",
+    "promotion_decision_emitted",
+    "operator_review_required",
+    "blocked_actions",
+    "notes"
+  ],
+
+  "properties": {
+
+    "execution_report_id": {
+      "type": "string",
+      "description": "Deterministic ID. Format: XR-<sha256[:16]>. Stable for same plan_id and sorted case result hashes.",
+      "minLength": 1
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "live_eval_plan_id": {
+      "type": "string",
+      "description": "LP-* plan this report corresponds to.",
+      "minLength": 1
+    },
+
+    "candidate_artifact_id": {
+      "type": "string",
+      "description": "MA-* artifact under evaluation.",
+      "minLength": 1
+    },
+
+    "adapter_id": {
+      "type": "string",
+      "description": "Identifier of the adapter used. In TR-06D: TR06D_STUB_ADAPTER_001.",
+      "minLength": 1
+    },
+
+    "adapter_type": {
+      "type": "string",
+      "description": "Class of adapter that ran. deterministic_stub is the only allowed type in TR-06D.",
+      "enum": ["deterministic_stub", "blocked_provider", "blocked_local_runtime"]
+    },
+
+    "adapter_mode": {
+      "type": "string",
+      "description": "Execution mode. local_stub_only is the operative mode in TR-06D.",
+      "enum": ["local_stub_only", "blocked"]
+    },
+
+    "execution_status": {
+      "type": "string",
+      "description": "Outcome of the plan execution attempt.",
+      "enum": ["completed_stub_execution", "blocked", "failed_validation"]
+    },
+
+    "cases_executed": {
+      "type": "integer",
+      "description": "Number of cases for which a result was recorded.",
+      "minimum": 0
+    },
+
+    "case_results": {
+      "type": "array",
+      "description": "Per-case execution results.",
+      "items": {
+        "type": "object",
+        "required": [
+          "live_eval_case_id",
+          "case_category",
+          "result",
+          "stub_response_hash",
+          "rubric_reference",
+          "disclaimer",
+          "notes"
+        ],
+        "properties": {
+          "live_eval_case_id": { "type": "string" },
+          "case_category":     { "type": "string" },
+          "result": {
+            "type": "string",
+            "enum": ["stub_pass", "stub_fail", "stub_block", "not_evaluated", "blocked"]
+          },
+          "stub_response_hash": {
+            "type": "string",
+            "description": "SHA-256 of the deterministic stub response text."
+          },
+          "rubric_reference": {
+            "type": "string",
+            "description": "Which rubric criterion was used to assign the result."
+          },
+          "disclaimer": {
+            "type": "string",
+            "description": "Must contain DETERMINISTIC_STUB_OUTPUT_NOT_MODEL_BEHAVIOR."
+          },
+          "notes": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "requires_live_inference": {
+      "type": "boolean",
+      "description": "Always true — these plans come from TR-06C cases that require live inference. The stub adapter is a placeholder, not real inference.",
+      "const": true
+    },
+
+    "real_model_inference_performed": {
+      "type": "boolean",
+      "description": "Always false in TR-06D. No real model inference occurred.",
+      "const": false
+    },
+
+    "provider_calls_performed": {
+      "type": "boolean",
+      "description": "Always false in TR-06D. No provider calls occurred.",
+      "const": false
+    },
+
+    "model_weights_loaded": {
+      "type": "boolean",
+      "description": "Always false in TR-06D. No model weights were loaded.",
+      "const": false
+    },
+
+    "promotion_blocked": {
+      "type": "boolean",
+      "description": "Always true. No execution report can emit a promotion decision.",
+      "const": true
+    },
+
+    "promotion_decision_emitted": {
+      "type": "boolean",
+      "description": "Always false. TR-06D never emits a promotion decision.",
+      "const": false
+    },
+
+    "operator_review_required": {
+      "type": "boolean",
+      "description": "Always true. Operator must review stub execution results before any further action.",
+      "const": true
+    },
+
+    "blocked_actions": {
+      "type": "array",
+      "description": "Actions this execution was blocked from performing.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+
+    "notes": {
+      "type": "string",
+      "description": "Free-text notes about this execution report."
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "no_real_inference":             "real_model_inference_performed is const:false. No model was invoked.",
+    "no_provider_calls":             "provider_calls_performed is const:false. No provider SDK calls occurred.",
+    "no_model_weights":              "model_weights_loaded is const:false. No weights were loaded or referenced by path.",
+    "promotion_blocked_const":       "promotion_blocked is const:true. Stub execution cannot promote a candidate.",
+    "promotion_decision_never":      "promotion_decision_emitted is const:false.",
+    "operator_review_required":      "operator_review_required is const:true. Stub results require human review.",
+    "stub_disclaimer_required":      "Every case_result.disclaimer must contain DETERMINISTIC_STUB_OUTPUT_NOT_MODEL_BEHAVIOR.",
+    "no_tr07":                       "TR-07 shadow/canary was not started here.",
+    "no_training":                   "No real training occurred in TR-06D.",
+    "no_store1":                     "No Store 1 writes occurred in TR-06D."
+  }
+}

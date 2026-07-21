@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:clearance-ledger:v1.0.0",
+  "title": "LOGOS ASF Training Source Clearance Ledger",
+  "description": "Append-only, SHA-256 hash-chained ledger recording every clearance decision for training data sources. Ed25519 signing fields are present as interfaces; real signing is TR-04A.5.",
+  "type": "object",
+  "required": [
+    "ledger_id", "version", "classification", "authority",
+    "created_at", "hash_algorithm", "signature_algorithm", "entries"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "ledger_id":          { "type": "string", "minLength": 1 },
+    "version":            { "type": "string", "const": "1.0.0" },
+    "classification":     { "type": "string" },
+    "authority": {
+      "type": "object",
+      "required": ["human_principal_id", "display_name"],
+      "properties": {
+        "human_principal_id": { "type": "string" },
+        "display_name":       { "type": "string" },
+        "short_code":         { "type": ["string", "null"] },
+        "signature_mark":     { "type": ["string", "null"] }
+      }
+    },
+    "created_at":         { "type": "string" },
+    "hash_algorithm":     { "type": "string", "const": "sha256" },
+    "signature_algorithm": {
+      "type": "string",
+      "enum": ["ed25519_placeholder", "ed25519"]
+    },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/LedgerEntry" }
+    }
+  },
+  "$defs": {
+    "LedgerEntry": {
+      "type": "object",
+      "required": [
+        "ledger_entry_id", "timestamp", "source_id", "decision_type",
+        "from_status", "to_status", "requested_use", "actor_id", "actor_role",
+        "decision_status", "decision_reason", "reg01_status", "lgl01_status",
+        "hp_decision_status", "source_registry_version", "source_registry_entry_hash",
+        "previous_entry_hash", "entry_hash", "signature_status", "signature_algorithm",
+        "signature_public_key_id", "signature_value", "notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ledger_entry_id": {
+          "type": "string",
+          "pattern": "^LE-[0-9a-f]{16}$"
+        },
+        "timestamp": { "type": "string" },
+        "source_id": { "type": "string", "minLength": 1 },
+        "decision_type": {
+          "type": "string",
+          "enum": [
+            "nominate", "reg01_clear", "reg01_reject",
+            "lgl01_clear", "lgl01_reject", "ea00_batch",
+            "hp_approve", "hp_reject", "block", "archive", "restore"
+          ]
+        },
+        "from_status":   { "type": ["string", "null"] },
+        "to_status":     { "type": ["string", "null"] },
+        "requested_use": { "type": ["string", "null"] },
+        "actor_id":      { "type": "string", "minLength": 1 },
+        "actor_role":    { "type": "string", "minLength": 1 },
+        "decision_status": {
+          "type": "string",
+          "enum": ["recorded", "accepted", "rejected", "blocked"]
+        },
+        "decision_reason": { "type": "string" },
+        "reg01_status":    { "type": ["string", "null"] },
+        "lgl01_status":    { "type": ["string", "null"] },
+        "hp_decision_status": { "type": ["string", "null"] },
+        "source_registry_version":    { "type": "string" },
+        "source_registry_entry_hash": { "type": "string" },
+        "previous_entry_hash": {
+          "type": "string",
+          "description": "SHA-256 hex of the previous entry, or 64 zeros for the genesis entry."
+        },
+        "entry_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 hex over canonical entry JSON excluding entry_hash and signature_value."
+        },
+        "signature_status": {
+          "type": "string",
+          "enum": ["unsigned_local", "signature_pending", "signed", "invalid"]
+        },
+        "signature_algorithm": {
+          "type": "string",
+          "enum": ["ed25519_placeholder", "ed25519"]
+        },
+        "signature_public_key_id": { "type": ["string", "null"] },
+        "signature_value":         { "type": ["string", "null"] },
+        "notes": { "type": "string" }
+      },
+      "x-invariants": {
+        "hash_chain": "previous_entry_hash must equal the entry_hash of the immediately preceding entry, or 0*64 for the first entry.",
+        "entry_hash_coverage": "entry_hash covers all fields except entry_hash and signature_value.",
+        "blocked_decision_supersedes": "A block/archive/reject decision after an approval supersedes the approval for clearance purposes.",
+        "ed25519_fields_are_placeholders": "signature_public_key_id and signature_value are null until TR-04A.5 real signing is implemented."
+      }
+    }
+  },
+  "x-constitutional-constraint": "Every source clearance transition (nomination, approval, rejection, block, archive) must be recorded as a ledger entry before the source may advance to or be removed from approved status in the Training Source Registry.",
+  "x-not-implemented": [
+    "Real Ed25519 signing (TR-04A.5)",
+    "AWS S3 Object Lock / WORM storage (future infrastructure)",
+    "External verification service"
+  ]
+}

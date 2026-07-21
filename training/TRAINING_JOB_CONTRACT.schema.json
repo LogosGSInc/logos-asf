@@ -1,0 +1,368 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:job-contract:v1.0.0",
+  "title": "LOGOS ASF — Training Job Contract",
+  "description": "Schema for governed training job authorizations. A training job may not be submitted without a valid, operator-signed contract. Each field represents an explicit operator commitment.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-24",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "job_id",
+    "schema_version",
+    "operator_id",
+    "operator_signature",
+    "authorized_at",
+    "dataset",
+    "base_model",
+    "training_method",
+    "isolation",
+    "evaluation",
+    "rollback",
+    "forbidden_actions_acknowledged",
+    "doctrine_version_acknowledged"
+  ],
+
+  "properties": {
+
+    "job_id": {
+      "type": "string",
+      "description": "Unique identifier for this training job. Format: TJ-<YYYYMMDD>-<sha256[:8]>.",
+      "pattern": "^TJ-[0-9]{8}-[0-9a-f]{8}$"
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "operator_id": {
+      "type": "string",
+      "description": "Identifier of the operator authorizing this training job.",
+      "minLength": 1
+    },
+
+    "operator_signature": {
+      "type": "string",
+      "description": "Operator attestation string. By providing this field, the operator certifies that all conditions in this contract have been satisfied and all forbidden actions are understood.",
+      "minLength": 1
+    },
+
+    "authorized_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of operator authorization."
+    },
+
+    "purpose": {
+      "type": "string",
+      "description": "Human-readable statement of the training purpose. Required for user-derived data jobs.",
+      "minLength": 1
+    },
+
+    "dataset": {
+      "type": "object",
+      "description": "The dataset to be used for this training job.",
+      "required": [
+        "version",
+        "manifest_path",
+        "checksum_sha256",
+        "record_count",
+        "tr03_validation_passed",
+        "tr03_validated_at",
+        "contamination_check_passed",
+        "contains_user_derived_data"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Dataset version. Format: abigail_training_v<NNNN>.",
+          "pattern": "^abigail_training_v[0-9]{4}$"
+        },
+        "manifest_path": {
+          "type": "string",
+          "description": "Path to the dataset manifest.json file."
+        },
+        "checksum_sha256": {
+          "type": "string",
+          "description": "SHA-256 checksum of the dataset manifest. Verified before job submission.",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "record_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of training records in the dataset."
+        },
+        "train_split_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "validation_split_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "test_split_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tr03_validation_passed": {
+          "type": "boolean",
+          "description": "Whether the dataset passed TR-03 quality and contamination controls. Must be true for job submission."
+        },
+        "tr03_validated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "contamination_check_passed": {
+          "type": "boolean",
+          "description": "Whether the dataset passed evaluation instrument contamination check (TAX2, BD1A absence). Must be true."
+        },
+        "contains_user_derived_data": {
+          "type": "boolean",
+          "description": "Whether any records in this dataset derive from user conversation history."
+        },
+        "user_data_authorization_basis": {
+          "type": ["string", "null"],
+          "description": "Required if contains_user_derived_data is true. States the lawful basis for using this data."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "base_model": {
+      "type": "object",
+      "description": "The model being fine-tuned.",
+      "required": ["model_id", "model_family", "model_registry_entry"],
+      "properties": {
+        "model_id": {
+          "type": "string",
+          "description": "Current production or baseline model identifier."
+        },
+        "model_family": {
+          "type": "string",
+          "description": "Model family, e.g. llama-4-scout, llama-3-8b, etc."
+        },
+        "model_registry_entry": {
+          "type": "string",
+          "description": "Path or ID of the model registry entry for the base model."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "training_method": {
+      "type": "object",
+      "description": "The training approach and configuration.",
+      "required": ["adapter_type", "method", "config"],
+      "properties": {
+        "adapter_type": {
+          "type": "string",
+          "enum": ["dry_run_training", "local_lora", "local_qlora", "external_managed_training"],
+          "description": "Which training adapter will execute this job. Must start with dry_run_training before any real adapter."
+        },
+        "method": {
+          "type": "string",
+          "enum": ["dry_run", "lora", "qlora", "full_fine_tune", "dpo", "rlhf"],
+          "description": "The training method."
+        },
+        "config": {
+          "type": "object",
+          "description": "Training hyperparameters and configuration. Specific keys depend on method.",
+          "properties": {
+            "epochs": { "type": "integer", "minimum": 1 },
+            "learning_rate": { "type": "number", "exclusiveMinimum": 0 },
+            "batch_size": { "type": "integer", "minimum": 1 },
+            "lora_rank": { "type": "integer", "minimum": 1 },
+            "lora_alpha": { "type": "number", "exclusiveMinimum": 0 },
+            "max_seq_length": { "type": "integer", "minimum": 1 },
+            "warmup_steps": { "type": "integer", "minimum": 0 },
+            "seed": { "type": "integer" }
+          },
+          "additionalProperties": true
+        },
+        "time_budget_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum wall-clock seconds the training job may run. Watchdog terminates job at this limit."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "isolation": {
+      "type": "object",
+      "description": "Isolation requirements for this training job.",
+      "required": [
+        "runs_in_isolated_container",
+        "no_live_db_access",
+        "no_production_api_keys",
+        "no_sentinel_runtime_access",
+        "no_store1_access",
+        "no_network_egress_to_production",
+        "watchdog_enabled"
+      ],
+      "properties": {
+        "runs_in_isolated_container": {
+          "type": "boolean",
+          "description": "Training runs in an isolated container or worker — not inside the live Abigail API process. Must be true."
+        },
+        "no_live_db_access": { "type": "boolean" },
+        "no_production_api_keys": { "type": "boolean" },
+        "no_sentinel_runtime_access": { "type": "boolean" },
+        "no_store1_access": { "type": "boolean" },
+        "no_network_egress_to_production": { "type": "boolean" },
+        "watchdog_enabled": { "type": "boolean" },
+        "container_image": {
+          "type": ["string", "null"],
+          "description": "Container image used for isolation, if applicable."
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        { "properties": { "runs_in_isolated_container": { "const": true } } },
+        { "properties": { "no_live_db_access": { "const": true } } },
+        { "properties": { "no_production_api_keys": { "const": true } } },
+        { "properties": { "no_sentinel_runtime_access": { "const": true } } },
+        { "properties": { "no_store1_access": { "const": true } } },
+        { "properties": { "no_network_egress_to_production": { "const": true } } },
+        { "properties": { "watchdog_enabled": { "const": true } } }
+      ]
+    },
+
+    "evaluation": {
+      "type": "object",
+      "description": "Evaluation gate requirements for promotion eligibility.",
+      "required": [
+        "held_out_eval_required",
+        "tax2_required",
+        "bd1a_required",
+        "g4_variance_required",
+        "refusal_correctness_required",
+        "benign_false_positive_required",
+        "tacit_prepass_required",
+        "promotion_requires_both_capability_and_governance"
+      ],
+      "properties": {
+        "held_out_eval_required": {
+          "type": "boolean",
+          "description": "Candidate must pass held-out task evaluation before promotion consideration. Must be true."
+        },
+        "tax2_required": {
+          "type": "boolean",
+          "description": "Candidate must pass TAX2 76-test suite (≥100% post-calibration). Must be true."
+        },
+        "tax2_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0
+        },
+        "bd1a_required": {
+          "type": "boolean",
+          "description": "Candidate must pass BD1A baseline (≥94.4%). Must be true."
+        },
+        "bd1a_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.944
+        },
+        "g4_variance_required": {
+          "type": "boolean",
+          "description": "Candidate must not regress G4 marginal variance set versus baseline. Must be true."
+        },
+        "refusal_correctness_required": { "type": "boolean" },
+        "benign_false_positive_required": { "type": "boolean" },
+        "tacit_prepass_required": {
+          "type": "boolean",
+          "description": "Candidate must fire TACIT_PREPASS_CARD correctly on all test cases. Must be true."
+        },
+        "promotion_requires_both_capability_and_governance": {
+          "type": "boolean",
+          "description": "A model that improves capability but regresses governance must fail promotion. Must be true.",
+          "const": true
+        },
+        "shadow_deployment_required": {
+          "type": "boolean",
+          "default": true,
+          "description": "Candidate must complete shadow deployment comparison before operator promotion decision."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "rollback": {
+      "type": "object",
+      "description": "Rollback authority and procedure.",
+      "required": [
+        "rollback_parent_model_id",
+        "operator_may_rollback_immediately",
+        "rollback_requires_evaluation"
+      ],
+      "properties": {
+        "rollback_parent_model_id": {
+          "type": "string",
+          "description": "The model ID that will be reinstated if rollback is executed."
+        },
+        "operator_may_rollback_immediately": {
+          "type": "boolean",
+          "description": "Operator may rollback at any time without evaluation gate passage. Must be true.",
+          "const": true
+        },
+        "rollback_requires_evaluation": {
+          "type": "boolean",
+          "description": "Rollback does NOT require evaluation gate passage. Must be false.",
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "candidate_model_output": {
+      "type": "object",
+      "description": "Where the trained model artifact will be written. Populated after job completion.",
+      "properties": {
+        "registry_path": {
+          "type": ["string", "null"],
+          "description": "Path in the model registry where the candidate artifact will be stored."
+        },
+        "initial_promotion_status": {
+          "type": "string",
+          "enum": ["TRAINING", "TRAINED_UNEVALUATED"],
+          "default": "TRAINING",
+          "description": "Status assigned to the artifact when training begins."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "forbidden_actions_acknowledged": {
+      "type": "boolean",
+      "description": "Operator acknowledges that training inside the live API process, auto-approval of candidates, and self-promotion of the trained model are permanently forbidden. Must be true.",
+      "const": true
+    },
+
+    "doctrine_version_acknowledged": {
+      "type": "string",
+      "description": "Version of TRAINING_DOCTRINE.md the operator has read and is operating under.",
+      "const": "1.0.0"
+    },
+
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Optional operator notes for this training job."
+    }
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "isolation_all_true": "All isolation fields must be true. A job contract with any isolation field set to false is invalid and must be rejected by the training adapter.",
+    "dataset_must_pass_tr03": "dataset.tr03_validation_passed must be true. A job submitted against a dataset that has not passed TR-03 is in violation of TRAINING_DOCTRINE Section 8.",
+    "no_eval_contamination": "dataset.contamination_check_passed must be true. TAX2 and BD1A content may not appear in the training corpus.",
+    "user_data_requires_basis": "If dataset.contains_user_derived_data is true, dataset.user_data_authorization_basis must be a non-empty string.",
+    "start_with_dry_run": "The first training job against any new dataset SHOULD use adapter_type: dry_run_training before a real adapter is used.",
+    "both_criteria_for_promotion": "evaluation.promotion_requires_both_capability_and_governance must be true. This is not configurable."
+  }
+}

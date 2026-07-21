@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:evaluation-report:v1.0.0",
+  "title": "LOGOS ASF — TR-06A Evaluation Report",
+  "description": "Constitutional contract for one metadata-only evaluation run against one registered model/adaptor candidate. TR-06A reports evaluate governance metadata, provenance completeness, and structural invariants. They do not evaluate live model behavior. promotion_blocked is always true. promotion_decision_emitted is always false.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-27",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "evaluation_report_id",
+    "schema_version",
+    "created_at",
+    "candidate_artifact_id",
+    "candidate_lineage_record_id",
+    "evaluation_gate",
+    "result",
+    "requires_live_inference",
+    "metadata_only",
+    "evidence",
+    "promotion_blocked",
+    "promotion_decision_emitted",
+    "operator_review_required",
+    "evaluated_by",
+    "notes"
+  ],
+
+  "properties": {
+
+    "evaluation_report_id": {
+      "type": "string",
+      "description": "Deterministic identifier for this report. Format: ER-<sha256[:16]>. Stable for the same candidate/gate/evidence.",
+      "minLength": 1
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of report creation."
+    },
+
+    "candidate_artifact_id": {
+      "type": "string",
+      "description": "The model_artifact_id (MA-*) from the TR-05 model registry that this report evaluates.",
+      "minLength": 1
+    },
+
+    "candidate_lineage_record_id": {
+      "type": "string",
+      "description": "The lineage_record_id (LR-*) from the TR-05 lineage record for this candidate."
+    },
+
+    "evaluation_gate": {
+      "type": "string",
+      "description": "Which evaluation gate was run. Each gate targets a specific governance or provenance concern.",
+      "enum": [
+        "constitutional_fidelity",
+        "haap_refusal_behavior",
+        "routing_correctness",
+        "audit_safe_json_ir_output",
+        "store1_govmem_boundary_preservation",
+        "dep_keystone_govsec_provenance_completeness",
+        "source_registry_clearance_completeness",
+        "clearance_ledger_completeness",
+        "dry_run_integrity",
+        "synthetic_provenance_integrity",
+        "promotion_blocking_invariants"
+      ]
+    },
+
+    "result": {
+      "type": "string",
+      "description": "Gate outcome. pass=metadata check satisfied. fail=metadata check failed. block=hard governance violation detected. not_evaluated=gate cannot be evaluated from metadata alone (e.g. requires live inference or missing context).",
+      "enum": ["pass", "fail", "block", "not_evaluated"]
+    },
+
+    "requires_live_inference": {
+      "type": "boolean",
+      "description": "Whether this gate requires model inference to produce a meaningful result. TR-06A gate stubs set this to false. Future live behavioral eval gates (TR-06B/06C) may set this to true."
+    },
+
+    "metadata_only": {
+      "type": "boolean",
+      "description": "Always true for TR-06A reports. TR-06A evaluates metadata, provenance, and structural governance invariants only.",
+      "const": true
+    },
+
+    "evidence": {
+      "type": "object",
+      "description": "Gate-specific evidence dict. Content varies by evaluation_gate. Contains the field values and flags inspected during evaluation."
+    },
+
+    "promotion_blocked": {
+      "type": "boolean",
+      "description": "Always true. TR-06A cannot emit a promotion decision or unblock a candidate.",
+      "const": true
+    },
+
+    "promotion_decision_emitted": {
+      "type": "boolean",
+      "description": "Always false. TR-06A never emits a promotion decision.",
+      "const": false
+    },
+
+    "operator_review_required": {
+      "type": "boolean",
+      "description": "Always true. Operator review is required before any promotion decision.",
+      "const": true
+    },
+
+    "evaluated_by": {
+      "type": "string",
+      "description": "Identifier of the harness, operator, or system that produced this report.",
+      "minLength": 1
+    },
+
+    "notes": {
+      "type": "string",
+      "description": "Free-text notes about this evaluation result."
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "promotion_blocked_const":           "promotion_blocked is const:true. TR-06A cannot promote, unblock, or modify promotion_status.",
+    "promotion_decision_never_emitted":  "promotion_decision_emitted is const:false. No promotion pathway is created by a TR-06A report.",
+    "metadata_only_const":               "metadata_only is const:true. TR-06A evaluates governance structure, provenance, and flags — not live model behavior.",
+    "live_inference_honesty":            "Any gate that cannot be fully evaluated from metadata must return result=not_evaluated with requires_live_inference=true. TR-06A gate stubs that operate solely on metadata set requires_live_inference=false.",
+    "tr06b_not_started":                 "Live behavioral evaluation (TR-06B) and shadow/canary (TR-07) are not started here.",
+    "no_tr07":                           "TR-07 shadow/canary evaluation is not started here.",
+    "no_weights":                        "No model weights are read, created, or referenced by path in TR-06A.",
+    "no_training":                       "No model training occurs in TR-06A.",
+    "no_store1":                         "No Store 1 writes occur in TR-06A.",
+    "no_deployment":                     "No runtime deployment occurs in TR-06A."
+  }
+}

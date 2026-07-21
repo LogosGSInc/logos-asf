@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:synthetic-doctrine-record:v1.0.0",
+  "title": "LOGOS ASF Synthetic Doctrine Record",
+  "description": "Schema for a single synthetic instruction record generated from approved Lane 1 owned doctrine sources. Training is NOT authorized on these records without further operator review.",
+  "type": "object",
+  "required": [
+    "record_id",
+    "schema_version",
+    "created_at",
+    "synthetic_origin",
+    "source_id",
+    "source_registry_version",
+    "clearance_ledger_entry_id",
+    "generation_agent_id",
+    "prompt_template_id",
+    "prompt_hash",
+    "category",
+    "input",
+    "desired_output",
+    "governance_labels",
+    "audit_metadata"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "description": "Stable record identifier: 'SR-' + SHA-256(source_id:generation_agent_id:template_id:index)[:16].",
+      "pattern": "^SR-[0-9a-f]{16}$"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO 8601 UTC timestamp of batch generation (same for all records in a batch)."
+    },
+    "synthetic_origin": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true. Identifies this record as synthetically generated, never from a real interaction."
+    },
+    "source_id": {
+      "type": "string",
+      "description": "Source registry ID of the Lane 1 doctrine source used for generation.",
+      "pattern": "^L[0-9]+-[0-9]+$"
+    },
+    "source_registry_version": {
+      "type": "string",
+      "description": "Version of the source registry at time of generation."
+    },
+    "clearance_ledger_entry_id": {
+      "type": "string",
+      "description": "Ledger entry ID of the clearance approval decision for this source.",
+      "minLength": 1
+    },
+    "generation_agent_id": {
+      "type": "string",
+      "description": "Identifier of the agent or automated process that generated this record.",
+      "minLength": 1
+    },
+    "prompt_template_id": {
+      "type": "string",
+      "description": "Stable identifier for the template that produced this record.",
+      "minLength": 1
+    },
+    "prompt_hash": {
+      "type": "string",
+      "description": "SHA-256[:32] of 'prompt_template_id:input' — enables deterministic audit replay.",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "category": {
+      "type": "string",
+      "description": "Instruction category from the governed taxonomy.",
+      "enum": [
+        "user_request_to_abigail_route_decision",
+        "user_request_to_sentinel_overwatch_posture",
+        "unsafe_request_to_governed_refusal_with_haap_citation",
+        "ambiguous_request_to_clarification_or_safe_best_effort",
+        "tool_request_to_approval_gate",
+        "operator_directive_to_ea00_acknowledgment_and_routing",
+        "dataset_manifest_to_accept_or_reject_explanation",
+        "provider_route_request_to_audit_safe_envelope"
+      ]
+    },
+    "input": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Synthetic instruction input. No real user transcripts, credentials, or private thresholds."
+    },
+    "desired_output": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Expected governed response for the synthetic input."
+    },
+    "governance_labels": {
+      "type": "object",
+      "description": "Hard governance flags. All deny-by-default constants enforced at schema and code level.",
+      "required": [
+        "training_allowed",
+        "operator_review_required",
+        "store1_write_allowed",
+        "runtime_deployment_allowed",
+        "model_promotion_allowed",
+        "external_calls_allowed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "training_allowed": {
+          "type": "boolean",
+          "const": false,
+          "description": "Always false. Operator review required before any SFT use."
+        },
+        "operator_review_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "store1_write_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "runtime_deployment_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "model_promotion_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+        "external_calls_allowed": {
+          "type": "boolean",
+          "const": false
+        }
+      }
+    },
+    "audit_metadata": {
+      "type": "object",
+      "description": "Machine-readable audit metadata for traceability.",
+      "required": [
+        "generator_version",
+        "generation_index",
+        "clearance_gate"
+      ],
+      "properties": {
+        "generator_version": {
+          "type": "string"
+        },
+        "generation_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "clearance_gate": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

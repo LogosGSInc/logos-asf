@@ -68,6 +68,10 @@ pub struct GovernancePipeline {
 
     /// GovMem V2: RL-enhanced multi-turn detection
     govmem: Arc<GovMem>,
+
+    // GovMem V2: runtime identity metadata (populated from env vars, metadata only)
+    govmem_agent_id: String,
+    govmem_department_id: String,
 }
 
 impl GovernancePipeline {
@@ -84,6 +88,7 @@ impl GovernancePipeline {
             drift_threshold: 0.65,
             session_turn_limit: 200,
             client_model_api: None,
+            q09_threshold: 2,
         };
 
         let overwatch = Arc::new(RwLock::new(
@@ -108,6 +113,13 @@ impl GovernancePipeline {
         };
         let govmem = Arc::new(GovMem::new(mode));
 
+        // Runtime identity metadata — populated from env vars, metadata only.
+        // Do not pass these into should_block(); threshold behavior must not change.
+        let govmem_agent_id = std::env::var("GOVMEM_AGENT_ID")
+            .unwrap_or_else(|_| "abigail".to_string());
+        let govmem_department_id = std::env::var("GOVMEM_DEPARTMENT_ID")
+            .unwrap_or_else(|_| "governance".to_string());
+
         Ok(Self {
             sentinel,
             corridor,
@@ -118,9 +130,17 @@ impl GovernancePipeline {
             constitutional_evaluator,
             haap,
             session_memories: Arc::new(RwLock::new(HashMap::new())),
-            strategic_memory: Arc::new(RwLock::new(StrategicMemory::new())),
+            // GS-BUILD-01: back cross-session actor memory with disk when
+            // SENTOW_MEMORY_PATH is set (it previously was only printed, never
+            // used). Absent the env var this stays in-memory-only, preserving
+            // prior behaviour for tests / ephemeral runs.
+            strategic_memory: Arc::new(RwLock::new(StrategicMemory::with_path(
+                std::env::var("SENTOW_MEMORY_PATH").ok().map(std::path::PathBuf::from),
+            ))),
             memory_config: MemoryConfig::default(),
             govmem,
+            govmem_agent_id,
+            govmem_department_id,
         })
     }
 
@@ -164,8 +184,8 @@ impl GovernancePipeline {
             user_input,
             MessageDirection::UserToSystem,
             s_signal.severity >= Severity::High,
-            None, // department_id
-            None, // agent_id
+            Some(&self.govmem_department_id), // department_id — metadata only
+            Some(&self.govmem_agent_id),      // agent_id — metadata only
         );
         self.govmem.record_layer_signal(session_id, "sentinel", &s_signal);
         self.track_highest(&s_signal, &mut highest_signal);
@@ -323,16 +343,35 @@ impl GovernancePipeline {
 
     /// End a session and export fingerprint to Abigail strategic memory.
     /// Call this when a session terminates (gracefully or by lockout).
-    pub fn end_session(&self, session_id: &str, actor_id: &str) {
+    ///
+    /// GS-BUILD-01: returns whether the session's strategic profile was
+    /// durably persisted to disk. `false` means in-memory-only (no
+    /// SENTOW_MEMORY_PATH) — the caller must report that truthfully rather
+    /// than claiming persistence (see GS-FIX-01).
+    pub fn end_session(&self, session_id: &str, actor_id: &str) -> bool {
         let fingerprint = {
             let memories = self.session_memories.read();
             memories.get(session_id).map(|m| m.to_fingerprint())
         };
-        if let Some(fp) = fingerprint {
-            self.strategic_memory.write().ingest_session(actor_id, fp);
-        }
+        let persisted = match fingerprint {
+            // A real durable write happened only when there was a fingerprint to
+            // persist AND the store wrote it to disk.
+            Some(fp) => self.strategic_memory.write().ingest_session(actor_id, fp),
+            // No session state to persist this call — nothing was written, so we
+            // must NOT claim persistence (the store may still be disk-backed; that
+            // is reported separately via memory_is_durable()).
+            None => false,
+        };
         // Clean up session memory (fingerprint is now in strategic memory)
         self.session_memories.write().remove(session_id);
+        persisted
+    }
+
+    /// GS-BUILD-01: whether cross-session strategic memory is disk-backed.
+    /// Describes the store's configuration (a property), independent of whether
+    /// any given `end_session` call actually wrote data.
+    pub fn memory_is_durable(&self) -> bool {
+        self.strategic_memory.read().is_durable()
     }
 
     /// Operator-authorized session reset.

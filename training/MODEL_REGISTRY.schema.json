@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:model-registry:v1.0.0",
+  "title": "LOGOS ASF — TR-05 Model Registry",
+  "description": "Constitutional data contract for the TR-05 metadata-only model registry. Records dry-run model/adaptor candidates with full lineage provenance. No model weights are created. No real training occurs. TR-06 evaluation gates not started.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-27",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "registry_id",
+    "version",
+    "classification",
+    "authority",
+    "created_at",
+    "entries"
+  ],
+
+  "properties": {
+
+    "registry_id": {
+      "type": "string",
+      "description": "Stable identifier for this registry instance.",
+      "minLength": 1
+    },
+
+    "version": {
+      "type": "string",
+      "description": "Semantic version of this registry document.",
+      "minLength": 1
+    },
+
+    "classification": {
+      "type": "string",
+      "description": "Handling classification.",
+      "minLength": 1
+    },
+
+    "authority": {
+      "type": "string",
+      "description": "Governing authority for this registry.",
+      "minLength": 1
+    },
+
+    "created_at": {
+      "type": "string",
+      "description": "ISO 8601 UTC timestamp of registry creation."
+    },
+
+    "entries": {
+      "type": "array",
+      "description": "Ordered list of model artifact registry entries.",
+      "items": { "$ref": "#/$defs/RegistryEntry" }
+    },
+
+    "governance": {
+      "type": "object",
+      "description": "Standing governance flags that apply to all entries."
+    },
+
+    "notes": {
+      "type": "string"
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "$defs": {
+
+    "RegistryEntry": {
+      "type": "object",
+      "description": "A single model artifact registry entry. All entries are metadata-only. No weights.",
+      "required": [
+        "model_artifact_id",
+        "artifact_type",
+        "artifact_status",
+        "created_at",
+        "created_by",
+        "lineage_record_id",
+        "base_model_reference",
+        "adapter_reference",
+        "dep_keystone_ingress_ref",
+        "dep_keystone_evidence_sha256_ref",
+        "dep_keystone_verification_report_ref",
+        "dataset_manifest_ref",
+        "dry_run_envelope_ref",
+        "training_job_contract_ref",
+        "evaluation_ref",
+        "promotion_status",
+        "training_allowed",
+        "model_weights_present",
+        "runtime_deployment_allowed",
+        "store1_write_allowed",
+        "external_calls_allowed",
+        "operator_promotion_required",
+        "checksum_manifest",
+        "notes"
+      ],
+
+      "properties": {
+
+        "model_artifact_id": {
+          "type": "string",
+          "description": "Deterministic identifier derived from dry_run_id + dataset_id + source_id. Format: MA-<sha256[:16]>.",
+          "minLength": 1
+        },
+
+        "artifact_type": {
+          "type": "string",
+          "description": "Category of this artifact entry.",
+          "enum": [
+            "base_model_reference",
+            "dry_run_adapter_candidate",
+            "future_adapter_placeholder",
+            "evaluation_baseline",
+            "rejected_candidate"
+          ]
+        },
+
+        "artifact_status": {
+          "type": "string",
+          "description": "Lifecycle status of this artifact.",
+          "enum": ["draft", "registered", "dry_run_only", "blocked", "archived"]
+        },
+
+        "created_at":  { "type": "string" },
+        "created_by":  { "type": "string", "minLength": 1 },
+
+        "lineage_record_id": {
+          "type": "string",
+          "description": "Reference to the lineage DAG record for this artifact."
+        },
+
+        "base_model_reference":           { "type": ["string", "null"] },
+        "adapter_reference":              { "type": ["string", "null"] },
+        "dep_keystone_ingress_ref":              { "type": ["string", "null"] },
+        "dep_keystone_evidence_sha256_ref":      { "type": ["string", "null"] },
+        "dep_keystone_verification_report_ref":  { "type": ["string", "null"] },
+        "dataset_manifest_ref":           { "type": ["string", "null"] },
+        "dry_run_envelope_ref":           { "type": ["string", "null"] },
+        "training_job_contract_ref":      { "type": ["string", "null"] },
+        "evaluation_ref":                 { "type": ["string", "null"] },
+
+        "promotion_status": {
+          "type": "string",
+          "description": "Promotion lifecycle state. Defaults to not_promoted.",
+          "enum": [
+            "not_promoted",
+            "promotion_blocked",
+            "promotion_pending_operator",
+            "eligible_for_future_evaluation",
+            "archived"
+          ]
+        },
+
+        "training_allowed": {
+          "type": "boolean",
+          "const": false,
+          "description": "Always false. No model training occurs in TR-05."
+        },
+
+        "model_weights_present": {
+          "type": "boolean",
+          "const": false,
+          "description": "Always false. TR-05 is metadata-only."
+        },
+
+        "runtime_deployment_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+
+        "store1_write_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+
+        "external_calls_allowed": {
+          "type": "boolean",
+          "const": false
+        },
+
+        "operator_promotion_required": {
+          "type": "boolean",
+          "const": true,
+          "description": "Always true. No promotion without operator sign-off."
+        },
+
+        "checksum_manifest": {
+          "type": "string",
+          "description": "SHA-256 of the lineage record JSON for this entry.",
+          "minLength": 1
+        },
+
+        "lineage":    { "type": "object" },
+        "provenance": { "type": "object" },
+        "notes":      { "type": "string" }
+
+      },
+
+      "additionalProperties": false,
+
+      "x-invariants": {
+        "no_model_weights":       "model_weights_present is const:false. TR-05 is metadata-only.",
+        "no_training":            "training_allowed is const:false.",
+        "no_store1":              "store1_write_allowed is const:false.",
+        "no_deployment":          "runtime_deployment_allowed is const:false.",
+        "operator_required":      "operator_promotion_required is const:true.",
+        "default_not_promoted":   "promotion_status defaults to not_promoted.",
+        "no_tr06":                "TR-06 evaluation gates are not started here."
+      }
+    }
+
+  }
+}

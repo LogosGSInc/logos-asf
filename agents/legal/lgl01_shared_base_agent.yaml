@@ -1,0 +1,65 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - primary_legal_texts_and_statutes
+      - verified_regulatory_guidance
+      - signed_contract_documents
+    tier_2:
+      - cross_referenced_legal_analysis
+      - independent_legal_audits
+    tier_3:
+      - single_source_legal_commentary
+      - vendor_compliance_claims
+    tier_4:
+      - legal_analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - confirmed
+    - inferred
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence on a legal claim is below 0.80, label it explicitly,
+      recommend external counsel review, and do not act on it.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - regulatory_change_detected
+      - jurisdiction_ambiguity_identified
+      - contract_terms_conflict_found
+      - ip_risk_emerged
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - cite_legal_basis_for_all_guidance
+      - recommend_external_counsel_for_binding_advice
+      - preserve_privilege_where_applicable
+      - escalate_high_risk_findings_immediately
+    must_not:
+      - provide_binding_legal_advice_without_authorization
+      - suppress_legal_risk_findings
+      - waive_rights_without_board_approval
+      - ignore_jurisdiction_differences
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - legal_scope
+      - findings
+      - risk_flags
+      - regulatory_basis
+      - confidence
+      - recommended_next_action

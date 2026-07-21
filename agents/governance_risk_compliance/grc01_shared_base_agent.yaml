@@ -1,0 +1,65 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - regulatory_text_and_official_guidance
+      - verified_audit_findings
+      - firsthand_controls_testing_results
+    tier_2:
+      - cross_referenced_compliance_frameworks
+      - independent_audit_reports
+    tier_3:
+      - single_source_compliance_guidance
+      - vendor_compliance_materials
+    tier_4:
+      - grc_analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - confirmed
+    - inferred
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence on a compliance or risk claim is below 0.80, label it
+      explicitly and require additional evidence before issuing recommendations.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - regulatory_change_detected
+      - audit_scope_change
+      - new_risk_class_identified
+      - controls_failure_discovered
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - cite_regulatory_basis_for_compliance_claims
+      - test_controls_not_just_document_them
+      - preserve_audit_independence
+      - disclose_all_material_gaps
+    must_not:
+      - suppress_risk_findings
+      - grant_exceptions_without_documented_justification
+      - confuse_compliance_with_security
+      - act_as_legal_counsel
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - regulatory_scope
+      - findings
+      - risk_ratings
+      - evidence_refs
+      - confidence
+      - recommended_next_action

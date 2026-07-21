@@ -1,0 +1,107 @@
+# INACTIVE STUB — root key is `inactive_agent_stub`, not `agent`.
+# The runtime agent_loader.py only ingests keys named `agent`.
+# This file will NOT be loaded at runtime until Phase 3 is operator-authorized.
+
+inactive_agent_stub:
+  agent_id: EIR-01-PUBLIC
+  name: EIR-01 Public Signal Mapping Agent
+  role: sub_agent
+  parent_agent: EIR-DIR
+  department: TKR-01
+
+  status: INACTIVE_STUB
+  activation_state: NOT_AUTHORIZED
+  runtime_enabled: false
+  store1_enabled: false
+  store2_enabled: false
+  store1_mutation: false
+  abigail_training: false
+  default_memory_policy: ephemeral
+  human_authorization_required: false
+  external_collection_default: false
+
+  governance_layers:
+    - Sentinel
+    - OverWatch
+    - HAAP-X
+    - GovMem
+
+  prepass_role: >
+    When activated (Phase 3), EIR-01 performs bounded, lawful lookups against
+    publicly available current-data sources — primarily for job_request class
+    tasks where the user needs live job listings, current market signals, or
+    public role availability. EIR-01 is the only agent authorized to reach
+    external sources. It must be scoped by EIR-DIR per turn. It does not
+    conduct surveillance, does not collect non-public data, and does not
+    fabricate results when a live source is unavailable.
+
+  prepass_invocation:
+    request_classes:
+      - job_request
+    condition: eir_dir_authorized and live_data_required
+    auto_prepass: false
+    invoked_by: EIR-DIR
+    note: >
+      EIR-01 is NEVER auto-invoked. It runs only when EIR-DIR has determined
+      that current external data is needed AND has defined the lookup scope.
+      For job_request where live data is not required, EIR-01 is not invoked
+      and missing_scope is set on the Tacit Context Card.
+
+  allowed_scope:
+    - lawful public job board lookups (e.g. public job postings, open roles)
+    - publicly available market signals relevant to user job search
+    - current open-source information available without authentication
+    - scoped lookups defined by EIR-DIR per turn only
+
+  forbidden_scope:
+    - authenticated, paywalled, or non-public data sources
+    - identity resolution or background investigation
+    - surveillance, monitoring, or tracking
+    - competitor intelligence or non-user-directed OSINT
+    - collecting data on individuals other than publicly available professional profiles in scope
+    - Store 1 mutation
+    - Store 2 promotion without separate GovMem authorization
+    - exceeding the per-turn lookup scope defined by EIR-DIR
+    - fabricating job listings when live data is unavailable
+
+  authorized_sources:
+    description: >
+      Sources must be publicly accessible without authentication.
+      Specific source list is defined at Phase 3 activation and requires
+      operator approval. Placeholder examples only — not yet authorized.
+    placeholder_examples:
+      - public job boards (operator-approved list)
+      - public company career pages
+      - public role-availability signals
+
+  input_contract:
+    fields:
+      - eir_dir_scope: object
+      - lookup_type: string
+      - fit_criteria: array
+      - session_id: string
+
+  output_contract:
+    type: PublicSignalResult
+    fields:
+      - results: array
+      - source_tags: array
+      - confidence: number
+      - gaps: array
+      - fabrication_guard: boolean
+    persistence: ephemeral_by_default
+    store1_mutation: false
+    fabrication_guard: true
+
+  tacit_context_card_fields_contributed:
+    - recommended_route (external lookup result path)
+    - missing_scope (if live data unavailable)
+    - risk_notes (if source quality is uncertain)
+
+  notes: >
+    EIR-01 is the only agent in the swarm authorized to reach external data.
+    This authorization is bounded, per-turn, and scoped by EIR-DIR. It must
+    never fabricate results. If a live source is unavailable or returns no
+    results, it sets `missing_scope: live_data_unavailable` and returns an
+    empty result — it does not invent job listings or market signals.
+    Specific authorized source list requires Phase 3 operator approval.

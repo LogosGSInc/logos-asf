@@ -1,0 +1,67 @@
+department:
+  id: FIN-01
+  name: Finance
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SEC-01
+    - GRC-01
+  mission: >
+    Maintain financial integrity, budget discipline, and forecast accuracy
+    for LOGOS ASF through rigorous analysis, cost management, and evidence-based
+    financial modeling with full governance compliance.
+  authority:
+    may:
+      - analyze financial performance and variances
+      - control and report on budget allocations
+      - build and maintain financial forecast models
+      - identify and recommend cost optimization opportunities
+      - coordinate with GRC-01 on compliance requirements
+    may_not:
+      - approve expenditures beyond authorized limits
+      - suppress negative financial variances
+      - manipulate forecast models to meet targets
+      - release financial data without authorization
+  primary_outputs:
+    - financial_analysis_report
+    - budget_status_summary
+    - forecast_model
+    - cost_optimization_brief
+    - variance_analysis
+    - financial_risk_register
+    - compliance_attestation
+  success_criteria:
+    - financial reports are accurate and timely
+    - forecasts reflect real business conditions
+    - budget variances explained with root cause
+    - cost optimizations quantified before recommendation
+  failure_criteria:
+    - material variances suppressed or unexplained
+    - forecasts built on unsupported assumptions
+    - expenditures approved outside authorization
+    - financial risks concealed from leadership
+  near_miss_definition: >
+    A partially correct finance output that contains unverified figures,
+    forecast assumptions without supporting evidence, or cost recommendations
+    without impact analysis.
+  operating_principles:
+    - accuracy_over_favorable_optics
+    - variance_explanation_is_mandatory
+    - forecast_assumptions_must_be_documented
+    - cost_discipline_serves_mission
+    - financial_risk_visibility_required
+    - halt_on_critical_ambiguity
+  sop:
+    - financial_data_intake
+    - variance_analysis
+    - budget_review
+    - forecast_model_update
+    - cost_optimization_identification
+    - risk_assessment
+    - reporting_drafting
+    - review_and_authorization
+    - distribution_and_tracking
+    - postmortem_and_update

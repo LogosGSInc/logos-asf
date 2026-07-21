@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:dry-run-envelope:v1.0.0",
+  "title": "LOGOS ASF — Training Dry-Run Envelope",
+  "description": "Schema for TR-04 dry-run training envelopes. A dry-run envelope describes what a governed training job would look like without submitting one. training_allowed is always false. No real training, weight update, store1 write, runtime deployment, model promotion, or external calls are performed.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-26",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "schema",
+    "dry_run_id",
+    "created_at",
+    "adapter_version",
+    "source_dataset_manifest_id",
+    "source_dataset_checksum",
+    "training_allowed",
+    "dry_run_only",
+    "operator_promotion_required",
+    "store1_write_allowed",
+    "runtime_deployment_allowed",
+    "model_promotion_allowed",
+    "external_calls_allowed",
+    "job_intent",
+    "dataset_summary",
+    "validation_summary",
+    "estimated_compute",
+    "blocked_real_actions",
+    "next_required_gate"
+  ],
+
+  "properties": {
+
+    "schema": {
+      "type": "string",
+      "const": "logos-asf:training:dry-run-envelope:v1.0.0"
+    },
+
+    "dry_run_id": {
+      "type": "string",
+      "description": "Stable identifier for this dry run. Derived deterministically from manifest content_hash and config digest. Format: DR-<sha256[:16]>.",
+      "pattern": "^DR-[0-9a-f]{16}$"
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "adapter_version": {
+      "type": "string",
+      "description": "Version of the dry-run adapter that produced this envelope."
+    },
+
+    "source_dataset_manifest_id": {
+      "type": "string",
+      "description": "dataset_id from the TR-03 manifest that was validated."
+    },
+
+    "source_dataset_checksum": {
+      "type": "string",
+      "description": "content_hash from the TR-03 manifest.",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+
+    "training_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Always false. A dry-run envelope does not authorize training."
+    },
+
+    "dry_run_only": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true. This envelope represents a simulation only."
+    },
+
+    "operator_promotion_required": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true. A separately signed training-job contract is required before any real training may proceed."
+    },
+
+    "store1_write_allowed": {
+      "type": "boolean",
+      "const": false
+    },
+
+    "runtime_deployment_allowed": {
+      "type": "boolean",
+      "const": false
+    },
+
+    "model_promotion_allowed": {
+      "type": "boolean",
+      "const": false
+    },
+
+    "external_calls_allowed": {
+      "type": "boolean",
+      "const": false
+    },
+
+    "job_intent": {
+      "type": "object",
+      "required": ["description", "mode", "operator_id"],
+      "properties": {
+        "description": { "type": "string" },
+        "mode":        { "type": "string", "enum": ["simulation", "production"] },
+        "operator_id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "dataset_summary": {
+      "type": "object",
+      "required": [
+        "dataset_id",
+        "dataset_status",
+        "accepted_record_count",
+        "train_count",
+        "validation_count",
+        "test_count"
+      ],
+      "properties": {
+        "dataset_id":                    { "type": "string" },
+        "dataset_status":                { "type": "string" },
+        "build_mode":                    { "type": ["string", "null"] },
+        "accepted_record_count":         { "type": "integer", "minimum": 0 },
+        "train_count":                   { "type": "integer", "minimum": 0 },
+        "validation_count":              { "type": "integer", "minimum": 0 },
+        "test_count":                    { "type": "integer", "minimum": 0 },
+        "contamination_scan_status":     { "type": ["string", "null"] },
+        "evaluation_set_exclusion_status": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+
+    "validation_summary": {
+      "type": "object",
+      "required": [
+        "checksum_verified",
+        "governance_flags_valid",
+        "scan_report_clean",
+        "split_counts_match",
+        "operator_identity_valid",
+        "manifest_version_supported"
+      ],
+      "properties": {
+        "checksum_verified":         { "type": "boolean" },
+        "governance_flags_valid":    { "type": "boolean" },
+        "scan_report_clean":         { "type": "boolean" },
+        "split_counts_match":        { "type": "boolean" },
+        "operator_identity_valid":   { "type": "boolean" },
+        "manifest_version_supported": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+
+    "estimated_compute": {
+      "type": "object",
+      "required": ["estimated_char_volume", "estimated_tokens_approx", "train_record_count", "validation_record_count"],
+      "properties": {
+        "estimated_char_volume":    { "type": "integer", "minimum": 0 },
+        "estimated_tokens_approx":  { "type": "integer", "minimum": 0 },
+        "train_record_count":       { "type": "integer", "minimum": 0 },
+        "validation_record_count":  { "type": "integer", "minimum": 0 },
+        "notes":                    { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "blocked_real_actions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Enumeration of real actions that are explicitly blocked by this dry-run."
+    },
+
+    "next_required_gate": {
+      "type": "string",
+      "description": "Human-readable description of what must happen before any real training can proceed."
+    }
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "training_allowed_const_false":      "training_allowed is const:false. This envelope does not authorize training.",
+    "dry_run_only_const_true":           "dry_run_only is const:true. No real training adapter is invoked.",
+    "operator_promotion_required_true":  "operator_promotion_required is const:true. A signed training-job contract is required.",
+    "no_model_weights_created":          "TR-04 produces no model weights, no LoRA adapters, no QLoRA adapters.",
+    "no_store1_write":                   "TR-04 does not write to Store 1.",
+    "no_runtime_deployment":             "TR-04 does not deploy to runtime.",
+    "no_model_promotion":                "TR-04 does not promote any model.",
+    "no_external_calls":                 "TR-04 makes no external API calls, no provider SDK calls, no network calls."
+  }
+}

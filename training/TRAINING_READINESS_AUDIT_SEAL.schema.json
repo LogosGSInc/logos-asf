@@ -1,0 +1,339 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:training-readiness-audit-seal:v1.0.0",
+  "title": "LOGOS ASF — TR-06Z Training Readiness Audit Seal",
+  "description": "Sealed audit record proving the Abigail training-readiness spine (TR-03 through TR-06E) remains metadata-only, promotion-blocked, no-training, no-model-weights, no-real-inference, and no-provider-calls. Does not constitute promotion eligibility. TR-07 is not authorized.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-28",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "audit_seal_id",
+    "schema_version",
+    "created_at",
+    "branch",
+    "head_commit",
+    "expected_head_commit",
+    "working_tree_clean",
+    "test_suite_status",
+    "test_count",
+    "covered_phases",
+    "phase_status_summary",
+    "training_file_inventory",
+    "schema_inventory",
+    "module_inventory",
+    "documentation_inventory",
+    "test_inventory",
+    "checksum_manifest",
+    "forbidden_artifact_scan",
+    "forbidden_action_attestation",
+    "promotion_blocking_attestation",
+    "dep_keystone_govsec_attestation",
+    "evaluation_readiness_attestation",
+    "readiness_state",
+    "readiness_rationale",
+    "tr07_authorization_status",
+    "seal_hash",
+    "previous_seal_hash",
+    "notes"
+  ],
+
+  "properties": {
+
+    "audit_seal_id": {
+      "type": "string",
+      "description": "Deterministic ID. Format: AS-<sha256[:16]>. Stable for same branch + head + sorted file hashes + readiness_state.",
+      "minLength": 1
+    },
+
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "branch": {
+      "type": "string",
+      "description": "Git branch at time of seal.",
+      "minLength": 1
+    },
+
+    "head_commit": {
+      "type": "string",
+      "description": "Git HEAD commit hash (full SHA) at time of seal.",
+      "minLength": 7
+    },
+
+    "expected_head_commit": {
+      "type": ["string", "null"],
+      "description": "Expected HEAD commit (short or full SHA). Null if not supplied. Validation fails if supplied and does not match head_commit prefix."
+    },
+
+    "working_tree_clean": {
+      "type": "boolean",
+      "description": "True if the git working tree had no uncommitted changes at seal time.",
+      "const": true
+    },
+
+    "test_suite_status": {
+      "type": "string",
+      "description": "Status of the full pytest suite at seal time.",
+      "enum": ["passed", "failed", "not_run"]
+    },
+
+    "test_count": {
+      "type": "integer",
+      "description": "Number of passing tests at seal time.",
+      "minimum": 1
+    },
+
+    "covered_phases": {
+      "type": "array",
+      "description": "Training pipeline phases covered by this audit seal.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+
+    "phase_status_summary": {
+      "type": "object",
+      "description": "Per-phase status keyed by phase ID.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["phase_id", "description", "status"],
+        "properties": {
+          "phase_id":    { "type": "string" },
+          "description": { "type": "string" },
+          "status":      { "type": "string", "enum": ["sealed", "partial", "not_covered"] }
+        }
+      }
+    },
+
+    "training_file_inventory": {
+      "type": "array",
+      "description": "All training/ files included in this seal.",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path":   { "type": "string" },
+          "sha256": { "type": "string" }
+        }
+      }
+    },
+
+    "schema_inventory": {
+      "type": "array",
+      "description": "training/*.schema.json files and their checksums.",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path":   { "type": "string" },
+          "sha256": { "type": "string" }
+        }
+      }
+    },
+
+    "module_inventory": {
+      "type": "array",
+      "description": "training/*.py module files and their checksums.",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path":   { "type": "string" },
+          "sha256": { "type": "string" }
+        }
+      }
+    },
+
+    "documentation_inventory": {
+      "type": "array",
+      "description": "training/TR_*.md documentation files and their checksums.",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path":   { "type": "string" },
+          "sha256": { "type": "string" }
+        }
+      }
+    },
+
+    "test_inventory": {
+      "type": "array",
+      "description": "training/tests/test_*.py files and their checksums.",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path":   { "type": "string" },
+          "sha256": { "type": "string" }
+        }
+      }
+    },
+
+    "checksum_manifest": {
+      "type": "object",
+      "description": "Flat map of relative file path → sha256.",
+      "additionalProperties": { "type": "string" }
+    },
+
+    "forbidden_artifact_scan": {
+      "type": "object",
+      "description": "Results of scanning for forbidden model weight artifacts.",
+      "required": ["scanned_extensions", "found_artifacts", "clean"],
+      "properties": {
+        "scanned_extensions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "found_artifacts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "clean": {
+          "type": "boolean",
+          "description": "True iff found_artifacts is empty."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "forbidden_action_attestation": {
+      "type": "object",
+      "description": "Signed attestation that no forbidden actions occurred during training pipeline build.",
+      "required": [
+        "no_real_training",
+        "no_model_weights",
+        "no_real_model_inference",
+        "no_provider_calls",
+        "no_store1_writes",
+        "no_runtime_deployment",
+        "no_model_promotion"
+      ],
+      "properties": {
+        "no_real_training":          { "type": "boolean", "const": true },
+        "no_model_weights":          { "type": "boolean", "const": true },
+        "no_real_model_inference":   { "type": "boolean", "const": true },
+        "no_provider_calls":         { "type": "boolean", "const": true },
+        "no_store1_writes":          { "type": "boolean", "const": true },
+        "no_runtime_deployment":     { "type": "boolean", "const": true },
+        "no_model_promotion":        { "type": "boolean", "const": true }
+      },
+      "additionalProperties": false
+    },
+
+    "promotion_blocking_attestation": {
+      "type": "object",
+      "description": "Attestation that promotion remains blocked throughout the training spine.",
+      "required": ["promotion_blocked", "promotion_decision_emitted"],
+      "properties": {
+        "promotion_blocked":          { "type": "boolean", "const": true },
+        "promotion_decision_emitted": { "type": "boolean", "const": false }
+      },
+      "additionalProperties": false
+    },
+
+    "dep_keystone_govsec_attestation": {
+      "type": "object",
+      "description": "Attestation covering DEP.KEYSTONE and GovSec governance boundary.",
+      "required": [
+        "dep_keystone_boundary_respected",
+        "govsec_doctrine_applied",
+        "no_dep_keystone_code_vendored"
+      ],
+      "properties": {
+        "dep_keystone_boundary_respected": { "type": "boolean" },
+        "govsec_doctrine_applied":         { "type": "boolean" },
+        "no_dep_keystone_code_vendored":   { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+
+    "evaluation_readiness_attestation": {
+      "type": "object",
+      "description": "Attestation summarising evaluation layer coverage.",
+      "required": [
+        "tr06a_metadata_gates_present",
+        "tr06b_fixture_corpus_present",
+        "tr06c_live_eval_interface_present",
+        "tr06d_stub_adapter_present",
+        "tr06e_dossier_aggregator_present",
+        "live_inference_disabled",
+        "stub_execution_only"
+      ],
+      "properties": {
+        "tr06a_metadata_gates_present":       { "type": "boolean" },
+        "tr06b_fixture_corpus_present":       { "type": "boolean" },
+        "tr06c_live_eval_interface_present":  { "type": "boolean" },
+        "tr06d_stub_adapter_present":         { "type": "boolean" },
+        "tr06e_dossier_aggregator_present":   { "type": "boolean" },
+        "live_inference_disabled":            { "type": "boolean" },
+        "stub_execution_only":                { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+
+    "readiness_state": {
+      "type": "string",
+      "description": "Audit seal readiness classification. sealed_metadata_only_training_readiness is NOT promotion eligibility.",
+      "enum": ["sealed_metadata_only_training_readiness", "blocked", "needs_more_evidence"]
+    },
+
+    "readiness_rationale": {
+      "type": "string",
+      "description": "Human-readable explanation of readiness_state.",
+      "minLength": 1
+    },
+
+    "tr07_authorization_status": {
+      "type": "string",
+      "description": "TR-07 shadow/canary authorization. Always not_authorized in TR-06Z.",
+      "enum": ["not_authorized", "pending_operator_decision", "blocked"]
+    },
+
+    "seal_hash": {
+      "type": "string",
+      "description": "SHA-256 of canonical seal content excluding seal_hash. Provides tamper-evidence.",
+      "minLength": 64,
+      "maxLength": 64
+    },
+
+    "previous_seal_hash": {
+      "type": ["string", "null"],
+      "description": "Hash of the previous audit seal, if any. Null for first seal."
+    },
+
+    "notes": {
+      "type": "string",
+      "description": "Free-text notes about this audit seal."
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "working_tree_must_be_clean":          "working_tree_clean is const:true. Seal can only be built from a clean working tree.",
+    "no_real_training_const":              "forbidden_action_attestation.no_real_training is const:true.",
+    "no_model_weights_const":              "forbidden_action_attestation.no_model_weights is const:true.",
+    "no_real_inference_const":             "forbidden_action_attestation.no_real_model_inference is const:true.",
+    "no_provider_calls_const":             "forbidden_action_attestation.no_provider_calls is const:true.",
+    "no_store1_const":                     "forbidden_action_attestation.no_store1_writes is const:true.",
+    "no_deployment_const":                 "forbidden_action_attestation.no_runtime_deployment is const:true.",
+    "no_promotion_const":                  "forbidden_action_attestation.no_model_promotion is const:true.",
+    "promotion_blocked_const":             "promotion_blocking_attestation.promotion_blocked is const:true.",
+    "promotion_decision_never":            "promotion_blocking_attestation.promotion_decision_emitted is const:false.",
+    "tr07_not_authorized_const":           "tr07_authorization_status must be not_authorized in TR-06Z.",
+    "sealed_readiness_is_not_promotion":   "readiness_state=sealed_metadata_only_training_readiness does not constitute promotion eligibility.",
+    "no_git_tag":                          "TR-06Z does not create git tags. Tags require a separate operator action.",
+    "no_push":                             "TR-06Z does not push to remote. Push requires a separate operator action.",
+    "seal_hash_covers_content":            "seal_hash is SHA-256 of canonical content excluding itself."
+  }
+}

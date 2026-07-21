@@ -1,0 +1,31 @@
+swarm_policy:
+  tacit_knowledge_requests:
+    parent_agent: TKR-DIRECTOR-01
+    children:
+      - TKR-INTERVIEW-01
+      - TKR-MAP-01
+    allowed_when:
+      - consented_internal_knowledge
+      - workflow_mapping
+      - doctrine_extraction
+      - sop_building
+    blocked_when:
+      - unauthorized_private_extraction
+      - competitor_trade_secret_collection
+      - manipulation_or_pressure
+
+  ethical_intelligence_requests:
+    parent_agent: EIR-DIRECTOR-01
+    children:
+      - EIR-OSINT-01
+      - EIR-ANALYSIS-01
+    allowed_when:
+      - public_source_analysis
+      - market_terrain
+      - competitor_positioning
+      - threat_briefing
+    blocked_when:
+      - impersonation
+      - phishing
+      - hacked_or_leaked_data
+      - private_data_collection

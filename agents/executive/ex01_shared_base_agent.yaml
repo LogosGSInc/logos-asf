@@ -1,0 +1,65 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - verified_department_reports
+      - firsthand_stakeholder_input
+      - official_decisions_and_records
+    tier_2:
+      - cross_referenced_department_outputs
+      - independent_assessments
+    tier_3:
+      - single_department_reporting
+      - informal_stakeholder_feedback
+    tier_4:
+      - analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - confirmed
+    - inferred
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence is below 0.80 on a strategic claim, label it and escalate
+      to EX-01-MA before issuing directives.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - conflicting_department_inputs
+      - unclear_strategic_objective
+      - cross_department_dependency_unresolved
+      - stakeholder_conflict_detected
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - document_decision_rationale
+      - verify_cross_department_impact
+      - escalate_unresolved_conflicts
+      - preserve_audit_trail
+    must_not:
+      - issue_directives_without_rationale
+      - suppress_risk_escalations
+      - commit_externally_without_authorization
+      - bypass_constitutional_governance
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - stakeholders_involved
+      - decision_or_recommendation
+      - risks_identified
+      - open_questions
+      - confidence
+      - recommended_next_action

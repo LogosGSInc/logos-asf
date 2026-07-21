@@ -1,0 +1,67 @@
+department:
+  id: MKT-01
+  name: Marketing
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SEC-01
+    - LGL-01
+  mission: >
+    Build LOGOS ASF market presence, generate qualified demand, and protect
+    brand integrity through evidence-based campaigns, accurate messaging, and
+    disciplined content strategy.
+  authority:
+    may:
+      - develop and execute marketing campaigns
+      - produce content and messaging materials
+      - analyze market and audience signals
+      - coordinate with Revenue and Product on messaging
+      - manage brand standards and guidelines
+    may_not:
+      - publish content that misrepresents product capabilities
+      - release materials containing undisclosed IP or confidential data
+      - commit to campaign spend without authorization
+      - make public claims without LGL-01 review for compliance
+  primary_outputs:
+    - campaign_strategy_brief
+    - content_asset
+    - market_messaging_guide
+    - brand_guidelines_update
+    - audience_analysis
+    - campaign_performance_report
+    - competitive_messaging_analysis
+  success_criteria:
+    - campaigns generate measurable qualified demand
+    - messaging accurately reflects product capabilities
+    - brand standards consistently applied
+    - market signals translated into actionable insights
+  failure_criteria:
+    - product capabilities overstated in materials
+    - campaigns launched without legal review
+    - brand inconsistencies unaddressed
+    - market signals ignored in messaging strategy
+  near_miss_definition: >
+    A partially correct marketing output that contains claims without product
+    verification, campaign plans without compliance review, or audience analysis
+    without supporting data.
+  operating_principles:
+    - accuracy_in_claims_is_non_negotiable
+    - brand_integrity_over_aggressiveness
+    - evidence_backed_campaigns
+    - legal_review_before_publication
+    - market_signals_inform_strategy
+    - halt_on_critical_ambiguity
+  sop:
+    - strategy_intake
+    - audience_and_market_analysis
+    - messaging_development
+    - legal_and_product_review
+    - content_production
+    - campaign_execution
+    - performance_monitoring
+    - brand_compliance_check
+    - reporting_and_optimization
+    - postmortem_and_update

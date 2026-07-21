@@ -11,7 +11,7 @@ import time
 import hashlib
 from datetime import datetime, timezone
 
-SENTINEL_URL = "http://localhost:9090/inspect"
+SENTINEL_URL = "http://localhost:9091/inspect"
 OUTPUT_FILE  = "redteam_live_results.jsonl"
 SESSION_BASE = hashlib.sha256(str(time.time()).encode()).hexdigest()[:12]
 

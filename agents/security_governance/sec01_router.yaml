@@ -1,0 +1,58 @@
+routing:
+  department: SEC-01
+  intake_rules:
+    - if_request_contains:
+        - threat
+        - attack
+        - vulnerability
+        - risk model
+        - threat model
+      assign:
+        primary: SEC-01-SA-URIAH
+        secondary: SEC-01-FA
+    - if_request_contains:
+        - compliance
+        - regulation
+        - policy
+        - audit
+        - control
+      assign:
+        primary: SEC-01-SA-MATTHIAS
+        secondary: SEC-01-FA
+    - if_request_contains:
+        - red team
+        - penetration
+        - exploit
+        - adversarial
+        - bypass
+      assign:
+        primary: SEC-01-SA-SAMSON
+        secondary: SEC-01-FA
+    - if_request_contains:
+        - governance audit
+        - controls audit
+        - haap
+        - constitutional
+        - enforcement
+      assign:
+        primary: SEC-01-SA-EZEKIEL
+        secondary: SEC-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: SEC-01-MA
+        secondary:
+          - SEC-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: SEC-01-MA
+    - if_critical_threat_detected: true
+      notify:
+        - CP-00
+        - EX-01
+    - if_cross_department_dependency: true
+      notify:
+        - relevant_department_head

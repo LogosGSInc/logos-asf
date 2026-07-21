@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "logos-asf:training:dataset-manifest:v1.0.0",
+  "title": "LOGOS ASF — Dataset Manifest",
+  "description": "Schema for immutable versioned dataset artifacts produced by TR-03. training_allowed is always false at construction. Operator must separately authorize training via a signed training-job contract.",
+  "version": "1.0.0",
+  "effective_date": "2026-06-25",
+  "authority": "LOGOS Governance Systems Inc.",
+
+  "type": "object",
+  "required": [
+    "dataset_id",
+    "dataset_version",
+    "dataset_status",
+    "created_at",
+    "builder_version",
+    "source_candidate_count",
+    "accepted_record_count",
+    "rejected_record_count",
+    "train_count",
+    "validation_count",
+    "test_count",
+    "split_policy",
+    "source_candidate_ids",
+    "source_decision_ids",
+    "source_hashes",
+    "schema_versions",
+    "contamination_scan_status",
+    "leakage_scan_status",
+    "pii_scan_status",
+    "secret_scan_status",
+    "evaluation_set_exclusion_status",
+    "content_hash",
+    "training_allowed",
+    "store1_write_allowed",
+    "runtime_deployment_allowed",
+    "operator_promotion_required",
+    "build_mode"
+  ],
+
+  "properties": {
+
+    "dataset_id": {
+      "type": "string",
+      "description": "Content-addressed dataset identifier. Format: DS-YYYYMMDD-<sha256[:8]>. Derived from sorted accepted candidate IDs.",
+      "pattern": "^DS-[0-9]{8}-[0-9a-f]{8}$"
+    },
+
+    "dataset_version": {
+      "type": "string",
+      "description": "Dataset version string. Monotonically increasing for the same source configuration.",
+      "minLength": 1
+    },
+
+    "dataset_status": {
+      "type": "string",
+      "enum": [
+        "dataset_validation_passed",
+        "dataset_validation_failed",
+        "insufficient_dataset_size",
+        "contamination_blocked"
+      ],
+      "description": "Status after all quality gates. training_allowed remains false even for dataset_validation_passed."
+    },
+
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "builder_version": {
+      "type": "string",
+      "description": "Format: dataset_builder:<version>."
+    },
+
+    "build_mode": {
+      "type": "string",
+      "enum": ["simulation", "production"],
+      "description": "simulation: accepts TEST_ operator IDs for dry runs. production: rejects simulated operators."
+    },
+
+    "source_candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+
+    "accepted_record_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+
+    "rejected_record_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+
+    "train_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+
+    "validation_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+
+    "test_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+
+    "split_policy": {
+      "type": "object",
+      "required": ["train_fraction", "validation_fraction", "test_fraction",
+                   "deterministic_seed", "group_by_source_signature"],
+      "properties": {
+        "train_fraction":       { "type": "number" },
+        "validation_fraction":  { "type": "number" },
+        "test_fraction":        { "type": "number" },
+        "deterministic_seed":   { "type": "string" },
+        "group_by_source_signature": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+
+    "source_candidate_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Sorted list of accepted candidate_ids included in this dataset."
+    },
+
+    "source_decision_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "TR-02 decision IDs authorizing each accepted candidate."
+    },
+
+    "source_hashes": {
+      "type": "object",
+      "description": "Per-candidate content hashes for provenance tracing. Keyed by candidate_id.",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+
+    "schema_versions": {
+      "type": "object",
+      "description": "Schema versions used during construction.",
+      "properties": {
+        "candidate_schema":  { "type": "string" },
+        "decision_schema":   { "type": "string" },
+        "manifest_schema":   { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "contamination_scan_status": {
+      "type": "string",
+      "enum": ["PASSED", "PASSED_WITH_WARNINGS", "FAILED"]
+    },
+
+    "leakage_scan_status": {
+      "type": "string",
+      "enum": ["PASSED", "PASSED_WITH_WARNINGS", "FAILED"]
+    },
+
+    "pii_scan_status": {
+      "type": "string",
+      "enum": ["PASSED", "PASSED_WITH_WARNINGS", "FAILED"]
+    },
+
+    "secret_scan_status": {
+      "type": "string",
+      "enum": ["PASSED", "PASSED_WITH_WARNINGS", "FAILED"]
+    },
+
+    "evaluation_set_exclusion_status": {
+      "type": "string",
+      "enum": ["CONFIRMED_EXCLUDED", "EXCLUSION_FAILED"]
+    },
+
+    "content_hash": {
+      "type": "string",
+      "description": "SHA-256 of the full accepted dataset JSONL content in train+validation+test order.",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+
+    "training_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Always false at construction. Operator must separately sign a training-job contract."
+    },
+
+    "store1_write_allowed": {
+      "type": "boolean",
+      "const": false
+    },
+
+    "runtime_deployment_allowed": {
+      "type": "boolean",
+      "const": false
+    },
+
+    "operator_promotion_required": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true. A signed training-job contract is required before any training job may be submitted."
+    }
+  },
+
+  "additionalProperties": false,
+
+  "x-invariants": {
+    "training_allowed_const_false": "training_allowed is const:false. This manifest does not authorize training.",
+    "operator_promotion_required_const_true": "operator_promotion_required is const:true. TR-04 training-job contract sign-off required.",
+    "evaluation_excluded": "TAX2, BD1A, G4 variance cases, and other protected evaluation assets must not appear in train, validation, or test splits.",
+    "immutable_content_hash": "content_hash is the authoritative integrity check for the dataset artifact.",
+    "simulated_approval_production_blocked": "In production mode, decisions from TEST_ or _SIM_ operator IDs are rejected.",
+    "only_approved_training_candidates": "Only training_candidate records with action=approve and resulting_status=dataset_promotion_pending are eligible."
+  }
+}

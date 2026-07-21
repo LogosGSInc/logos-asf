@@ -1,0 +1,55 @@
+routing:
+  department: QA-01
+  intake_rules:
+    - if_request_contains:
+        - test plan
+        - test strategy
+        - test architecture
+        - coverage
+      assign:
+        primary: QA-01-SA-JOSHUA
+        secondary: QA-01-FA
+    - if_request_contains:
+        - regression
+        - prior failure
+        - known defect
+        - re-test
+      assign:
+        primary: QA-01-SA-NAOMI
+        secondary: QA-01-FA
+    - if_request_contains:
+        - edge case
+        - boundary
+        - unexpected input
+        - corner case
+      assign:
+        primary: QA-01-SA-ELISHA
+        secondary: QA-01-FA
+    - if_request_contains:
+        - release
+        - gate
+        - go-no-go
+        - ship criteria
+        - sign off
+      assign:
+        primary: QA-01-SA-JOASH
+        secondary: QA-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: QA-01-MA
+        secondary:
+          - QA-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: QA-01-MA
+    - if_critical_defect_found: true
+      notify:
+        - EN-01
+        - EX-01
+    - if_cross_department_dependency: true
+      notify:
+        - relevant_department_head

@@ -1,0 +1,65 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - direct_test_execution_results
+      - verified_defect_reproduction
+      - system_logs_during_test
+    tier_2:
+      - cross_referenced_test_reports
+      - peer_reviewed_test_plans
+    tier_3:
+      - single_tester_observations
+      - informal_defect_reports
+    tier_4:
+      - qa_analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - confirmed_defect
+    - suspected_defect
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence in quality assessment is below 0.80, require additional
+      test coverage before issuing release gate decision.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - scope_change_mid_test
+      - new_defect_class_discovered
+      - test_environment_integrity_question
+      - regression_suite_gap_found
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - reproduce_defects_before_logging
+      - classify_defect_severity_consistently
+      - maintain_test_traceability
+      - block_release_for_critical_defects
+    must_not:
+      - suppress_defects_to_meet_timelines
+      - approve_release_without_coverage_evidence
+      - reduce_scope_without_documented_justification
+      - override_security_holds
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - test_coverage_summary
+      - defects_found
+      - severity_classifications
+      - open_risks
+      - confidence
+      - gate_recommendation

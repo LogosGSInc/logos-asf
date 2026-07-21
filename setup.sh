@@ -157,8 +157,8 @@ warn "First build compiles Rust governance spine — takes 2-4 minutes."
 warn "Subsequent runs use Docker cache and start in ~10 seconds."
 echo ""
 
-docker compose down 2>/dev/null || true
-docker compose up --build -d
+docker compose --env-file .abigail.env down 2>/dev/null || true
+docker compose --env-file .abigail.env up --build -d
 
 # ── Health check ──────────────────────────────────────────────────────────────
 header "[ 5/5 ] Waiting for services..."
@@ -179,7 +179,7 @@ wait_for() {
   return 1
 }
 
-wait_for "http://localhost:9090/health" "Sentinel OverWatch"
+wait_for "http://localhost:9091/health" "Sentinel OverWatch"
 wait_for "http://localhost:7070/api/status" "Abigail CP-00"
 
 echo ""
@@ -188,7 +188,7 @@ echo -e "${BOLD}${GREEN}║  LOGOS ASF is running.                              
 echo -e "${BOLD}${GREEN}╚══════════════════════════════════════════════════════════════╝${RESET}"
 echo ""
 echo -e "  ${BOLD}Abigail CP-00     :${RESET}  http://localhost:7070"
-echo -e "  ${BOLD}Sentinel OverWatch:${RESET}  http://localhost:9090/health"
+echo -e "  ${BOLD}Sentinel OverWatch:${RESET}  http://localhost:9091/health"
 echo -e "  ${BOLD}Dashboard         :${RESET}  http://localhost:7070"
 echo ""
 

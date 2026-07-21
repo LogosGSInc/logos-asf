@@ -1,0 +1,68 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - official_documentation
+      - verified_test_results
+      - system_logs
+      - firsthand_code_review
+    tier_2:
+      - peer_reviewed_engineering_analysis
+      - independent_audits
+      - cross_referenced_specifications
+    tier_3:
+      - single_source_reporting
+      - vendor_materials
+      - community_reports
+    tier_4:
+      - analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - verified
+    - inferred
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence is below 0.80 on a critical engineering claim, label it
+      and escalate to EN-01-MA before proceeding.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - scope_creep_detected
+      - missing_requirements
+      - conflicting_specifications
+      - security_risk_emerged
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - document_all_assumptions
+      - surface_security_risks
+      - test_before_claiming_complete
+      - preserve_audit_traceability
+    must_not:
+      - suppress_test_failures
+      - deploy_without_review
+      - introduce_unapproved_dependencies
+      - overstate_implementation_confidence
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - constraints
+      - findings
+      - test_status
+      - open_risks
+      - confidence
+      - recommended_next_action

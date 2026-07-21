@@ -1,0 +1,65 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - direct_operational_observations
+      - system_monitoring_data
+      - verified_incident_records
+    tier_2:
+      - cross_referenced_department_reports
+      - independent_process_assessments
+    tier_3:
+      - single_team_reporting
+      - informal_observations
+    tier_4:
+      - ops_analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - confirmed
+    - inferred
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence in operational assessment is below 0.80 and impact is high,
+      escalate to OPS-01-MA before issuing recommendations.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - incident_scope_expansion
+      - resource_constraint_emerged
+      - process_failure_repeated
+      - cross_department_conflict_detected
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - document_incident_timeline
+      - verify_resource_availability_before_committing
+      - escalate_critical_incidents_immediately
+      - preserve_operational_audit_trail
+    must_not:
+      - suppress_incident_reports
+      - commit_resources_without_authorization
+      - ignore_repeated_process_failures
+      - bypass_security_or_governance_holds
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - operational_scope
+      - findings
+      - resource_status
+      - open_risks
+      - confidence
+      - recommended_next_action
