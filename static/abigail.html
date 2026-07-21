@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Abigail — Governed Operating Environment</title>
+<link rel="stylesheet" href="abigail.css"/>
+</head>
+<body>
+<!--
+  Abigail Command Center (P0 shell + P1 Home/Workspace).
+  Governed interface: LIVE only when a named endpoint backs the widget; Advanced
+  Mode reveals controls but grants nothing (backend admin token is authoritative).
+  Operations / Governance / Observability are honest empty states until later phases.
+-->
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark">A</div>
+      <div>
+        <div class="brand-name">Abigail</div>
+        <div class="brand-sub">Governed AI</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button data-tab="home" class="active">Home<small>What needs your attention</small></button>
+      <button data-tab="workspace">Workspace<small>Chat, tasks, approvals</small></button>
+      <button data-tab="operations">Operations<small>Departments &amp; jobs</small></button>
+      <button data-tab="governance">Governance<small>Trust, safety, audit</small></button>
+      <button data-tab="observability">Observability<small>Engineering truth</small></button>
+      <button data-tab="settings">Settings<small>Configuration</small></button>
+    </nav>
+    <div class="side-foot">
+      <div class="adv-toggle" id="advToggle"><span class="sw"></span> Advanced Mode</div>
+      <a class="tiny" href="operator.html">Operator Mode →</a>
+      <div class="tiny">LOGOS Governance Systems</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="tiny">High speed · low drag · enterprise-grade</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <span class="refresh" id="refreshStatus">Initializing…</span>
+        <button class="btn" id="refreshBtn">↻ Refresh</button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="adv-banner">⚠ Advanced Mode is ON — privileged controls are revealed. Actions still require the operator admin token; the backend enforces authorization.</div>
+      <section id="tab-home"        class="tab active"></section>
+      <section id="tab-workspace"   class="tab"></section>
+      <section id="tab-operations"  class="tab"></section>
+      <section id="tab-governance"  class="tab"></section>
+      <section id="tab-observability" class="tab"></section>
+      <section id="tab-settings"    class="tab"></section>
+    </div>
+  </main>
+</div>
+
+<!-- confirm + reason modal (wired for destructive actions in later phases) -->
+<div class="modal-back" id="modalBack">
+  <div class="modal">
+    <h3 id="modalTitle">Confirm action</h3>
+    <div class="tiny" id="modalDesc"></div>
+    <textarea id="modalReason" placeholder="Reason (required — recorded for audit)"></textarea>
+    <div class="actions">
+      <button class="btn" id="modalCancel">Cancel</button>
+      <button class="btn danger" id="modalConfirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script src="abigail.js"></script>
+</body>
+</html>

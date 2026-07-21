@@ -666,8 +666,9 @@ class TestModulePurity:
 
     def test_existing_live_eval_interface_tests_pass(self):
         import subprocess
+        import sys
         result = subprocess.run(
-            ["python3", "-m", "pytest", "-q",
+            [sys.executable, "-m", "pytest", "-q",
              "training/tests/test_live_eval_interface.py", "--tb=short"],
             capture_output=True, text=True,
         )

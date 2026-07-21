@@ -239,10 +239,20 @@ fn handle(
             }
             let escalated  = parse_json_field(&body, "escalated")
                 .map(|v| v == "true").unwrap_or(false);
-            pipeline.end_session(&session_id, &actor_id);
+            // GS-BUILD-01: report the real persistence outcome, decoupled into
+            // two honest facts:
+            //   persisted  — did THIS call durably write a session profile to
+            //                SENTOW_MEMORY_PATH (true only with real session data
+            //                + a successful disk write).
+            //   durability — the store's configuration ("disk" vs
+            //                "in-memory-only"), independent of this call.
+            // This replaces the previous unconditional "persisted":true (GS-FIX-01)
+            // without re-introducing a claim-without-a-write.
+            let persisted = pipeline.end_session(&session_id, &actor_id);
+            let durability = if pipeline.memory_is_durable() { "disk" } else { "in-memory-only" };
             ok_json(&format!(
-                "{{\"ok\":true,\"actor_id\":\"{}\",\"session_id\":\"{}\",\"persisted\":true,\"escalated\":{}}}",
-                actor_id, session_id, escalated
+                "{{\"ok\":true,\"actor_id\":\"{}\",\"session_id\":\"{}\",\"persisted\":{},\"durability\":\"{}\",\"escalated\":{}}}",
+                actor_id, session_id, persisted, durability, escalated
             ))
         }
 

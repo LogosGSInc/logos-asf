@@ -6,6 +6,13 @@ COPY abigail/abigail_hardened_enhanced.py /app/abigail_hardened_enhanced.py
 COPY abigail/tacit_prepass.py /app/tacit_prepass.py
 COPY abigail/agent_loader.py /app/agent_loader.py
 COPY agents /app/agents
+
+# Governance stack — required for command bus (CB-01) and MM-01/02/03 orchestration
+# (approval gate). Placed at /app so top-level imports resolve, matching local sys.path.
+COPY abigail/command_bus.py /app/command_bus.py
+COPY abigail/agent_loader.py /app/agent_loader.py
+COPY abigail/orchestration /app/orchestration
+COPY abigail/model_router /app/model_router
 COPY abigail/entrypoint.sh /app/entrypoint.sh
 # Static UI (index.html, dashboard.html, intake.html)
 COPY static /app/static

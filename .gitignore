@@ -25,3 +25,11 @@ venv/
 .DS_Store
 Thumbs.db
 .env
+
+# AG-01 generated swarm job artifacts (local, do not commit)
+runtime/
+.claude/worktrees/
+
+# Local merge/edit backups
+setup.sh.bak
+static/dashboard.html.pre-abigail-ui-backup
