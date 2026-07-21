@@ -1,3 +1,4 @@
+pub mod capability;
 pub mod governance_signal;
 pub mod crypto;
 pub mod constitution;
