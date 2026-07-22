@@ -53,7 +53,17 @@
   }
 
   // ── shared state (only real, sourced data lives here) ────────────────
-  var state = { status: null, sentinel: null, audit: [], auditLive: false, lastRefresh: null };
+  var state = {
+    status: null,
+    sentinel: null,
+    audit: [],
+    auditLive: false,
+    agents: [],
+    agentsLive: false,
+    agentLoaderOk: false,
+    agentGovernedBy: null,
+    lastRefresh: null
+  };
 
   // ── refresh: pulls ONLY real endpoints ──────────────────────────────
   async function refresh() {
@@ -61,6 +71,26 @@
     state.status = s.ok ? s.body : null;
     var sh = await fetchJSON("/api/sentinel-health");
     state.sentinel = sh.ok ? sh.body : null;
+
+    // Agent inventory is a real read-only endpoint. It describes loaded agent
+    // definitions only; it does not imply dispatch authorization.
+    var ar = await fetchJSON("/api/agents");
+    var agentRows = ar.ok && Array.isArray(ar.body.agents)
+      ? ar.body.agents
+      : null;
+
+    if (agentRows) {
+      state.agents = agentRows;
+      state.agentsLive = true;
+      state.agentLoaderOk = ar.body.loader_ok === true;
+      state.agentGovernedBy = ar.body.governed_by || null;
+    } else {
+      state.agents = [];
+      state.agentsLive = false;
+      state.agentLoaderOk = false;
+      state.agentGovernedBy = null;
+    }
+
     // audit tail is admin-gated; best-effort, honestly OFFLINE without a token
     var a = await fetchJSON("/api/audit/tail?n=25", { headers: adminHeaders() });
     // Backend returns {events:[...]}; accept legacy {entries:[...]} defensively. Without a
@@ -244,6 +274,115 @@
     renderWorkspace();
   }
 
+
+  // ══════════════════════════════════════════════════════════════════════
+  // OPERATIONS — live read-only agent inventory.
+  // Loaded means present in the registry; it does NOT imply execution authority.
+  // ══════════════════════════════════════════════════════════════════════
+  function renderOperations() {
+    var el = document.getElementById("tab-operations");
+    if (!el) return;
+
+    if (!state.agentsLive) {
+      el.innerHTML =
+        '<div class="card"><div class="empty">' +
+          '<h3>Operations</h3>' +
+          '<div class="tiny">Agent registry is currently unavailable.</div>' +
+          provBadge("offline") +
+        "</div></div>";
+      return;
+    }
+
+    var grouped = {};
+    state.agents.forEach(function (agent) {
+      var dept = String(agent.department || "UNASSIGNED");
+      if (!grouped[dept]) grouped[dept] = [];
+      grouped[dept].push(agent);
+    });
+
+    var departments = Object.keys(grouped).sort();
+    var cards = departments.map(function (dept) {
+      var agents = grouped[dept].slice().sort(function (a, b) {
+        return String(a.name || a.id).localeCompare(String(b.name || b.id));
+      });
+
+      var rows = agents.map(function (agent) {
+        var specialty = agent.specialty
+          ? String(agent.specialty).replace(/_/g, " ")
+          : "general assignment";
+
+        return (
+          '<div class="ops-agent">' +
+            '<div>' +
+              '<div class="ops-agent-name">' +
+                esc(agent.name || agent.id) +
+              "</div>" +
+              '<span class="ops-agent-id">' +
+                esc(agent.id || "") +
+              "</span>" +
+              '<span class="ops-agent-specialty">' +
+                esc(specialty) +
+              "</span>" +
+            "</div>" +
+            '<div>' + provBadge("loaded") + "</div>" +
+          "</div>"
+        );
+      }).join("");
+
+      return (
+        '<details class="ops-dept">' +
+          '<summary>' +
+            '<span>' + esc(dept) + "</span>" +
+            '<span class="tiny">' + agents.length + " loaded agents</span>" +
+          "</summary>" +
+          '<div class="ops-dept-body">' + rows + "</div>" +
+        "</details>"
+      );
+    }).join("");
+
+    el.innerHTML =
+      '<div class="greeting">Operations</div>' +
+      '<div class="sub" style="margin:4px 0 18px">' +
+        'Live read-only inventory of agents loaded into Abigail.' +
+      "</div>" +
+
+      '<div class="card">' +
+        '<div class="row">' +
+          '<h3>Agent Registry</h3>' +
+          provBadge("live") +
+        "</div>" +
+        '<div class="section">' +
+          '<div class="brief-line">' +
+            '<span class="lbl">Loaded agents</span>' +
+            '<span class="val"><strong>' + state.agents.length + "</strong></span>" +
+          "</div>" +
+          '<div class="brief-line">' +
+            '<span class="lbl">Departments</span>' +
+            '<span class="val"><strong>' + departments.length + "</strong></span>" +
+          "</div>" +
+          '<div class="brief-line">' +
+            '<span class="lbl">Registry loader</span>' +
+            '<span class="val">' +
+              (state.agentLoaderOk ? "Operational " + provBadge("live") : "Unavailable " + provBadge("offline")) +
+            "</span>" +
+          "</div>" +
+          '<div class="brief-line">' +
+            '<span class="lbl">Governed by</span>' +
+            '<span class="val">' + esc(state.agentGovernedBy || "not reported") + "</span>" +
+          "</div>" +
+        "</div>" +
+        '<div class="ops-dispatch-note">' +
+          '<strong>Dispatch status: NOT VERIFIED.</strong> ' +
+          'LOADED means the definition is present in the live registry. ' +
+          'It does not yet prove capability-bound agent execution.' +
+        "</div>" +
+      "</div>" +
+
+      '<div class="ops-grid">' +
+        cards +
+      "</div>";
+  }
+
   // ── empty state for phases not yet built (honest, no fabricated data) ─
   function emptyTab(id, title, note) {
     var el = document.getElementById("tab-" + id);
@@ -257,7 +396,7 @@
   function renderActive() {
     if (activeTab === "home") renderHome();
     else if (activeTab === "workspace") renderWorkspace();
-    else if (activeTab === "operations") emptyTab("operations", "Operations", "Departments & jobs — arriving in Phase 2.");
+    else if (activeTab === "operations") renderOperations();
     else if (activeTab === "governance") emptyTab("governance", "Governance", "Emergency / Controls / Audit — arriving in Phase 3.");
     else if (activeTab === "observability") emptyTab("observability", "Observability", "Runtime, provider status & raw metrics — arriving in Phase 2.");
     else if (activeTab === "settings") renderSettings();

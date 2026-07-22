@@ -125,6 +125,7 @@ h4 { font-size: .82rem; }
   border-radius: var(--r-pill); border: 1px solid; background: var(--panel-3); white-space: nowrap;
 }
 .prov.live      { color: var(--success);  border-color: rgba(52,211,154,.4); }
+.prov.loaded    { color: var(--accent);   border-color: rgba(61,127,242,.4); }
 .prov.simulated { color: var(--warning);  border-color: rgba(224,161,58,.4); }
 .prov.cached    { color: var(--accent);   border-color: rgba(61,127,242,.4); }
 .prov.offline   { color: var(--muted);    border-color: var(--border-hi); }
@@ -220,3 +221,102 @@ body.adv .adv-banner {
 .empty h3 { color: var(--silver); margin-bottom: 6px; }
 .empty .prov { margin-top: 12px; }
 .tiny { font-size: .72rem; color: var(--muted); }
+
+
+/* ── Operations registry ───────────────────────────────────────────── */
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.ops-dept {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255,255,255,.012);
+  overflow: hidden;
+}
+
+.ops-dept summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  color: #e8ecf2;
+  font-weight: 700;
+}
+
+.ops-dept summary::-webkit-details-marker {
+  display: none;
+}
+
+.ops-dept summary::after {
+  content: "＋";
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.ops-dept[open] summary::after {
+  content: "−";
+}
+
+.ops-dept-body {
+  border-top: 1px solid var(--border);
+  padding: 6px 16px 12px;
+}
+
+.ops-agent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ops-agent:last-child {
+  border-bottom: 0;
+}
+
+.ops-agent-name {
+  color: #e8ecf2;
+  font-weight: 700;
+}
+
+.ops-agent-id,
+.ops-agent-specialty {
+  display: block;
+  margin-top: 3px;
+  font-size: .72rem;
+  line-height: 1.35;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ops-agent-specialty {
+  color: var(--silver);
+}
+
+.ops-dispatch-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(224,161,58,.3);
+  border-radius: 8px;
+  background: rgba(224,161,58,.05);
+  color: var(--muted);
+  font-size: .75rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .ops-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-agent {
+    grid-template-columns: 1fr;
+  }
+}
