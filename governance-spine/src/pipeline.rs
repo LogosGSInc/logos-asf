@@ -1,5 +1,10 @@
-use crate::verdict_ledger::SentinelVerdictLedger;
+use crate::verdict_ledger::{ResolveOutcome, SentinelVerdictLedger};
 use crate::{
+    capability::{
+        CapabilityError, CapabilityStore, CapabilityToken, ConsumeOutcome,
+        DecisionRequest, IssueOutcome, PresentedBinding,
+        AUTHORITY_PROVIDER_EXECUTE,
+    },
     sentinel::Sentinel,
     corridor::Corridor,
     overwatch::{OverWatch, OverWatchConfig},
@@ -47,6 +52,36 @@ pub struct RestrictionsApplied {
     pub enhanced_logging: bool,
 }
 
+/// Scope requested for one provider execution. The Sentinel verdict identifier
+/// is deliberately absent: GovernancePipeline resolves its own final-approved
+/// receipt from gov_tx_id + session_id.
+#[derive(Debug, Clone)]
+pub struct ProviderAuthorizationRequest {
+    pub gov_tx_id: String,
+    pub session_id: String,
+    pub principal_fingerprint: String,
+    pub backend: String,
+    pub model: String,
+    pub action_class: String,
+    pub policy_hash: String,
+    pub authorization_basis: String,
+    pub agency: String,
+    pub drs: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderAuthorizationError {
+    ApprovedVerdictMissing,
+    VerdictNotFound,
+    VerdictTransactionMismatch,
+    VerdictSessionMismatch,
+    VerdictNotFinalApproved,
+    VerdictWrongDirection,
+    Decision(CapabilityError),
+    DecisionNotFound,
+    AlreadyIssued,
+}
+
 pub struct GovernancePipeline {
     sentinel: Sentinel,
     corridor: Corridor,
@@ -74,6 +109,9 @@ pub struct GovernancePipeline {
     govmem_agent_id: String,
     govmem_department_id: String,
     verdict_ledger: SentinelVerdictLedger,
+
+    // Decision-bound, signed, single-use provider execution authority.
+    capability_store: CapabilityStore,
 }
 
 impl GovernancePipeline {
@@ -100,6 +138,7 @@ impl GovernancePipeline {
         let oim = Arc::new(RwLock::new(OIM::new(crypto.clone())));
         let arbiter = Arc::new(Arbiter::new(arbiter_config, crypto.clone()));
         let haap = Arc::new(HaapGate::new(HaapConfig::default(), crypto.clone()));
+        let capability_store = CapabilityStore::new(crypto.clone());
 
         let constitutional_evaluator = constitution
             .map(ConstitutionalEvaluator::new)
@@ -144,6 +183,7 @@ impl GovernancePipeline {
             govmem_agent_id,
             govmem_department_id,
             verdict_ledger: SentinelVerdictLedger::new(),
+            capability_store,
         })
     }
 
@@ -656,5 +696,226 @@ impl GovernancePipeline {
     ) -> Option<String> {
         self.verdict_ledger
             .approved_verdict_id(gov_tx_id, session_id)
+    }
+
+    /// Convert a final-approved Sentinel transaction into a signed, scoped,
+    /// single-use provider capability.
+    ///
+    /// The caller cannot supply or manufacture the Sentinel verdict ID.
+    /// It is resolved internally from the pipeline-owned final-approval index.
+    pub fn authorize_provider_execution(
+        &self,
+        req: ProviderAuthorizationRequest,
+    ) -> Result<CapabilityToken, ProviderAuthorizationError> {
+        let verdict_id = self.verdict_ledger
+            .approved_verdict_id(&req.gov_tx_id, &req.session_id)
+            .ok_or(ProviderAuthorizationError::ApprovedVerdictMissing)?;
+
+        let (resolve_outcome, record) = self.verdict_ledger.resolve(
+            &verdict_id,
+            &req.gov_tx_id,
+            &req.session_id,
+        );
+
+        let record = match resolve_outcome {
+            ResolveOutcome::Found => record
+                .ok_or(ProviderAuthorizationError::VerdictNotFound)?,
+            ResolveOutcome::NotFound =>
+                return Err(ProviderAuthorizationError::VerdictNotFound),
+            ResolveOutcome::TransactionMismatch =>
+                return Err(ProviderAuthorizationError::VerdictTransactionMismatch),
+            ResolveOutcome::SessionMismatch =>
+                return Err(ProviderAuthorizationError::VerdictSessionMismatch),
+        };
+
+        if !record.final_approved {
+            return Err(ProviderAuthorizationError::VerdictNotFinalApproved);
+        }
+        if !matches!(record.direction, Direction::Inbound) {
+            return Err(ProviderAuthorizationError::VerdictWrongDirection);
+        }
+
+        let decision_id = self.capability_store.record_decision(DecisionRequest {
+            gov_tx_id: req.gov_tx_id,
+            session_id: req.session_id,
+            principal_fingerprint: req.principal_fingerprint,
+            authority: AUTHORITY_PROVIDER_EXECUTE.to_string(),
+            backend: req.backend,
+            model: req.model,
+            action_class: req.action_class,
+            sentinel_verdict_id: verdict_id,
+            policy_hash: req.policy_hash,
+            authorization_basis: req.authorization_basis,
+            agency: req.agency,
+            drs: req.drs,
+        }).map_err(ProviderAuthorizationError::Decision)?;
+
+        match self.capability_store.issue_after_authorization(&decision_id) {
+            IssueOutcome::Issued(token) => Ok(token),
+            IssueOutcome::DecisionNotFound =>
+                Err(ProviderAuthorizationError::DecisionNotFound),
+            IssueOutcome::AlreadyIssued =>
+                Err(ProviderAuthorizationError::AlreadyIssued),
+        }
+    }
+
+    /// Atomic verify-and-burn. Only Authorized permits the provider adapter to
+    /// cross the external network execution boundary.
+    pub fn consume_provider_capability(
+        &self,
+        binding: &PresentedBinding<'_>,
+    ) -> ConsumeOutcome {
+        self.capability_store.consume(binding)
+    }
+}
+
+#[cfg(test)]
+mod provider_capability_tests {
+    use super::*;
+    use crate::capability::{
+        ConsumeOutcome, PresentedBinding, AUTHORITY_PROVIDER_EXECUTE,
+    };
+
+    fn request(tx: &str, session: &str) -> ProviderAuthorizationRequest {
+        ProviderAuthorizationRequest {
+            gov_tx_id: tx.to_string(),
+            session_id: session.to_string(),
+            principal_fingerprint: "abigail-control-plane".to_string(),
+            backend: "groq".to_string(),
+            model: "llama-test".to_string(),
+            action_class: "llm_inference".to_string(),
+            policy_hash: "policy-test-v1".to_string(),
+            authorization_basis: "BelowRiskThreshold".to_string(),
+            agency: "ExecuteActions".to_string(),
+            drs: 0,
+        }
+    }
+
+    #[test]
+    fn provider_capability_requires_final_approved_inbound_receipt() {
+        let pipeline = GovernancePipeline::default_pipeline()
+            .expect("pipeline");
+
+        let result = pipeline.authorize_provider_execution(
+            request("GTX-no-inbound", "sess-no-inbound")
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            ProviderAuthorizationError::ApprovedVerdictMissing
+        );
+    }
+
+    #[test]
+    fn final_approved_inbound_issues_and_consumes_once() {
+        let pipeline = GovernancePipeline::default_pipeline()
+            .expect("pipeline");
+
+        let tx = "GTX-provider-happy";
+        let session = "sess-provider-happy";
+
+        let inbound = pipeline.inbound(
+            "Explain the principle of least privilege.",
+            session,
+            tx,
+        );
+        assert!(
+            matches!(inbound, EnforcementResult::Approved(_)),
+            "test input must complete the full inbound pipeline as APPROVED"
+        );
+
+        let token = pipeline.authorize_provider_execution(
+            request(tx, session)
+        ).expect("final-approved transaction should issue capability");
+
+        assert_eq!(token.gov_tx_id, tx);
+        assert_eq!(token.session_id, session);
+        assert_eq!(token.backend, "groq");
+        assert_eq!(token.model, "llama-test");
+        assert_eq!(token.authority, AUTHORITY_PROVIDER_EXECUTE);
+        assert_eq!(token.max_uses, 1);
+        assert_eq!(token.use_count, 0);
+
+        let binding = PresentedBinding {
+            token_id: &token.token_id,
+            gov_tx_id: tx,
+            session_id: session,
+            principal_fingerprint: "abigail-control-plane",
+            authority: AUTHORITY_PROVIDER_EXECUTE,
+            backend: "groq",
+            model: "llama-test",
+        };
+
+        assert_eq!(
+            pipeline.consume_provider_capability(&binding),
+            ConsumeOutcome::Authorized
+        );
+        assert_eq!(
+            pipeline.consume_provider_capability(&binding),
+            ConsumeOutcome::AlreadyConsumed
+        );
+    }
+
+    #[test]
+    fn provider_capability_remains_session_and_scope_bound() {
+        let pipeline = GovernancePipeline::default_pipeline()
+            .expect("pipeline");
+
+        let tx = "GTX-provider-scope";
+        let session = "sess-provider-scope";
+
+        let inbound = pipeline.inbound(
+            "Summarize this harmless governance note.",
+            session,
+            tx,
+        );
+        assert!(matches!(inbound, EnforcementResult::Approved(_)));
+
+        let token = pipeline.authorize_provider_execution(
+            request(tx, session)
+        ).expect("capability");
+
+        let wrong_session = PresentedBinding {
+            token_id: &token.token_id,
+            gov_tx_id: tx,
+            session_id: "sess-other",
+            principal_fingerprint: "abigail-control-plane",
+            authority: AUTHORITY_PROVIDER_EXECUTE,
+            backend: "groq",
+            model: "llama-test",
+        };
+        assert_eq!(
+            pipeline.consume_provider_capability(&wrong_session),
+            ConsumeOutcome::SessionMismatch
+        );
+
+        let wrong_backend = PresentedBinding {
+            token_id: &token.token_id,
+            gov_tx_id: tx,
+            session_id: session,
+            principal_fingerprint: "abigail-control-plane",
+            authority: AUTHORITY_PROVIDER_EXECUTE,
+            backend: "anthropic",
+            model: "llama-test",
+        };
+        assert_eq!(
+            pipeline.consume_provider_capability(&wrong_backend),
+            ConsumeOutcome::BackendMismatch
+        );
+
+        // Failed mismatched presentations must not burn the valid capability.
+        let valid = PresentedBinding {
+            token_id: &token.token_id,
+            gov_tx_id: tx,
+            session_id: session,
+            principal_fingerprint: "abigail-control-plane",
+            authority: AUTHORITY_PROVIDER_EXECUTE,
+            backend: "groq",
+            model: "llama-test",
+        };
+        assert_eq!(
+            pipeline.consume_provider_capability(&valid),
+            ConsumeOutcome::Authorized
+        );
     }
 }
