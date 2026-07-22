@@ -10,6 +10,8 @@ pub struct VerdictRecord {
     pub verdict_id: String,
     pub gov_tx_id: String,
     pub session_id: String,
+    /// True only when the complete inbound pipeline finally approved execution.
+    pub final_approved: bool,
     pub direction: Direction,
     pub violation_class: Option<String>,
     pub severity: Severity,
@@ -29,11 +31,16 @@ pub enum ResolveOutcome {
 
 pub struct SentinelVerdictLedger {
     verdicts: Arc<RwLock<HashMap<String, VerdictRecord>>>,
+    /// (gov_tx_id|session_id) -> final approved verdict_id.
+    approved_by_tx: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl SentinelVerdictLedger {
     pub fn new() -> Self {
-        Self { verdicts: Arc::new(RwLock::new(HashMap::new())) }
+        Self {
+            verdicts: Arc::new(RwLock::new(HashMap::new())),
+            approved_by_tx: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
     pub fn record(&self, gov_tx_id: &str, signal: &GovernanceSignal) -> String {
@@ -42,6 +49,7 @@ impl SentinelVerdictLedger {
             verdict_id: verdict_id.clone(),
             gov_tx_id: gov_tx_id.to_string(),
             session_id: signal.session_id.clone(),
+            final_approved: false,
             direction: signal.direction.clone(),
             violation_class: signal.violation_class.clone(),
             severity: signal.severity.clone(),
@@ -52,6 +60,47 @@ impl SentinelVerdictLedger {
         };
         self.verdicts.write().insert(verdict_id.clone(), record);
         verdict_id
+    }
+
+    /// Record execution authority only after every inbound layer has
+    /// produced a final APPROVED result.
+    pub fn record_final_approved(
+        &self,
+        gov_tx_id: &str,
+        signal: &GovernanceSignal,
+    ) -> String {
+        let verdict_id = format!("SV-{}", uuid::Uuid::new_v4().simple());
+        let record = VerdictRecord {
+            verdict_id: verdict_id.clone(),
+            gov_tx_id: gov_tx_id.to_string(),
+            session_id: signal.session_id.clone(),
+            final_approved: true,
+            direction: signal.direction.clone(),
+            violation_class: signal.violation_class.clone(),
+            severity: signal.severity.clone(),
+            confidence: signal.confidence,
+            payload_hash: signal.payload_hash.clone(),
+            signal_signature: signal.signature.clone().unwrap_or_default(),
+            recorded_at: Utc::now(),
+        };
+
+        self.verdicts.write().insert(verdict_id.clone(), record);
+        self.approved_by_tx.write().insert(
+            format!("{}|{}", gov_tx_id, signal.session_id),
+            verdict_id.clone(),
+        );
+        verdict_id
+    }
+
+    pub fn approved_verdict_id(
+        &self,
+        gov_tx_id: &str,
+        session_id: &str,
+    ) -> Option<String> {
+        self.approved_by_tx
+            .read()
+            .get(&format!("{}|{}", gov_tx_id, session_id))
+            .cloned()
     }
 
     pub fn resolve(&self, verdict_id: &str, gov_tx_id: &str, session_id: &str)
@@ -123,13 +172,55 @@ mod tests {
     }
 
     #[test]
+    fn intermediate_record_is_not_execution_authority() {
+        let ledger = SentinelVerdictLedger::new();
+        let sig = approved_signal("sess1");
+
+        let intermediate_id = ledger.record("tx1", &sig);
+
+        assert!(
+            ledger.approved_verdict_id("tx1", "sess1").is_none(),
+            "intermediate Sentinel evidence must not authorize provider execution"
+        );
+
+        let (outcome, record) = ledger.resolve(&intermediate_id, "tx1", "sess1");
+        assert_eq!(outcome, ResolveOutcome::Found);
+        assert!(!record.unwrap().final_approved);
+    }
+
+    #[test]
+    fn final_approved_receipt_is_execution_authority() {
+        let ledger = SentinelVerdictLedger::new();
+        let sig = approved_signal("sess1");
+
+        let verdict_id = ledger.record_final_approved("tx1", &sig);
+
+        assert_eq!(
+            ledger.approved_verdict_id("tx1", "sess1"),
+            Some(verdict_id.clone())
+        );
+
+        let (outcome, record) = ledger.resolve(&verdict_id, "tx1", "sess1");
+        assert_eq!(outcome, ResolveOutcome::Found);
+        assert!(record.unwrap().final_approved);
+
+        assert!(
+            ledger.approved_verdict_id("tx1", "other-session").is_none(),
+            "execution authority must remain session-bound"
+        );
+    }
+
+    #[test]
     fn concurrent_record_all_persist_distinctly() {
         let ledger = SentinelVerdictLedger::new();
         const N: usize = 64;
         let recorded = Arc::new(AtomicUsize::new(0));
         let mut handles = Vec::new();
         for i in 0..N {
-            let ledger = SentinelVerdictLedger { verdicts: ledger.verdicts.clone() };
+            let ledger = SentinelVerdictLedger {
+                verdicts: ledger.verdicts.clone(),
+                approved_by_tx: ledger.approved_by_tx.clone(),
+            };
             let recorded = recorded.clone();
             handles.push(thread::spawn(move || {
                 let sig = approved_signal(&format!("sess{i}"));

@@ -263,10 +263,7 @@ impl GovernancePipeline {
                     "Authorization token rejected. Contact operator.".to_string(),
                 );
             }
-            _ => {
-                // Authorized or TokenVerified — turn cleared every gate.
-                self.verdict_ledger.record(gov_tx_id, &s_signal);
-            }
+            _ => {}
         }
 
         // OIM: Integrity monitor
@@ -302,7 +299,16 @@ impl GovernancePipeline {
             state
         };
 
-        self.enforcement_result(final_state, user_input, session_id)
+        let final_result = self.enforcement_result(final_state, user_input, session_id);
+
+        // Execution authority is recorded only after every inbound layer,
+        // including OIM and the memory floor, finally approves the turn.
+        if matches!(final_result, EnforcementResult::Approved(_)) {
+            self.verdict_ledger
+                .record_final_approved(gov_tx_id, &s_signal);
+        }
+
+        final_result
     }
 
     /// OUTBOUND: Corridor → OverWatch → OIM → Sentinel → Arbiter decision
@@ -639,5 +645,16 @@ impl GovernancePipeline {
     /// Expose HAAP gate for operator token registration and preauth.
     pub fn haap(&self) -> &Arc<HaapGate> {
         &self.haap
+    }
+
+    /// Return a verdict handle only for a transaction approved by the
+    /// complete inbound governance pipeline.
+    pub fn approved_verdict_id(
+        &self,
+        gov_tx_id: &str,
+        session_id: &str,
+    ) -> Option<String> {
+        self.verdict_ledger
+            .approved_verdict_id(gov_tx_id, session_id)
     }
 }
