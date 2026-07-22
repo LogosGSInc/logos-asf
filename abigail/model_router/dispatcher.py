@@ -22,6 +22,13 @@ from .live_adapters import get_live_dispatch
 _SAFE_FALLBACK_ORDER = ["groq", "current_backend", "local"]
 
 
+def _card_value(card, key, default=None):
+    """Read router cards consistently whether returned as dicts or models."""
+    if isinstance(card, dict):
+        return card.get(key, default)
+    return getattr(card, key, default)
+
+
 def _audit(provider, status, reason, fallback, subscriber_tier):
     return {
         "provider_selected": provider,
@@ -100,6 +107,151 @@ def dispatch(provider, messages, system, *, approval_state, cost_state,
         return _fallback(provider, f"adapter_error:{type(exc).__name__}", subscriber_tier, table)
 
 
+def governed_route_selection(text, *, drs_score=5, approval_state, cost_state,
+                              subscriber_tier="paid", route_fn=None,
+                              dispatch_table=None):
+    """Select and validate a live provider without executing it.
+
+    This is the required pre-execution boundary for Sentinel capability
+    authorization. It performs approval, cost, routing, live-wiring, key,
+    tier, and health checks, then returns the selected provider. No model
+    adapter is called.
+    """
+    table = dispatch_table if dispatch_table is not None else get_live_dispatch()
+    cost_state = cost_state or {"approved": False}
+
+    if approval_state != "cleared":
+        rec = _audit(
+            None,
+            "approval_required",
+            "approval_gate_blocked",
+            None,
+            subscriber_tier,
+        )
+        return {
+            "provider_selected": None,
+            "selection_status": "approval_required",
+            "reason": "approval_gate_blocked",
+            "fallback_provider": None,
+            "audit_record": rec,
+            "routed": False,
+        }
+
+    if not cost_state.get("approved"):
+        rec = _audit(
+            None,
+            "blocked",
+            "cost_gate_blocked",
+            None,
+            subscriber_tier,
+        )
+        return {
+            "provider_selected": None,
+            "selection_status": "blocked",
+            "reason": "cost_gate_blocked",
+            "fallback_provider": None,
+            "audit_record": rec,
+            "routed": False,
+        }
+
+    if route_fn is None:
+        from .router import route_request as route_fn
+
+    card = route_fn(text, drs_score, [], None)
+    provider = _card_value(card, "selected_provider", "current_backend")
+
+    if provider not in table:
+        rec = _audit(
+            provider,
+            "unavailable",
+            "provider_not_live_wired",
+            None,
+            subscriber_tier,
+        )
+        return {
+            "provider_selected": provider,
+            "selection_status": "unavailable",
+            "reason": "provider_not_live_wired",
+            "fallback_provider": None,
+            "audit_record": rec,
+            "routed": True,
+            "route_request_type": _card_value(card, "request_type"),
+        }
+
+    if not caps.key_present(provider):
+        rec = _audit(
+            provider,
+            "unavailable",
+            "key_missing",
+            None,
+            subscriber_tier,
+        )
+        return {
+            "provider_selected": provider,
+            "selection_status": "unavailable",
+            "reason": "key_missing",
+            "fallback_provider": None,
+            "audit_record": rec,
+            "routed": True,
+            "route_request_type": _card_value(card, "request_type"),
+        }
+
+    if not caps.tier_permits(subscriber_tier, provider):
+        rec = _audit(
+            provider,
+            "unavailable",
+            "tier_not_permitted",
+            None,
+            subscriber_tier,
+        )
+        return {
+            "provider_selected": provider,
+            "selection_status": "unavailable",
+            "reason": "tier_not_permitted",
+            "fallback_provider": None,
+            "audit_record": rec,
+            "routed": True,
+            "route_request_type": _card_value(card, "request_type"),
+        }
+
+    provider_health = caps.health(provider)
+    if provider_health != "available":
+        reason = f"provider_{provider_health}"
+        rec = _audit(
+            provider,
+            "unavailable",
+            reason,
+            None,
+            subscriber_tier,
+        )
+        return {
+            "provider_selected": provider,
+            "selection_status": "unavailable",
+            "reason": reason,
+            "fallback_provider": None,
+            "audit_record": rec,
+            "routed": True,
+            "route_request_type": _card_value(card, "request_type"),
+        }
+
+    rec = _audit(
+        provider,
+        "selected",
+        "all_selection_gates_passed",
+        None,
+        subscriber_tier,
+    )
+    return {
+        "provider_selected": provider,
+        "selection_status": "selected",
+        "reason": "all_selection_gates_passed",
+        "fallback_provider": None,
+        "audit_record": rec,
+        "routed": True,
+        "route_request_type": _card_value(card, "request_type"),
+    }
+
+
 def governed_route_and_dispatch(text, *, drs_score=5, approval_state, cost_state,
                                 subscriber_tier="paid", route_fn=None,
                                 dispatch_table=None, messages=None, system=""):
@@ -121,11 +273,11 @@ def governed_route_and_dispatch(text, *, drs_score=5, approval_state, cost_state
     if route_fn is None:
         from .router import route_request as route_fn  # lazy
     card = route_fn(text, drs_score, [], None)
-    provider = getattr(card, "selected_provider", "current_backend")
+    provider = _card_value(card, "selected_provider", "current_backend")
     # execution gate
     result = dispatch(provider, messages or [{"role": "user", "content": text}], system,
                       approval_state="cleared", cost_state=cost_state,
                       subscriber_tier=subscriber_tier, dispatch_table=dispatch_table)
     result["routed"] = True
-    result["route_request_type"] = getattr(card, "request_type", None)
+    result["route_request_type"] = _card_value(card, "request_type")
     return result
