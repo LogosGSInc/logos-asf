@@ -34,11 +34,23 @@ class _Sess:
 
 
 def _mock_sentinel(monkeypatch, verdict):
-    """Mock the Rust Sentinel /inspect call to return a fixed verdict string."""
-    monkeypatch.setattr(
-        A, "_sentinel_inspect",
-        lambda *a, **k: {"ok": verdict in ("APPROVED",), "verdict": verdict},
-    )
+    """Mock the Rust Sentinel /inspect call with authoritative approval evidence."""
+    def _result(_payload, session_id):
+        result = {
+            "ok": verdict == "APPROVED",
+            "verdict": verdict,
+            "session_id": session_id,
+        }
+        if verdict == "APPROVED":
+            result.update({
+                "approved": True,
+                "provider_authorizable": True,
+                "gov_tx_id": "gov-tx-verdict-test",
+                "verdict_id": "verdict-case-test",
+            })
+        return result
+
+    monkeypatch.setattr(A, "_sentinel_inspect", _result)
 
 
 def _run(monkeypatch, verdict, msg="benign hello, how are you"):
@@ -89,16 +101,32 @@ def test_restricted_requires_step_up_and_blocks_without_it(monkeypatch):
     assert "SENTINEL_STEP_UP_REQUIRED" in [et for et, _ in events]
 
 
-def test_restricted_proceeds_with_valid_step_up(monkeypatch):
-    """P0-2: RESTRICTED continues (with enhanced logging) only when a valid step-up
-    authorization is presented."""
+def test_restricted_step_up_does_not_create_provider_authority(monkeypatch):
+    """A Python step-up assertion cannot convert RESTRICTED into execution authority."""
     events = []
-    monkeypatch.setattr(A, "log_event", lambda et, data: events.append((et, data)))
+    monkeypatch.setattr(
+        A,
+        "log_event",
+        lambda event_type, data: events.append((event_type, data)),
+    )
     _mock_sentinel(monkeypatch, "RESTRICTED")
-    out = A.process_message("what can you do", _Sess(), A.KillSwitch(), ["groq"],
-                            step_up_ok=True)
-    assert out["mode"] not in ("STEP_UP_REQUIRED", "SENTINEL_BLOCK", "SENTINEL_UNREACHABLE")
-    assert "SENTINEL_RESTRICT_STEPUP_CLEARED" in [et for et, _ in events]
+
+    out = A.process_message(
+        "what can you do",
+        _Sess(),
+        A.KillSwitch(),
+        ["groq"],
+        step_up_ok=True,
+    )
+
+    assert out["ok"] is False
+    assert out["mode"] == "STEP_UP_REQUIRED"
+    assert "SENTINEL_STEP_UP_REQUIRED" in [
+        event_type for event_type, _data in events
+    ]
+    assert "SENTINEL_RESTRICT_STEPUP_CLEARED" not in [
+        event_type for event_type, _data in events
+    ]
 
 
 def test_haap_gated_blocks(monkeypatch):

@@ -42,8 +42,20 @@ class _Sess:
 
 
 def _no_net(monkeypatch):
-    monkeypatch.setattr(A, "_sentinel_inspect",
-                        lambda *a, **k: {"ok": True, "verdict": "APPROVED", "approved": True})
+    """Return a complete final-approved inbound receipt without network."""
+    monkeypatch.setattr(
+        A,
+        "_sentinel_inspect",
+        lambda _payload, session_id: {
+            "ok": True,
+            "verdict": "APPROVED",
+            "approved": True,
+            "session_id": session_id,
+            "provider_authorizable": True,
+            "gov_tx_id": "gov-tx-public-test",
+            "verdict_id": "verdict-public-test",
+        },
+    )
 
 
 # ── classifier unit tests ────────────────────────────────────────────────────

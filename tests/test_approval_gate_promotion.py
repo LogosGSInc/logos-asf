@@ -28,10 +28,56 @@ def _budget(monkeypatch):
 
 
 def _neutralize(monkeypatch):
-    """No network (Rust Sentinel offline) and a detectable fake Groq dispatch."""
-    monkeypatch.setattr(A, "_sentinel_inspect",
-                        lambda *a, **k: {"ok": True, "verdict": "APPROVED", "approved": True})
+    """Mock the complete governed inference chain with no network."""
+    verdict_id = "verdict-approval-test"
+
+    monkeypatch.setattr(
+        A,
+        "_sentinel_inspect",
+        lambda _payload, session_id: {
+            "ok": True,
+            "verdict": "APPROVED",
+            "approved": True,
+            "session_id": session_id,
+            "provider_authorizable": True,
+            "gov_tx_id": "gov-tx-approval-test",
+            "verdict_id": verdict_id,
+        },
+    )
+    monkeypatch.setattr(
+        A,
+        "_sentinel_provider_authorize",
+        lambda **kwargs: {
+            "ok": True,
+            "decision_id": "decision-approval-test",
+            "capability_id": "capability-approval-test",
+            "gov_tx_id": kwargs["gov_tx_id"],
+            "session_id": kwargs["session_id"],
+            "backend": kwargs["backend"],
+            "model": kwargs["model"],
+            "verdict_id": verdict_id,
+        },
+    )
+    monkeypatch.setattr(
+        A,
+        "_sentinel_provider_consume",
+        lambda **_kwargs: {
+            "ok": True,
+            "authorized": True,
+            "outcome": "CAPABILITY_CONSUMED",
+        },
+    )
+    monkeypatch.setattr(
+        A,
+        "_sentinel_outbound",
+        lambda _payload, session_id: {
+            "ok": True,
+            "verdict": "APPROVED",
+            "session_id": session_id,
+        },
+    )
     monkeypatch.setattr(A, "try_grounded_answer", lambda *a, **k: None)
+
     calls = {"groq": 0}
 
     def _fake_groq(messages=None, system=None, **k):
