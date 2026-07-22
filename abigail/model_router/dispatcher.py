@@ -109,7 +109,7 @@ def dispatch(provider, messages, system, *, approval_state, cost_state,
 
 def governed_route_selection(text, *, drs_score=5, approval_state, cost_state,
                               subscriber_tier="paid", route_fn=None,
-                              dispatch_table=None):
+                              dispatch_table=None, current_backend=None):
     """Select and validate a live provider without executing it.
 
     This is the required pre-execution boundary for Sentinel capability
@@ -158,7 +158,34 @@ def governed_route_selection(text, *, drs_score=5, approval_state, cost_state,
         from .router import route_request as route_fn
 
     card = route_fn(text, drs_score, [], None)
-    provider = _card_value(card, "selected_provider", "current_backend")
+    routed_provider = _card_value(
+        card,
+        "selected_provider",
+        "current_backend",
+    )
+
+    if routed_provider == "current_backend":
+        provider = (current_backend or "").strip()
+        if not provider:
+            rec = _audit(
+                routed_provider,
+                "unavailable",
+                "current_backend_unresolved",
+                None,
+                subscriber_tier,
+            )
+            return {
+                "provider_selected": routed_provider,
+                "resolved_provider": None,
+                "selection_status": "unavailable",
+                "reason": "current_backend_unresolved",
+                "fallback_provider": None,
+                "audit_record": rec,
+                "routed": True,
+                "route_request_type": _card_value(card, "request_type"),
+            }
+    else:
+        provider = routed_provider
 
     if provider not in table:
         rec = _audit(
@@ -243,6 +270,8 @@ def governed_route_selection(text, *, drs_score=5, approval_state, cost_state,
     )
     return {
         "provider_selected": provider,
+        "routed_provider": routed_provider,
+        "resolved_provider": provider,
         "selection_status": "selected",
         "reason": "all_selection_gates_passed",
         "fallback_provider": None,

@@ -66,3 +66,45 @@ def test_existing_dispatch_reads_dict_router_card(monkeypatch):
     assert result["dispatch_status"] == "executed"
     assert result["provider_selected"] == "anthropic"
     assert result["route_request_type"] == "technical_task"
+
+
+def _route_current_backend(*_args, **_kwargs):
+    return {
+        "selected_provider": "current_backend",
+        "request_type": "normal_chat",
+    }
+
+
+def test_current_backend_alias_resolves_before_live_checks(monkeypatch):
+    monkeypatch.setattr(D.caps, "key_present", lambda p: p == "groq")
+    monkeypatch.setattr(D.caps, "tier_permits", lambda _t, p: p == "groq")
+    monkeypatch.setattr(D.caps, "health", lambda p: "available" if p == "groq" else "unavailable")
+
+    result = D.governed_route_selection(
+        "hello",
+        approval_state="cleared",
+        cost_state={"approved": True},
+        route_fn=_route_current_backend,
+        dispatch_table={"groq": _adapter},
+        current_backend="groq",
+    )
+
+    assert result["selection_status"] == "selected"
+    assert result["routed_provider"] == "current_backend"
+    assert result["resolved_provider"] == "groq"
+    assert result["provider_selected"] == "groq"
+
+
+def test_current_backend_alias_fails_closed_when_unresolved(monkeypatch):
+    result = D.governed_route_selection(
+        "hello",
+        approval_state="cleared",
+        cost_state={"approved": True},
+        route_fn=_route_current_backend,
+        dispatch_table={"groq": _adapter},
+        current_backend=None,
+    )
+
+    assert result["selection_status"] == "unavailable"
+    assert result["reason"] == "current_backend_unresolved"
+    assert result["fallback_provider"] is None

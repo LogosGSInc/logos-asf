@@ -62,13 +62,29 @@ except ImportError:
 
 # ── MR-05: MoE router → chat-path integration (governed live dispatch) ─────────
 try:
-    from model_router.dispatcher import governed_route_and_dispatch as _governed_route_and_dispatch
+    from model_router.dispatcher import (
+        governed_route_and_dispatch as _governed_route_and_dispatch,
+        governed_route_selection as _governed_route_selection,
+    )
     _MOE_DISPATCH_OK = True
 except ImportError:
     _MOE_DISPATCH_OK = False
+
     def _governed_route_and_dispatch(*a, **kw):
-        return {"dispatch_status":"unavailable","provider_selected":None,
-                "reason":"moe_dispatch_unavailable","fallback_provider":None}
+        return {
+            "dispatch_status": "unavailable",
+            "provider_selected": None,
+            "reason": "moe_dispatch_unavailable",
+            "fallback_provider": None,
+        }
+
+    def _governed_route_selection(*a, **kw):
+        return {
+            "selection_status": "unavailable",
+            "provider_selected": None,
+            "reason": "moe_selection_unavailable",
+            "fallback_provider": None,
+        }
 
 # ── Governed Command Bus (CB-01, pre-inference operator command detection) ─────
 try:
@@ -587,67 +603,150 @@ def _resolve_moe_mode():
     return m
 
 
-def _moe_dispatch(raw, session, active_backend, system, score):
-    """MR-05: mode-aware provider dispatch. Returns (response_text, router_meta).
-    Runs only after all upstream gates (Sentinel/HAAP, command bus, PUBLIC_ASSIST,
-    MM-03 approval, SEC-02 cost) have already cleared. router_meta is audit-safe."""
+def _moe_dispatch(
+    raw,
+    session,
+    active_backend,
+    system,
+    score,
+    *,
+    sentinel_session_id,
+    gov_tx_id,
+    verdict_id,
+):
+    """Select, authorize, consume, execute, and inspect one provider call.
+
+    Every mode uses the same Sentinel capability boundary. Router failure and
+    unavailable providers fail closed; no automatic provider fallback executes.
+    """
     mode = _resolve_moe_mode()
     backend = active_backend[0]
 
-    def _single(provider=None):
-        p = provider or backend
-        try:
-            return BACKEND_DISPATCH.get(p, call_groq)(messages=session.messages, system=system)
-        except Exception as exc:
-            log_event("BACKEND_ERROR", {"backend": p, "error_type": type(exc).__name__})
-            return _safe_error(p, exc)
+    def _execute(provider, meta):
+        response, evidence = _governed_provider_execute(
+            provider=provider,
+            messages=session.messages,
+            system=system,
+            sentinel_session_id=sentinel_session_id,
+            gov_tx_id=gov_tx_id,
+            expected_verdict_id=verdict_id,
+        )
+        return response, meta, evidence
 
-    # Mode 0 (or router unavailable) — existing single-backend behavior
+    # Mode 0 — exact configured backend, still capability-bound.
     if mode == "0" or not _MOE_DISPATCH_OK:
-        return _single(), {"router_mode": "0", "selected_provider": backend,
-                           "dispatch_status": "single_backend", "live_dispatch": False,
-                           "fallback_used": False}
+        meta = {
+            "router_mode": "0",
+            "selected_provider": backend,
+            "dispatch_status": "executed",
+            "live_dispatch": True,
+            "fallback_used": False,
+        }
+        return _execute(backend, meta)
 
-    # Mode 1 — dry-run router selection; NEVER calls the selected provider adapter
+    # Mode 1 — router observes only; execution remains on active backend.
     if mode == "1":
-        sel = backend
+        selected = backend
         try:
             card = _route_request(raw, score, [], None)
             if card is not None:
-                sel = getattr(card, "selected_provider", backend)
+                if isinstance(card, dict):
+                    selected = card.get("selected_provider", backend)
+                else:
+                    selected = getattr(card, "selected_provider", backend)
         except Exception as exc:
-            log_event("MOE_ROUTER_ERROR", {"mode": "1", "error_type": type(exc).__name__})
-        log_event("MOE_ROUTE_DECISION", {"router_mode": "1", "selected_provider": sel,
-                                         "dispatch_status": "dry_run", "live_dispatch": False})
-        return _single(), {"router_mode": "1", "selected_provider": sel,
-                           "dispatch_status": "dry_run", "live_dispatch": False,
-                           "fallback_used": False, "reason": "dry_run_no_provider_call"}
+            log_event(
+                "MOE_ROUTER_ERROR",
+                {
+                    "mode": "1",
+                    "error_type": type(exc).__name__,
+                },
+            )
 
-    # Mode 2 — live governed router dispatch (approval/cost already cleared upstream)
-    tier = os.environ.get("ABIGAIL_SUBSCRIBER_TIER", "paid").strip() or "paid"
+        meta = {
+            "router_mode": "1",
+            "selected_provider": backend,
+            "observed_provider": selected,
+            "dispatch_status": "executed_active_backend",
+            "live_dispatch": True,
+            "fallback_used": False,
+            "reason": "dry_run_selection_only",
+        }
+        return _execute(backend, meta)
+
+    # Mode 2 — selection only. Execution happens here after Sentinel authority.
+    tier = (
+        os.environ.get("ABIGAIL_SUBSCRIBER_TIER", "paid").strip()
+        or "paid"
+    )
+
     try:
-        gr = _governed_route_and_dispatch(raw, drs_score=score, approval_state="cleared",
-                                          cost_state={"approved": True}, subscriber_tier=tier,
-                                          messages=session.messages, system=system)
+        selection = _governed_route_selection(
+            raw,
+            drs_score=score,
+            approval_state="cleared",
+            cost_state={"approved": True},
+            subscriber_tier=tier,
+            dispatch_table=BACKEND_DISPATCH,
+            current_backend=backend,
+        )
     except Exception as exc:
-        log_event("MOE_ROUTER_ERROR", {"mode": "2", "error_type": type(exc).__name__})
-        return _single(), {"router_mode": "2", "selected_provider": backend,
-                           "dispatch_status": "router_error_fallback", "live_dispatch": True,
-                           "fallback_used": True, "fallback_provider": backend}
-    sel = gr.get("provider_selected")
-    if gr.get("dispatch_status") == "executed":
-        meta = {"router_mode": "2", "selected_provider": sel, "dispatch_status": "executed",
-                "live_dispatch": True, "fallback_used": False}
-        resp = gr.get("text") or ""
-    else:
-        fb = gr.get("fallback_provider") or backend
-        resp = _single(fb)
-        meta = {"router_mode": "2", "selected_provider": sel,
-                "dispatch_status": gr.get("dispatch_status"), "reason": gr.get("reason"),
-                "live_dispatch": True, "fallback_used": True, "fallback_provider": fb}
-    log_event("MOE_ROUTE_DECISION", {k: meta.get(k) for k in
-              ("router_mode", "selected_provider", "dispatch_status", "fallback_used")})
-    return resp, meta
+        log_event(
+            "MOE_ROUTER_ERROR",
+            {
+                "mode": "2",
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise GovernedProviderError(
+            "Governed provider selection failed"
+        ) from exc
+
+    if selection.get("selection_status") != "selected":
+        log_event(
+            "MOE_SELECTION_REJECTED",
+            {
+                "provider": selection.get("provider_selected"),
+                "status": selection.get("selection_status"),
+                "reason": selection.get("reason"),
+            },
+        )
+        raise GovernedProviderError(
+            "No provider passed governed selection"
+        )
+
+    provider = selection.get("resolved_provider") or selection.get(
+        "provider_selected"
+    )
+    if not provider:
+        raise GovernedProviderError(
+            "Governed selection returned no executable provider"
+        )
+
+    meta = {
+        "router_mode": "2",
+        "selected_provider": provider,
+        "routed_provider": selection.get("routed_provider"),
+        "dispatch_status": "selected_then_executed",
+        "live_dispatch": True,
+        "fallback_used": False,
+        "reason": selection.get("reason"),
+        "route_request_type": selection.get("route_request_type"),
+    }
+
+    log_event(
+        "MOE_ROUTE_DECISION",
+        {
+            "router_mode": "2",
+            "selected_provider": provider,
+            "dispatch_status": "selected",
+            "fallback_used": False,
+        },
+    )
+
+    return _execute(provider, meta)
+
+
 
 
 # ── Shared dispatch ───────────────────────────────────────────────────────────
@@ -673,6 +772,11 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
     s_result = _sentinel_inspect(raw, sentinel_session_id)
     s_verdict = s_result.get("verdict", "unknown")
     s_verdict_norm = str(s_verdict).strip().lower()
+    s_gov_tx_id = str(s_result.get("gov_tx_id") or "").strip()
+    s_verdict_id = str(s_result.get("verdict_id") or "").strip()
+    s_provider_authorizable = (
+        s_result.get("provider_authorizable") is True
+    )
 
     sentinel_reachable = s_verdict_norm != "sentinel_offline"
 
@@ -735,35 +839,66 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
             }
 
         if s_verdict_norm == "restricted":
-            if step_up_ok:
-                log_event("SENTINEL_RESTRICT_STEPUP_CLEARED", {
+            log_event(
+                "SENTINEL_STEP_UP_REQUIRED",
+                {
                     "verdict": s_verdict,
                     "session_id": sentinel_session_id,
-                    "tool_calls_disabled": s_result.get("tool_calls_disabled"),
-                    "enhanced_logging": True,
-                })
-            else:
-                log_event("SENTINEL_STEP_UP_REQUIRED", {
-                    "verdict": s_verdict,
-                    "session_id": sentinel_session_id,
-                })
+                    "step_up_present": bool(step_up_ok),
+                    "provider_authorizable": False,
+                },
+            )
+            return {
+                "ok": False,
+                "text": (
+                    "[Sentinel OverWatch] Elevated risk (RESTRICTED) — "
+                    "provider execution authority was not issued. A new "
+                    "fully approved transaction is required."
+                ),
+                "drs": 80,
+                "mode": "STEP_UP_REQUIRED",
+                "crsv": session.crsv(),
+            }
+
+        elif s_verdict_norm == "approved":
+            if not (
+                s_provider_authorizable
+                and s_gov_tx_id
+                and s_verdict_id
+            ):
+                log_event(
+                    "SENTINEL_APPROVAL_EVIDENCE_MISSING",
+                    {
+                        "session_id": sentinel_session_id,
+                        "provider_authorizable": (
+                            s_provider_authorizable
+                        ),
+                        "gov_tx_id_present": bool(s_gov_tx_id),
+                        "verdict_id_present": bool(s_verdict_id),
+                    },
+                )
                 return {
                     "ok": False,
                     "text": (
-                        "[Sentinel OverWatch] Elevated risk (RESTRICTED) — "
-                        "step-up authorization required."
+                        "[Sentinel OverWatch] Request blocked — approval "
+                        "evidence was incomplete and no provider authority "
+                        "can be established."
                     ),
-                    "drs": 80,
-                    "mode": "STEP_UP_REQUIRED",
+                    "drs": 100,
+                    "mode": "SENTINEL_AUTHORITY_ERROR",
                     "crsv": session.crsv(),
                 }
 
-        elif s_verdict_norm == "approved":
-            log_event("SENTINEL_APPROVED", {
-                "verdict": str(s_verdict).upper(),
-                "session_id": sentinel_session_id,
-                "action": "PROCEED_TO_HAAP",
-            })
+            log_event(
+                "SENTINEL_APPROVED",
+                {
+                    "verdict": str(s_verdict).upper(),
+                    "session_id": sentinel_session_id,
+                    "gov_tx_id": s_gov_tx_id,
+                    "verdict_id": s_verdict_id,
+                    "action": "PROCEED_TO_HAAP",
+                },
+            )
 
         else:
             log_event("SENTINEL_UNKNOWN_VERDICT_BLOCK", {
@@ -840,21 +975,88 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
         except Exception as _pae:
             log_event("PROVIDER_ADAPTER_ERROR", {"error_type": type(_pae).__name__})
     session.append_message("user", raw)
-    t=time.monotonic()
-    # MR-05: mode-aware dispatch (single-backend / dry-run router / live governed router)
-    response, _router_meta = _moe_dispatch(raw, session, active_backend, _system, score)
-    session.append_message("assistant", response)
-    log_event("TURN_COMPLETE",{"turn":session.turn_count,
-                                "backend":_router_meta.get("selected_provider",active_backend[0]),
-                                "router_mode":_router_meta.get("router_mode"),
-                                "drs":score,"elapsed":round(time.monotonic()-t,2),"crsv":round(session.crsv(),1)})
-    # PUBLIC disclosure clamp — strip internal topology from unauthenticated responses
+    t = time.monotonic()
+
+    try:
+        response, _router_meta, _execution_evidence = _moe_dispatch(
+            raw,
+            session,
+            active_backend,
+            _system,
+            score,
+            sentinel_session_id=sentinel_session_id,
+            gov_tx_id=s_gov_tx_id,
+            verdict_id=s_verdict_id,
+        )
+    except GovernedProviderError as exc:
+        log_event(
+            "GOVERNED_PROVIDER_EXECUTION_BLOCKED",
+            {
+                "gov_tx_id": s_gov_tx_id,
+                "verdict_id": s_verdict_id,
+                "error_type": type(exc).__name__,
+                "reason": str(exc)[:180],
+            },
+        )
+        return {
+            "ok": False,
+            "text": (
+                "[Governed execution] Provider inference was blocked "
+                "because the authorization or outbound evidence chain "
+                "did not complete."
+            ),
+            "drs": score,
+            "mode": "PROVIDER_EXECUTION_BLOCKED",
+            "crsv": round(session.crsv(), 1),
+            "governance": {
+                "gov_tx_id": s_gov_tx_id,
+                "verdict_id": s_verdict_id,
+                "execution_status": "blocked",
+            },
+        }
+
+    # PUBLIC disclosure clamp — applied only after Sentinel approved the raw
+    # provider output. This transformation can only reduce disclosed content.
     if score <= 20 and _public_response_overexposed(response):
-        log_event("PUBLIC_DISCLOSURE_CLAMP",{"action":"REDACTED_TO_PUBLIC_FALLBACK","turn":session.turn_count})
+        log_event(
+            "PUBLIC_DISCLOSURE_CLAMP",
+            {
+                "action": "REDACTED_TO_PUBLIC_FALLBACK",
+                "turn": session.turn_count,
+            },
+        )
         response = _public_safe_fallback()
 
-    out={"ok":True,"text":response,"drs":score,"mode":mode,"crsv":round(session.crsv(),1),
-         "router":_router_meta}
+    session.append_message("assistant", response)
+
+    log_event(
+        "TURN_COMPLETE",
+        {
+            "turn": session.turn_count,
+            "backend": _router_meta.get(
+                "selected_provider",
+                active_backend[0],
+            ),
+            "router_mode": _router_meta.get("router_mode"),
+            "drs": score,
+            "elapsed": round(time.monotonic() - t, 2),
+            "crsv": round(session.crsv(), 1),
+            "gov_tx_id": s_gov_tx_id,
+            "capability_id": _execution_evidence.get(
+                "capability_id"
+            ),
+        },
+    )
+
+    out = {
+        "ok": True,
+        "text": response,
+        "drs": score,
+        "mode": mode,
+        "crsv": round(session.crsv(), 1),
+        "router": _router_meta,
+        "governance": _execution_evidence,
+    }
     if drift: out["drift"]=drift
     return out
 
@@ -1046,6 +1248,368 @@ def _sentinel_inspect(payload:str, session_id:str) -> dict:
     except Exception as e:
         log_event("SENTINEL_INSPECT_ERROR",{"error":str(e)})
         return {"ok":False,"verdict":"sentinel_offline","approved":False,"error":str(e)}
+
+
+
+class GovernedProviderError(RuntimeError):
+    """Provider execution failed before a governed response could be returned."""
+
+
+def _sentinel_headers():
+    if not SENTINEL_SERVICE_TOKEN:
+        raise GovernedProviderError("Sentinel service token missing")
+    return {
+        "Authorization": f"Bearer {SENTINEL_SERVICE_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+
+def _resolve_provider_model(provider):
+    """Return the exact model bound into the provider capability."""
+    resolvers = {
+        "groq": lambda: os.environ.get(
+            "GROQ_MODEL", "llama-3.3-70b-versatile"
+        ).strip(),
+        "anthropic": lambda: os.environ.get(
+            "ABIGAIL_ANTHROPIC_MODEL", "claude-sonnet-5"
+        ).strip(),
+        "perplexity": lambda: os.environ.get(
+            "PERPLEXITY_MODEL", "sonar"
+        ).strip(),
+        "ollama": lambda: os.environ.get(
+            "OLLAMA_MODEL", "llama3"
+        ).strip(),
+        "openai": lambda: os.environ.get(
+            "ABIGAIL_OPENAI_MODEL", "gpt-4o"
+        ).strip(),
+        "xai": lambda: os.environ.get(
+            "ABIGAIL_XAI_MODEL", "grok-4.3"
+        ).strip(),
+    }
+
+    resolver = resolvers.get(provider)
+    if resolver is None:
+        raise GovernedProviderError(
+            f"Unknown or unsupported provider: {provider}"
+        )
+
+    model = resolver()
+    if not model:
+        raise GovernedProviderError(
+            f"Configured model is empty for provider: {provider}"
+        )
+    return model
+
+
+def _sentinel_provider_authorize(
+    *,
+    gov_tx_id,
+    session_id,
+    backend,
+    model,
+    action_class="llm_inference",
+):
+    try:
+        import httpx
+
+        response = httpx.post(
+            f"{SENTINEL_URL}/provider/authorize",
+            headers=_sentinel_headers(),
+            json={
+                "gov_tx_id": gov_tx_id,
+                "session_id": session_id,
+                "backend": backend,
+                "model": model,
+                "action_class": action_class,
+            },
+            timeout=5,
+        )
+    except Exception as exc:
+        log_event(
+            "PROVIDER_CAPABILITY_AUTHORIZE_ERROR",
+            {"error_type": type(exc).__name__},
+        )
+        raise GovernedProviderError(
+            "Sentinel provider authorization is unreachable"
+        ) from exc
+
+    try:
+        body = response.json()
+    except Exception as exc:
+        raise GovernedProviderError(
+            "Sentinel provider authorization returned invalid JSON"
+        ) from exc
+
+    if response.status_code != 200 or not body.get("ok"):
+        log_event(
+            "PROVIDER_CAPABILITY_AUTHORIZE_REJECTED",
+            {
+                "status": response.status_code,
+                "error": str(body.get("error", ""))[:160],
+                "backend": backend,
+                "model": model,
+            },
+        )
+        raise GovernedProviderError(
+            "Sentinel did not authorize provider execution"
+        )
+
+    required = (
+        "capability_id",
+        "decision_id",
+        "gov_tx_id",
+        "session_id",
+        "backend",
+        "model",
+        "verdict_id",
+    )
+    missing = [key for key in required if not body.get(key)]
+    if missing:
+        raise GovernedProviderError(
+            "Sentinel authorization evidence is incomplete"
+        )
+
+    if (
+        body["gov_tx_id"] != gov_tx_id
+        or body["session_id"] != session_id
+        or body["backend"] != backend
+        or body["model"] != model
+    ):
+        raise GovernedProviderError(
+            "Sentinel authorization scope does not match request"
+        )
+
+    return body
+
+
+def _sentinel_provider_consume(
+    *,
+    capability_id,
+    gov_tx_id,
+    session_id,
+    backend,
+    model,
+):
+    try:
+        import httpx
+
+        response = httpx.post(
+            f"{SENTINEL_URL}/provider/consume",
+            headers=_sentinel_headers(),
+            json={
+                "capability_id": capability_id,
+                "gov_tx_id": gov_tx_id,
+                "session_id": session_id,
+                "backend": backend,
+                "model": model,
+            },
+            timeout=5,
+        )
+    except Exception as exc:
+        log_event(
+            "PROVIDER_CAPABILITY_CONSUME_ERROR",
+            {"error_type": type(exc).__name__},
+        )
+        raise GovernedProviderError(
+            "Sentinel capability consumption is unreachable"
+        ) from exc
+
+    try:
+        body = response.json()
+    except Exception as exc:
+        raise GovernedProviderError(
+            "Sentinel capability consumption returned invalid JSON"
+        ) from exc
+
+    if (
+        response.status_code != 200
+        or not body.get("authorized")
+        or body.get("outcome") != "CAPABILITY_CONSUMED"
+    ):
+        log_event(
+            "PROVIDER_CAPABILITY_CONSUME_REJECTED",
+            {
+                "status": response.status_code,
+                "outcome": str(body.get("outcome", ""))[:100],
+                "backend": backend,
+                "model": model,
+            },
+        )
+        raise GovernedProviderError(
+            "Provider capability was not consumed"
+        )
+
+    return body
+
+
+def _sentinel_outbound(payload, session_id):
+    try:
+        import httpx
+
+        response = httpx.post(
+            f"{SENTINEL_URL}/outbound",
+            headers=_sentinel_headers(),
+            json={
+                "payload": payload,
+                "session_id": session_id,
+            },
+            timeout=5,
+        )
+    except Exception as exc:
+        log_event(
+            "SENTINEL_OUTBOUND_ERROR",
+            {"error_type": type(exc).__name__},
+        )
+        raise GovernedProviderError(
+            "Sentinel outbound inspection is unreachable"
+        ) from exc
+
+    try:
+        body = response.json()
+    except Exception as exc:
+        raise GovernedProviderError(
+            "Sentinel outbound inspection returned invalid JSON"
+        ) from exc
+
+    verdict = str(body.get("verdict", "UNKNOWN")).strip().upper()
+    if response.status_code != 200 or verdict != "APPROVED":
+        log_event(
+            "SENTINEL_OUTBOUND_BLOCK",
+            {
+                "status": response.status_code,
+                "verdict": verdict,
+                "session_id": session_id,
+            },
+        )
+        raise GovernedProviderError(
+            f"Sentinel outbound verdict was {verdict}"
+        )
+
+    return body
+
+
+def _call_provider_exact(provider, model, messages, system):
+    adapter = BACKEND_DISPATCH.get(provider)
+    if adapter is None:
+        raise GovernedProviderError(
+            f"Provider is not live-wired: {provider}"
+        )
+
+    try:
+        if provider == "perplexity":
+            text = adapter(messages=messages, system=system)
+        else:
+            text = adapter(
+                messages=messages,
+                system=system,
+                model=model,
+            )
+    except GovernedProviderError:
+        raise
+    except Exception as exc:
+        log_event(
+            "GOVERNED_PROVIDER_ADAPTER_ERROR",
+            {
+                "backend": provider,
+                "model": model,
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise GovernedProviderError(
+            f"Provider adapter raised an exception: {provider}"
+        ) from exc
+
+    if not isinstance(text, str) or not text.strip():
+        raise GovernedProviderError(
+            f"Provider returned no usable output: {provider}"
+        )
+
+    clean = text.strip()
+    lowered = clean.lower()
+    if clean.startswith("[") and (
+        " error " in f" {lowered} "
+        or "not installed" in lowered
+        or "only localhost urls permitted" in lowered
+    ):
+        raise GovernedProviderError(
+            f"Provider adapter failed: {provider}"
+        )
+
+    return clean
+
+
+def _governed_provider_execute(
+    *,
+    provider,
+    messages,
+    system,
+    sentinel_session_id,
+    gov_tx_id,
+    expected_verdict_id,
+):
+    """Authorize, burn, execute, and inspect one exact provider call."""
+    model = _resolve_provider_model(provider)
+
+    authorization = _sentinel_provider_authorize(
+        gov_tx_id=gov_tx_id,
+        session_id=sentinel_session_id,
+        backend=provider,
+        model=model,
+    )
+
+    if authorization.get("verdict_id") != expected_verdict_id:
+        raise GovernedProviderError(
+            "Provider capability is bound to an unexpected Sentinel verdict"
+        )
+
+    consumption = _sentinel_provider_consume(
+        capability_id=authorization["capability_id"],
+        gov_tx_id=gov_tx_id,
+        session_id=sentinel_session_id,
+        backend=provider,
+        model=model,
+    )
+
+    # The external execution boundary occurs only after successful atomic burn.
+    text = _call_provider_exact(
+        provider,
+        model,
+        messages,
+        system,
+    )
+
+    outbound = _sentinel_outbound(
+        text,
+        sentinel_session_id,
+    )
+
+    evidence = {
+        "gov_tx_id": gov_tx_id,
+        "verdict_id": expected_verdict_id,
+        "decision_id": authorization["decision_id"],
+        "capability_id": authorization["capability_id"],
+        "backend": provider,
+        "model": model,
+        "capability_outcome": consumption.get("outcome"),
+        "outbound_verdict": outbound.get("verdict"),
+        "execution_status": "completed",
+    }
+
+    log_event(
+        "GOVERNED_PROVIDER_EXECUTION_COMPLETE",
+        {
+            "gov_tx_id": gov_tx_id,
+            "verdict_id": expected_verdict_id,
+            "decision_id": authorization["decision_id"],
+            "capability_id": authorization["capability_id"],
+            "backend": provider,
+            "model": model,
+            "capability_outcome": consumption.get("outcome"),
+            "outbound_verdict": outbound.get("verdict"),
+        },
+    )
+
+    return text, evidence
 
 
 
