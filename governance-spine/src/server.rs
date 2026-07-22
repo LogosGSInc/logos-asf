@@ -5,6 +5,8 @@
 ///   GET  /health
 ///   POST /inspect
 ///   POST /outbound
+///   POST /provider/authorize
+///   POST /provider/consume
 ///   GET  /session/{id}/state
 ///   POST /session/reset
 ///   POST /session/start
@@ -18,7 +20,13 @@ use std::sync::Arc;
 use std::thread;
 
 use sha2::{Digest, Sha256};
+use serde_json::{json, Value};
 
+use governance_spine::capability::{
+    PresentedBinding,
+    AUTHORITY_PROVIDER_EXECUTE,
+};
+use governance_spine::pipeline::ProviderAuthorizationRequest;
 use governance_spine::{
     GovernancePipeline,
     EnforcementResult,
@@ -38,6 +46,27 @@ fn err_json(status: u16, msg: &str) -> String {
         "HTTP/1.1 {} Error\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
         status, body.len(), body
     )
+}
+
+fn json_response(status: u16, body: Value) -> String {
+    let body = body.to_string();
+    format!(
+        "HTTP/1.1 {} Response\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: http://localhost:7070\r\nX-Content-Type-Options: nosniff\r\n\r\n{}",
+        status, body.len(), body
+    )
+}
+
+fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
+    let field = value.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+
+    if field.is_empty() {
+        Err(format!("{} required", key))
+    } else {
+        Ok(field.to_string())
+    }
 }
 
 fn parse_json_field(json: &str, key: &str) -> Option<String> {
@@ -96,6 +125,30 @@ fn token_digest(value: &str) -> [u8; 32] {
     let mut out = [0u8; 32];
     out.copy_from_slice(&digest);
     out
+}
+
+/// Bind capabilities to the authenticated Sentinel service identity rather
+/// than trusting a caller-supplied principal assertion.
+fn service_principal_fingerprint(service_token: &str) -> String {
+    format!("{:x}", Sha256::digest(service_token.as_bytes()))
+}
+
+/// Runtime policy provenance. This is derived by Sentinel from the policy
+/// configuration it actually starts with; callers cannot assert it.
+fn runtime_policy_hash() -> String {
+    let profile = std::env::var("SENTOW_INDUSTRY_PROFILE")
+        .unwrap_or_else(|_| "consumer".to_string());
+    let govmem_mode = std::env::var("GOVMEM_MODE")
+        .unwrap_or_else(|_| "v1".to_string());
+
+    let canonical = format!(
+        "governance-spine:{}|industry:{}|govmem:{}",
+        env!("CARGO_PKG_VERSION"),
+        profile,
+        govmem_mode,
+    );
+
+    format!("{:x}", Sha256::digest(canonical.as_bytes()))
 }
 
 fn authorized(headers: &HashMap<String, String>, expected_token: &str) -> bool {
@@ -161,8 +214,43 @@ fn handle(
                 err_json(400, "session_id required")
             } else {
                 let gov_tx_id = format!("GTX-{}", uuid::Uuid::new_v4().simple());
-                let r = pipeline.inbound(&payload, &session_id, &gov_tx_id);
-                ok_json(&verdict_json(&r, &session_id))
+                let result = pipeline.inbound(&payload, &session_id, &gov_tx_id);
+
+                match &result {
+                    EnforcementResult::Approved(_) => {
+                        match pipeline.approved_verdict_id(&gov_tx_id, &session_id) {
+                            Some(verdict_id) => json_response(200, json!({
+                                "ok": true,
+                                "verdict": "APPROVED",
+                                "session_id": session_id,
+                                "gov_tx_id": gov_tx_id,
+                                "verdict_id": verdict_id,
+                                "provider_authorizable": true
+                            })),
+                            None => json_response(500, json!({
+                                "ok": false,
+                                "verdict": "INTERNAL_AUTHORITY_ERROR",
+                                "session_id": session_id,
+                                "gov_tx_id": gov_tx_id,
+                                "provider_authorizable": false,
+                                "error": "final approval receipt missing"
+                            })),
+                        }
+                    }
+                    _ => {
+                        let mut value: Value = serde_json::from_str(
+                            &verdict_json(&result, &session_id)
+                        ).unwrap_or_else(|_| json!({
+                            "ok": false,
+                            "verdict": "SERIALIZATION_ERROR",
+                            "session_id": session_id
+                        }));
+
+                        value["gov_tx_id"] = json!(gov_tx_id);
+                        value["provider_authorizable"] = json!(false);
+                        json_response(200, value)
+                    }
+                }
             }
         }
 
@@ -177,6 +265,136 @@ fn handle(
             } else {
                 let r = pipeline.outbound(&payload, &session_id);
                 ok_json(&verdict_json(&r, &session_id))
+            }
+        }
+
+        ("POST", "/provider/authorize") => {
+            let value: Value = match serde_json::from_str(&body) {
+                Ok(value) => value,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({
+                        "ok": false,
+                        "error": "valid JSON body required"
+                    }))
+                ),
+            };
+
+            let parsed = (|| -> Result<ProviderAuthorizationRequest, String> {
+                let gov_tx_id = required_json_string(&value, "gov_tx_id")?;
+                let session_id = required_json_string(&value, "session_id")?;
+
+                Ok(ProviderAuthorizationRequest {
+                    gov_tx_id,
+                    session_id: session_id.clone(),
+                    principal_fingerprint: service_principal_fingerprint(
+                        service_token.as_str()
+                    ),
+                    backend: required_json_string(&value, "backend")?,
+                    model: required_json_string(&value, "model")?,
+                    action_class: required_json_string(&value, "action_class")?,
+                    policy_hash: runtime_policy_hash(),
+                    authorization_basis: "FinalPipelineApproved".to_string(),
+                    agency: "ExecuteActions".to_string(),
+                    drs: pipeline.session_drs(&session_id),
+                })
+            })();
+
+            match parsed {
+                Err(error) => json_response(400, json!({
+                    "ok": false,
+                    "error": error
+                })),
+                Ok(request) => {
+                    match pipeline.authorize_provider_execution(request) {
+                        Ok(token) => json_response(200, json!({
+                            "ok": true,
+                            "decision_id": token.haap_decision_id,
+                            "capability_id": token.token_id,
+                            "gov_tx_id": token.gov_tx_id,
+                            "session_id": token.session_id,
+                            "principal_fingerprint": token.principal_fingerprint,
+                            "authority": token.authority,
+                            "backend": token.backend,
+                            "model": token.model,
+                            "action_class": token.action_class,
+                            "verdict_id": token.sentinel_verdict_id,
+                            "policy_hash": token.policy_hash,
+                            "expires_at": token.expires_at,
+                            "max_uses": token.max_uses
+                        })),
+                        Err(error) => json_response(403, json!({
+                            "ok": false,
+                            "authorized": false,
+                            "error": format!("{:?}", error)
+                        })),
+                    }
+                }
+            }
+        }
+
+        ("POST", "/provider/consume") => {
+            let value: Value = match serde_json::from_str(&body) {
+                Ok(value) => value,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({
+                        "ok": false,
+                        "error": "valid JSON body required"
+                    }))
+                ),
+            };
+
+            let parsed = (|| -> Result<
+                (String, String, String, String, String),
+                String
+            > {
+                Ok((
+                    required_json_string(&value, "capability_id")?,
+                    required_json_string(&value, "gov_tx_id")?,
+                    required_json_string(&value, "session_id")?,
+                    required_json_string(&value, "backend")?,
+                    required_json_string(&value, "model")?,
+                ))
+            })();
+
+            match parsed {
+                Err(error) => json_response(400, json!({
+                    "ok": false,
+                    "error": error
+                })),
+                Ok((
+                    capability_id,
+                    gov_tx_id,
+                    session_id,
+                    backend,
+                    model,
+                )) => {
+                    let binding = PresentedBinding {
+                        token_id: &capability_id,
+                        gov_tx_id: &gov_tx_id,
+                        session_id: &session_id,
+                        principal_fingerprint: &service_principal_fingerprint(
+                            service_token.as_str()
+                        ),
+                        authority: AUTHORITY_PROVIDER_EXECUTE,
+                        backend: &backend,
+                        model: &model,
+                    };
+
+                    let outcome = pipeline.consume_provider_capability(&binding);
+                    let authorized = outcome.authorized();
+                    let status = if authorized { 200 } else { 403 };
+
+                    json_response(status, json!({
+                        "ok": authorized,
+                        "authorized": authorized,
+                        "outcome": outcome.as_audit_str(),
+                        "capability_id": capability_id,
+                        "gov_tx_id": gov_tx_id,
+                        "session_id": session_id
+                    }))
+                }
             }
         }
 
