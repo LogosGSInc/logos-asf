@@ -108,7 +108,20 @@ h4 { font-size: .82rem; }
 .grid { display: grid; gap: 16px; }
 .grid.two { grid-template-columns: 1fr 1fr; }
 .grid.brief { grid-template-columns: 1.3fr 1fr; }
-@media (max-width: 880px){ .app{grid-template-columns:1fr} .side{display:none} .grid.two,.grid.brief{grid-template-columns:1fr} }
+@media (max-width: 680px) {
+  .app { grid-template-columns: 1fr; }
+  .side { display: none; }
+  .grid.two,
+  .grid.brief { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 681px) and (max-width: 1040px) {
+  .app { grid-template-columns: 210px minmax(0, 1fr); }
+  .side { padding-left: 10px; padding-right: 10px; }
+  .content { padding: 18px; }
+  .grid.two,
+  .grid.brief { grid-template-columns: 1fr; }
+}
 .card {
   background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--r-lg);
   padding: 16px 18px;
@@ -317,6 +330,187 @@ body.adv .adv-banner {
   }
 
   .ops-agent {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ── Workspace governance evidence ─────────────────────────────────── */
+.gov-proof {
+  margin-top: 7px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(255,255,255,.012);
+  overflow: hidden;
+  max-width: 760px;
+}
+
+.gov-proof-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 11px;
+}
+
+.gov-proof-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.gov-proof-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gov-proof-copy strong {
+  font-size: .78rem;
+  line-height: 1.25;
+}
+
+.gov-proof-copy span {
+  color: var(--muted);
+  font-size: .7rem;
+  line-height: 1.35;
+}
+
+.gov-proof.verified {
+  color: var(--success);
+  border-color: rgba(52,211,154,.3);
+  background: rgba(52,211,154,.035);
+}
+
+.gov-proof.approval {
+  color: var(--warning);
+  border-color: rgba(224,161,58,.32);
+  background: rgba(224,161,58,.04);
+}
+
+.gov-proof.blocked {
+  color: var(--error);
+  border-color: rgba(239,92,92,.34);
+  background: rgba(239,92,92,.04);
+}
+
+.gov-proof.verifying,
+.gov-proof.unavailable {
+  color: var(--muted);
+}
+
+.gov-proof-details,
+.gov-proof-technical,
+.gov-proof-planning {
+  border-top: 1px solid var(--border);
+}
+
+.gov-proof-details > summary,
+.gov-proof-technical > summary,
+.gov-proof-planning > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 11px;
+  color: var(--silver);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.gov-proof-details > summary::-webkit-details-marker,
+.gov-proof-technical > summary::-webkit-details-marker,
+.gov-proof-planning > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gov-proof-details > summary::after,
+.gov-proof-technical > summary::after,
+.gov-proof-planning > summary::after {
+  content: "＋";
+  float: right;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.gov-proof-details[open] > summary::after,
+.gov-proof-technical[open] > summary::after,
+.gov-proof-planning[open] > summary::after {
+  content: "−";
+}
+
+.gov-proof-body {
+  padding: 0 11px 11px;
+  color: var(--text);
+}
+
+.gov-proof-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 8px;
+  padding: 4px 0 10px;
+}
+
+.gov-proof-grid > div,
+.gov-proof-id-list > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.gov-proof-grid span,
+.gov-proof-id-list span {
+  color: var(--muted);
+  font-size: .66rem;
+}
+
+.gov-proof-grid strong,
+.gov-proof-id-list strong {
+  color: var(--text);
+  font-size: .73rem;
+  line-height: 1.35;
+}
+
+.gov-proof-id-list {
+  display: grid;
+  gap: 9px;
+  padding: 2px 11px 11px;
+}
+
+.gov-proof-id-list code {
+  display: block;
+  max-width: 100%;
+  color: var(--silver);
+  font-size: .66rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.gov-proof-planning {
+  margin-top: 5px;
+}
+
+@media (prefers-contrast: more) {
+  .gov-proof {
+    border-width: 2px;
+  }
+
+  .gov-proof-copy strong,
+  .gov-proof-copy span {
+    color: currentColor;
+  }
+}
+
+@media (max-width: 720px) {
+  .gov-proof-grid {
     grid-template-columns: 1fr;
   }
 }

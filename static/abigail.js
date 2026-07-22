@@ -219,6 +219,255 @@
   var chat = [{ role: "sys", text: "Mission Control ready. Ask Abigail to review activity, or type a question. Every turn runs the governed pipeline (Sentinel · HAAP · approval · cost)." }];
   var chatBusy = false;
 
+
+  // ── Governance evidence state contract ───────────────────────────────
+  // Only one exact conjunction may produce VERIFIED. Missing, ambiguous,
+  // legacy, or partial evidence always falls away from green.
+  function nonEmpty(value) {
+    return typeof value === "string" && value.trim().length > 0;
+  }
+
+  function deriveGovState(resp) {
+    if (!resp) {
+      return {
+        state: "UNAVAILABLE",
+        icon: "—",
+        label: "Governance unavailable",
+        detail: "No governance evidence was returned."
+      };
+    }
+
+    if (resp.pending === true) {
+      return {
+        state: "VERIFYING",
+        icon: "○",
+        label: "Verifying",
+        detail: "Authorization and response review are in progress."
+      };
+    }
+
+    var mode = String(resp.mode || "").toUpperCase();
+    var gov = resp.governance || {};
+
+    if (
+      mode === "APPROVAL_REQUIRED" ||
+      mode === "STEP_UP_REQUIRED" ||
+      mode === "HAAP_GATED"
+    ) {
+      return {
+        state: "APPROVAL_REQUIRED",
+        icon: "!",
+        label: "Authorization required",
+        detail: "This transaction stopped. A newly authorized request is required."
+      };
+    }
+
+    if (
+      mode === "SENTINEL_UNREACHABLE" ||
+      mode === "SENTINEL_AUTHORITY_ERROR"
+    ) {
+      return {
+        state: "UNAVAILABLE",
+        icon: "—",
+        label: "Governance unavailable",
+        detail: "The required governance service or evidence was unavailable."
+      };
+    }
+
+    if (
+      resp.ok === false ||
+      mode === "BLOCKED" ||
+      mode === "SENTINEL_BLOCK" ||
+      mode === "PROVIDER_EXECUTION_BLOCKED"
+    ) {
+      return {
+        state: "BLOCKED",
+        icon: "×",
+        label: "Execution blocked",
+        detail: "No unapproved response was released."
+      };
+    }
+
+    var complete =
+      resp.ok === true &&
+      gov.execution_status === "completed" &&
+      gov.capability_outcome === "CAPABILITY_CONSUMED" &&
+      gov.outbound_verdict === "APPROVED" &&
+      nonEmpty(gov.gov_tx_id) &&
+      nonEmpty(gov.verdict_id) &&
+      nonEmpty(gov.decision_id) &&
+      nonEmpty(gov.capability_id) &&
+      nonEmpty(gov.backend) &&
+      nonEmpty(gov.model);
+
+    if (complete) {
+      return {
+        state: "VERIFIED",
+        icon: "✓",
+        label: "Governance verified",
+        detail: "Authorized provider · Single-use authority · Response approved"
+      };
+    }
+
+    return {
+      state: "UNAVAILABLE",
+      icon: "—",
+      label: "Governance unavailable",
+      detail: "Complete execution evidence was not returned."
+    };
+  }
+
+  function govStateClass(stateName) {
+    var map = {
+      VERIFYING: "verifying",
+      VERIFIED: "verified",
+      APPROVAL_REQUIRED: "approval",
+      BLOCKED: "blocked",
+      UNAVAILABLE: "unavailable"
+    };
+    return map[stateName] || "unavailable";
+  }
+
+  function readableValue(value, fallback) {
+    return nonEmpty(value) ? value : (fallback || "Not reported");
+  }
+
+  function titleCaseMachineValue(value) {
+    if (!nonEmpty(value)) return "Not reported";
+    return String(value)
+      .replace(/_/g, " ")
+      .toLowerCase()
+      .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  function renderGovernanceEvidence(resp) {
+    var derived = deriveGovState(resp);
+    var stateClass = govStateClass(derived.state);
+    var gov = resp && resp.governance ? resp.governance : {};
+    var orchestration = resp && resp.orchestration ? resp.orchestration : {};
+
+    if (derived.state === "VERIFYING") {
+      return (
+        '<div class="gov-proof ' + stateClass + '" role="status" aria-live="polite">' +
+          '<div class="gov-proof-summary">' +
+            '<span class="gov-proof-icon" aria-hidden="true">' + esc(derived.icon) + "</span>" +
+            '<div class="gov-proof-copy">' +
+              '<strong>' + esc(derived.label) + "</strong>" +
+              '<span>' + esc(derived.detail) + "</span>" +
+            "</div>" +
+          "</div>" +
+        "</div>"
+      );
+    }
+
+    var hasExecutionProof =
+      nonEmpty(gov.backend) ||
+      nonEmpty(gov.model) ||
+      nonEmpty(gov.gov_tx_id) ||
+      nonEmpty(gov.capability_id);
+
+    var executionDetails = "";
+    if (hasExecutionProof) {
+      executionDetails =
+        '<details class="gov-proof-details">' +
+          '<summary>View proof</summary>' +
+          '<div class="gov-proof-body">' +
+            '<div class="gov-proof-grid">' +
+              '<div><span>Provider</span><strong>' +
+                esc(readableValue(gov.backend)) + " · " +
+                esc(readableValue(gov.model)) +
+              "</strong></div>" +
+              '<div><span>Authorization</span><strong>' +
+                (nonEmpty(gov.decision_id) ? "Approved for this request" : "Not confirmed") +
+              "</strong></div>" +
+              '<div><span>Single-use authority</span><strong>' +
+                (gov.capability_outcome === "CAPABILITY_CONSUMED"
+                  ? "Consumed before execution"
+                  : titleCaseMachineValue(gov.capability_outcome)) +
+              "</strong></div>" +
+              '<div><span>Outbound review</span><strong>' +
+                titleCaseMachineValue(gov.outbound_verdict) +
+              "</strong></div>" +
+              '<div><span>Execution</span><strong>' +
+                titleCaseMachineValue(gov.execution_status) +
+              "</strong></div>" +
+            "</div>" +
+
+            '<details class="gov-proof-technical">' +
+              '<summary>Technical evidence</summary>' +
+              '<div class="gov-proof-id-list">' +
+                '<div><span>Governance transaction</span><code>' +
+                  esc(readableValue(gov.gov_tx_id)) +
+                "</code></div>" +
+                '<div><span>Sentinel verdict</span><code>' +
+                  esc(readableValue(gov.verdict_id)) +
+                "</code></div>" +
+                '<div><span>Authorization decision</span><code>' +
+                  esc(readableValue(gov.decision_id)) +
+                "</code></div>" +
+                '<div><span>Single-use capability</span><code>' +
+                  esc(readableValue(gov.capability_id)) +
+                "</code></div>" +
+              "</div>" +
+            "</details>" +
+
+            (nonEmpty(orchestration.gov_tx_id)
+              ? (
+                '<details class="gov-proof-planning">' +
+                  '<summary>Planning metadata</summary>' +
+                  '<div class="gov-proof-id-list">' +
+                    '<div><span>Planning mode</span><strong>' +
+                      esc(readableValue(orchestration.orchestration_mode, "Shadow")) +
+                    "</strong></div>" +
+                    '<div><span>Shadow planning transaction</span><code>' +
+                      esc(orchestration.gov_tx_id) +
+                    "</code></div>" +
+                  "</div>" +
+                "</details>"
+              )
+              : "") +
+          "</div>" +
+        "</details>";
+    }
+
+    return (
+      '<div class="gov-proof ' + stateClass + '">' +
+        '<div class="gov-proof-summary">' +
+          '<span class="gov-proof-icon" aria-hidden="true">' + esc(derived.icon) + "</span>" +
+          '<div class="gov-proof-copy">' +
+            '<strong>' + esc(derived.label) + "</strong>" +
+            '<span>' + esc(derived.detail) + "</span>" +
+          "</div>" +
+        "</div>" +
+        executionDetails +
+      "</div>"
+    );
+  }
+
+  function renderChatMessage(message) {
+    var role = message.role || "sys";
+    var roleLabel = role === "user"
+      ? "You"
+      : (role === "sys" ? "System" : "Abigail");
+
+    var response = message.response || null;
+    var evidence = role === "abigail" || (role === "sys" && response)
+      ? renderGovernanceEvidence(response)
+      : "";
+
+    var bubble = message.text
+      ? '<div class="bubble">' + esc(message.text) + "</div>"
+      : "";
+
+    return (
+      '<div class="msg ' + esc(role) + '">' +
+        '<div class="role">' + esc(roleLabel) + "</div>" +
+        bubble +
+        evidence +
+      "</div>"
+    );
+  }
+
   function renderWorkspace() {
     var el = document.getElementById("tab-workspace");
     if (!el) return;
@@ -228,11 +477,7 @@
           '<div class="tiny">Governed Abigail channel — audit-logged</div></div>' +
           provBadge("live") + "</div>" +
         '<div class="chat-stream" id="chatStream">' +
-          chat.map(function (m) {
-            return '<div class="msg ' + m.role + '">' +
-              (m.role === "user" ? '<div class="role">You</div>' : '<div class="role">' + (m.role === "sys" ? "System" : "Abigail") + "</div>") +
-              '<div class="bubble">' + esc(m.text) + "</div></div>";
-          }).join("") +
+          chat.map(renderChatMessage).join("") +
           (chatBusy ? '<div class="thinking">Abigail is thinking…</div>' : "") +
         "</div>" +
         '<div class="composer">' +
@@ -260,17 +505,60 @@
   async function sendChat() {
     var input = document.getElementById("chatInput");
     if (!input) return;
+
     var msg = input.value.trim();
     if (!msg || chatBusy) return;
+
     chat.push({ role: "user", text: msg });
-    chatBusy = true; renderWorkspace();
+
+    var pendingMessage = {
+      role: "abigail",
+      text: "",
+      response: { pending: true }
+    };
+
+    chat.push(pendingMessage);
+    chatBusy = true;
+    renderWorkspace();
+
     var r = await fetchJSON("/api/chat", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: msg })
     });
+
     chatBusy = false;
-    var text = (r.body && (r.body.text || r.body.error)) || "[no response]";
-    chat.push({ role: r.body && r.body.ok ? "abigail" : "sys", text: text });
+
+    var response = r.body && typeof r.body === "object"
+      ? r.body
+      : {
+          ok: false,
+          mode: "SENTINEL_UNREACHABLE",
+          error: "No valid response was returned."
+        };
+
+    if (!r.ok && response.ok !== false) {
+      response.ok = false;
+    }
+
+    var text =
+      response.text ||
+      response.error ||
+      "[No response was released.]";
+
+    var finalMessage = {
+      role: response.ok ? "abigail" : "sys",
+      text: text,
+      response: response
+    };
+
+    var pendingIndex = chat.indexOf(pendingMessage);
+    if (pendingIndex >= 0) {
+      chat.splice(pendingIndex, 1, finalMessage);
+    } else {
+      chat.push(finalMessage);
+    }
+
     renderWorkspace();
   }
 
