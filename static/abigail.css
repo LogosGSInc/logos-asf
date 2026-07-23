@@ -390,6 +390,12 @@ body.adv .adv-banner {
   background: rgba(52,211,154,.035);
 }
 
+.gov-proof.local-governed {
+  color: var(--success);
+  border-color: rgba(52,211,154,.24);
+  background: rgba(52,211,154,.025);
+}
+
 .gov-proof.approval {
   color: var(--warning);
   border-color: rgba(224,161,58,.32);

@@ -161,3 +161,47 @@ def test_route_benign_still_carries_cost_and_no_leak(monkeypatch):
     assert body["text"] != FALLBACK
     for t in _LEAK_TERMS:
         assert t.lower() not in str(body).lower()
+
+
+def test_public_assist_declares_deterministic_local_governance(monkeypatch):
+    _no_net(monkeypatch)
+
+    out = A.process_message(
+        "hi",
+        _Sess(),
+        A.KillSwitch(),
+        ["groq"],
+    )
+
+    assert out["ok"] is True
+    assert out["mode"] == "PUBLIC_ASSIST"
+
+    gov = out["governance"]
+    assert gov == {
+        "execution_path": "deterministic_public_assist",
+        "provider_execution_required": False,
+        "execution_status": "completed",
+        "capability_outcome": "NOT_REQUIRED",
+        "outbound_verdict": "NOT_REQUIRED",
+    }
+
+    assert "backend" not in gov
+    assert "model" not in gov
+    assert "capability_id" not in gov
+    assert "gov_tx_id" not in gov
+
+
+def test_public_assist_does_not_claim_provider_execution(monkeypatch):
+    _no_net(monkeypatch)
+
+    out = A.process_message(
+        "what can you do",
+        _Sess(),
+        A.KillSwitch(),
+        ["groq"],
+    )
+
+    assert out["mode"] == "PUBLIC_ASSIST"
+    assert out["governance"]["provider_execution_required"] is False
+    assert out["governance"]["capability_outcome"] == "NOT_REQUIRED"
+    assert out["governance"]["outbound_verdict"] == "NOT_REQUIRED"

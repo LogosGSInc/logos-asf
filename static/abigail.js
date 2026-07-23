@@ -288,6 +288,24 @@
       };
     }
 
+    var localGoverned =
+      resp.ok === true &&
+      mode === "PUBLIC_ASSIST" &&
+      gov.execution_path === "deterministic_public_assist" &&
+      gov.provider_execution_required === false &&
+      gov.execution_status === "completed" &&
+      gov.capability_outcome === "NOT_REQUIRED" &&
+      gov.outbound_verdict === "NOT_REQUIRED";
+
+    if (localGoverned) {
+      return {
+        state: "LOCAL_GOVERNED",
+        icon: "✓",
+        label: "Governed local response",
+        detail: "No external model execution was required"
+      };
+    }
+
     var complete =
       resp.ok === true &&
       gov.execution_status === "completed" &&
@@ -321,6 +339,7 @@
     var map = {
       VERIFYING: "verifying",
       VERIFIED: "verified",
+      LOCAL_GOVERNED: "local-governed",
       APPROVAL_REQUIRED: "approval",
       BLOCKED: "blocked",
       UNAVAILABLE: "unavailable"
@@ -360,14 +379,61 @@
       );
     }
 
+    var isLocalGoverned = derived.state === "LOCAL_GOVERNED";
+
     var hasExecutionProof =
+      isLocalGoverned ||
       nonEmpty(gov.backend) ||
       nonEmpty(gov.model) ||
       nonEmpty(gov.gov_tx_id) ||
       nonEmpty(gov.capability_id);
 
     var executionDetails = "";
-    if (hasExecutionProof) {
+
+    if (isLocalGoverned) {
+      executionDetails =
+        '<details class="gov-proof-details">' +
+          '<summary>View proof</summary>' +
+          '<div class="gov-proof-body">' +
+            '<div class="gov-proof-grid">' +
+              '<div><span>Response path</span><strong>Deterministic local response</strong></div>' +
+              '<div><span>External model</span><strong>Not required</strong></div>' +
+              '<div><span>Provider authority</span><strong>Not required</strong></div>' +
+              '<div><span>Execution</span><strong>Completed locally</strong></div>' +
+            "</div>" +
+            '<details class="gov-proof-technical">' +
+              '<summary>Technical evidence</summary>' +
+              '<div class="gov-proof-id-list">' +
+                '<div><span>Execution path</span><code>' +
+                  esc(readableValue(gov.execution_path)) +
+                "</code></div>" +
+                '<div><span>Provider execution required</span><code>false</code></div>' +
+                '<div><span>Capability outcome</span><code>' +
+                  esc(readableValue(gov.capability_outcome)) +
+                "</code></div>" +
+                '<div><span>Outbound review</span><code>' +
+                  esc(readableValue(gov.outbound_verdict)) +
+                "</code></div>" +
+              "</div>" +
+            "</details>" +
+            (nonEmpty(orchestration.gov_tx_id)
+              ? (
+                '<details class="gov-proof-planning">' +
+                  '<summary>Planning metadata</summary>' +
+                  '<div class="gov-proof-id-list">' +
+                    '<div><span>Planning mode</span><strong>' +
+                      esc(readableValue(orchestration.orchestration_mode, "Shadow")) +
+                    "</strong></div>" +
+                    '<div><span>Shadow planning transaction</span><code>' +
+                      esc(orchestration.gov_tx_id) +
+                    "</code></div>" +
+                  "</div>" +
+                "</details>"
+              )
+              : "") +
+          "</div>" +
+        "</details>";
+    } else if (hasExecutionProof) {
       executionDetails =
         '<details class="gov-proof-details">' +
           '<summary>View proof</summary>' +
@@ -671,6 +737,152 @@
       "</div>";
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // GOVERNANCE — live read-only control posture and audit evidence.
+  // No control is presented as actionable unless a backing endpoint exists.
+  // ══════════════════════════════════════════════════════════════════════
+  function renderGovernance() {
+    var el = document.getElementById("tab-governance");
+    if (!el) return;
+
+    var statusLive = !!state.status;
+    var sentinelLive = !!state.sentinel;
+    var sentinelOk = !!(state.sentinel && state.sentinel.ok);
+    var ks = killSwitchActive();
+    var recentViolations = violationCount();
+
+    var auditRows = state.auditLive
+      ? state.audit.slice().reverse().slice(0, 12).map(function (event) {
+          var eventType =
+            event.event_type ||
+            event.type ||
+            event.event ||
+            "EVENT";
+
+          var timestamp =
+            event.ts ||
+            event.timestamp ||
+            event.time ||
+            "Time not reported";
+
+          var detail = event.data || event.details || event.payload || {};
+          var detailText;
+
+          try {
+            detailText = typeof detail === "string"
+              ? detail
+              : JSON.stringify(detail);
+          } catch (e) {
+            detailText = "Evidence available";
+          }
+
+          return (
+            '<div class="ops-agent">' +
+              '<div>' +
+                '<div class="ops-agent-name">' + esc(eventType) + "</div>" +
+                '<span class="ops-agent-id">' + esc(timestamp) + "</span>" +
+                '<span class="ops-agent-specialty">' + esc(detailText) + "</span>" +
+              "</div>" +
+              '<div>' + provBadge("live") + "</div>" +
+            "</div>"
+          );
+        }).join("")
+      : "";
+
+    el.innerHTML =
+      '<div class="greeting">Governance</div>' +
+      '<div class="sub" style="margin:4px 0 18px">' +
+        'Live, read-only posture from Abigail and Sentinel. Privileged actions remain backend-enforced.' +
+      "</div>" +
+
+      '<div class="grid brief">' +
+        '<div class="card">' +
+          '<div class="row"><h3>Runtime Authority</h3>' +
+            provBadge(statusLive ? "live" : "offline") +
+          "</div>" +
+          '<div class="section">' +
+            '<div class="brief-line"><span class="lbl">Control plane</span>' +
+              '<span class="val">' +
+                (statusLive
+                  ? '<span class="chip ok"><span class="dot"></span>Online</span>'
+                  : '<span class="chip warn"><span class="dot"></span>Unavailable</span>') +
+              "</span></div>" +
+            '<div class="brief-line"><span class="lbl">Kill switch</span>' +
+              '<span class="val">' +
+                (ks
+                  ? '<span class="chip crit"><span class="dot"></span>Active</span>'
+                  : '<span class="chip ok"><span class="dot"></span>Armed</span>') +
+              "</span></div>" +
+            '<div class="brief-line"><span class="lbl">Backend</span>' +
+              '<span class="val">' +
+                esc((state.status && state.status.backend) || "Not reported") +
+              "</span></div>" +
+            '<div class="brief-line"><span class="lbl">Runtime version</span>' +
+              '<span class="val">' +
+                esc((state.status && state.status.version) || "Not reported") +
+              "</span></div>" +
+          "</div>" +
+        "</div>" +
+
+        '<div class="card">' +
+          '<div class="row"><h3>Sentinel OverWatch</h3>' +
+            provBadge(sentinelLive ? "live" : "offline") +
+          "</div>" +
+          '<div class="section">' +
+            '<div class="brief-line"><span class="lbl">Authority service</span>' +
+              '<span class="val">' +
+                (sentinelOk
+                  ? '<span class="chip ok"><span class="dot"></span>Healthy</span>'
+                  : '<span class="chip warn"><span class="dot"></span>Unavailable</span>') +
+              "</span></div>" +
+            '<div class="brief-line"><span class="lbl">Recent governed stops</span>' +
+              '<span class="val">' +
+                (recentViolations == null ? "—" : esc(recentViolations)) + " " +
+                provBadge(state.auditLive ? "live" : "offline") +
+              "</span></div>" +
+            '<div class="brief-line"><span class="lbl">Audit evidence</span>' +
+              '<span class="val">' +
+                (state.auditLive
+                  ? '<span class="chip ok"><span class="dot"></span>Available</span>'
+                  : '<span class="chip warn"><span class="dot"></span>Token required</span>') +
+              "</span></div>" +
+            '<div class="brief-line"><span class="lbl">Control mode</span>' +
+              '<span class="val">Read only</span></div>' +
+          "</div>" +
+        "</div>" +
+      "</div>" +
+
+      '<div class="card" style="margin-top:16px">' +
+        '<div class="row"><h3>Recent Governance Evidence</h3>' +
+          provBadge(state.auditLive ? "live" : "offline") +
+        "</div>" +
+        '<div class="section">' +
+          (state.auditLive
+            ? (auditRows || '<div class="tiny">No recent audit events were returned.</div>')
+            : '<div class="empty">' +
+                '<h3>Operator token required</h3>' +
+                '<div class="tiny">Enter the admin token in Settings to retrieve the protected governance tail.</div>' +
+                provBadge("offline") +
+              "</div>") +
+        "</div>" +
+      "</div>" +
+
+      '<div class="card" style="margin-top:16px">' +
+        '<div class="row"><h3>Enforcement Boundary</h3></div>' +
+        '<div class="section">' +
+          '<div class="brief-line"><span class="lbl">Authorization decisions</span>' +
+            '<span class="val">Enforced by backend</span></div>' +
+          '<div class="brief-line"><span class="lbl">Advanced Mode</span>' +
+            '<span class="val">Reveal only</span></div>' +
+          '<div class="brief-line"><span class="lbl">Operator actions</span>' +
+            '<span class="val">Use Operator Console</span></div>' +
+          '<div style="margin-top:14px">' +
+            '<a class="btn primary" href="dashboard.html">Open Operator Console →</a>' +
+          "</div>" +
+        "</div>" +
+      "</div>";
+  }
+
   // ── empty state for phases not yet built (honest, no fabricated data) ─
   function emptyTab(id, title, note) {
     var el = document.getElementById("tab-" + id);
@@ -685,8 +897,8 @@
     if (activeTab === "home") renderHome();
     else if (activeTab === "workspace") renderWorkspace();
     else if (activeTab === "operations") renderOperations();
-    else if (activeTab === "governance") emptyTab("governance", "Governance", "Emergency / Controls / Audit — arriving in Phase 3.");
-    else if (activeTab === "observability") emptyTab("observability", "Observability", "Runtime, provider status & raw metrics — arriving in Phase 2.");
+    else if (activeTab === "governance") renderGovernance();
+    else if (activeTab === "observability") window.location.href = "dashboard.html";
     else if (activeTab === "settings") renderSettings();
   }
   function activateTab(id) {

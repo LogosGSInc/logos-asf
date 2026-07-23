@@ -1749,8 +1749,20 @@ def public_intent_answer(message, session):
     if not label:
         return None
     log_event("PUBLIC_INTENT_ANSWER", {"intent": label})
-    return {"ok": True, "text": _PUBLIC_ANSWERS[label], "drs": 0,
-            "mode": "PUBLIC_ASSIST", "crsv": session.crsv()}
+    return {
+        "ok": True,
+        "text": _PUBLIC_ANSWERS[label],
+        "drs": 0,
+        "mode": "PUBLIC_ASSIST",
+        "crsv": session.crsv(),
+        "governance": {
+            "execution_path": "deterministic_public_assist",
+            "provider_execution_required": False,
+            "execution_status": "completed",
+            "capability_outcome": "NOT_REQUIRED",
+            "outbound_verdict": "NOT_REQUIRED",
+        },
+    }
 
 # ── ASF Department Registry ───────────────────────────────────────────────────
 ASF_DEPARTMENTS = [
@@ -1951,7 +1963,8 @@ def build_web_app(session, kill_switch, active_backend):
 
     @flask_app.route("/")
     def index():
-        p = _os.path.join(STATIC_DIR, "index.html")
+        # Abigail Command Center is the primary governed workspace.
+        p = _os.path.join(STATIC_DIR, "abigail.html")
         if _os.path.exists(p):
             return Response(open(p).read(), mimetype="text/html")
         # Fallback if static dir not mounted
