@@ -517,11 +517,56 @@ _CONST_RE  = [re.compile(p,re.IGNORECASE) for p in CONSTITUTIONAL_BLOCKS]
 _SENT_RE   = [re.compile(p,re.IGNORECASE|re.DOTALL) for p in SENTINEL_PATTERNS]
 _SIGNAL_RE = [(re.compile(p,re.IGNORECASE),s,l) for p,s,l in _DRS_SIGNALS]
 
+# Compound risk calibration:
+# Individual deployment, production, billing, urgency, or permanence references
+# remain low/medium risk in isolation. A JIT approval bonus applies only when the
+# request combines active execution, production scope, material impact, and
+# urgency or irreversibility.
+_DRS_COMPOUND_EXECUTION = re.compile(
+    r"\b(deploy|push\s+to\s+main|merge\s+to|release|roll\s*out|ship)\b",
+    re.IGNORECASE,
+)
+_DRS_COMPOUND_PRODUCTION = re.compile(
+    r"\b(production|prod\b|live\s+system)\b",
+    re.IGNORECASE,
+)
+_DRS_COMPOUND_BROAD_IMPACT = re.compile(
+    r"\b(all\s+users|everyone|bulk|billing|payment|charge|invoice)\b",
+    re.IGNORECASE,
+)
+_DRS_COMPOUND_ESCALATOR = re.compile(
+    r"\b(now|immediately|permanent|irreversible|can(?:no|')t\s+undo)\b",
+    re.IGNORECASE,
+)
+_DRS_COMPOUND_BONUS = 30
+
 def drs_score(text):
-    hits,total=[],0
-    for rx,w,lbl in _SIGNAL_RE:
-        if rx.search(text): total+=w; hits.append(f"{lbl}(+{w})")
-    return min(total,100), hits
+    hits, total = [], 0
+
+    for rx, weight, label in _SIGNAL_RE:
+        if rx.search(text):
+            total += weight
+            hits.append(f"{label}(+{weight})")
+
+    compound_matches = {
+        "execution": bool(_DRS_COMPOUND_EXECUTION.search(text)),
+        "production": bool(_DRS_COMPOUND_PRODUCTION.search(text)),
+        "broad_or_financial_impact": bool(
+            _DRS_COMPOUND_BROAD_IMPACT.search(text)
+        ),
+        "urgency_or_irreversibility": bool(
+            _DRS_COMPOUND_ESCALATOR.search(text)
+        ),
+    }
+
+    if all(compound_matches.values()):
+        total += _DRS_COMPOUND_BONUS
+        hits.append(
+            "compound high-impact irreversible execution"
+            f"(+{_DRS_COMPOUND_BONUS})"
+        )
+
+    return min(total, 100), hits
 
 def sentinel_check(text):
     for rx in _SENT_RE:
