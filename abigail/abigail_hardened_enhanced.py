@@ -327,17 +327,71 @@ BACKENDS = {
 def _safe_error(ctx,exc): return f"[{ctx} error — {type(exc).__name__}]"
 
 def call_groq(messages, system, model=None):
-    model = model or os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+    model = model or os.environ.get(
+        "GROQ_MODEL",
+        "llama-3.3-70b-versatile",
+    ).strip()
+
     try:
         from groq import Groq
-        r=Groq(api_key=_require_env_key("GROQ_API_KEY"),timeout=GROQ_TIMEOUT).chat.completions.create(
-            model=model, messages=[{"role":"system","content":system}]+messages,
-            max_tokens=2048, temperature=0.3)
-        return r.choices[0].message.content.strip()
-    except ImportError: return "[Groq not installed]"
+
+        response = Groq(
+            api_key=_require_env_key("GROQ_API_KEY"),
+            timeout=GROQ_TIMEOUT,
+        ).chat.completions.create(
+            model=model,
+            messages=[{"role": "system", "content": system}] + messages,
+            max_tokens=2048,
+            temperature=0.3,
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except ImportError as exc:
+        log_event(
+            "BACKEND_ERROR",
+            {
+                "backend": "groq",
+                "error_type": type(exc).__name__,
+                "terminal_state": "UNAVAILABLE",
+            },
+        )
+        raise GovernedProviderError(
+            "Groq provider client is unavailable.",
+            terminal_state="UNAVAILABLE",
+            provider_called=False,
+        ) from exc
+
     except Exception as exc:
-        log_event("BACKEND_ERROR",{"backend":"groq","error_type":type(exc).__name__})
-        return _safe_error("Groq",exc)
+        error_type = type(exc).__name__
+        error_text = str(exc).lower()
+
+        timed_out = (
+            "timeout" in error_type.lower()
+            or "timed out" in error_text
+            or "deadline exceeded" in error_text
+        )
+
+        terminal_state = "TIMED_OUT" if timed_out else "UNAVAILABLE"
+
+        log_event(
+            "BACKEND_ERROR",
+            {
+                "backend": "groq",
+                "error_type": error_type,
+                "terminal_state": terminal_state,
+            },
+        )
+
+        raise GovernedProviderError(
+            (
+                "Groq provider execution exceeded the configured deadline."
+                if timed_out
+                else "Groq provider execution was unavailable."
+            ),
+            terminal_state=terminal_state,
+            provider_called=True,
+        ) from exc
 
 def call_anthropic(messages, system, model=None):
     try:
@@ -1252,7 +1306,22 @@ def _sentinel_inspect(payload:str, session_id:str) -> dict:
 
 
 class GovernedProviderError(RuntimeError):
-    """Provider execution failed before a governed response could be returned."""
+    """Typed failure raised when governed provider execution cannot complete."""
+
+    def __init__(
+        self,
+        message,
+        *,
+        terminal_state="UNAVAILABLE",
+        provider_called=False,
+        capability_consumed=False,
+        governance=None,
+    ):
+        super().__init__(message)
+        self.terminal_state = str(terminal_state or "BLOCKED").upper()
+        self.provider_called = bool(provider_called)
+        self.capability_consumed = bool(capability_consumed)
+        self.governance = dict(governance or {})
 
 
 def _sentinel_headers():
@@ -1571,12 +1640,51 @@ def _governed_provider_execute(
     )
 
     # The external execution boundary occurs only after successful atomic burn.
-    text = _call_provider_exact(
-        provider,
-        model,
-        messages,
-        system,
-    )
+    try:
+        text = _call_provider_exact(
+            provider,
+            model,
+            messages,
+            system,
+        )
+    except GovernedProviderError as exc:
+        exc.capability_consumed = True
+        exc.governance.update({
+            "gov_tx_id": gov_tx_id,
+            "verdict_id": expected_verdict_id,
+            "decision_id": authorization["decision_id"],
+            "capability_id": authorization["capability_id"],
+            "backend": provider,
+            "model": model,
+            "capability_outcome": consumption.get("outcome"),
+            "outbound_verdict": None,
+            "execution_status": (
+                "timed_out"
+                if exc.terminal_state == "TIMED_OUT"
+                else "unavailable"
+                if exc.terminal_state == "UNAVAILABLE"
+                else "rejected"
+            ),
+            "provider_called": exc.provider_called,
+            "output_released": False,
+        })
+
+        log_event(
+            "GOVERNED_PROVIDER_EXECUTION_TERMINATED",
+            {
+                "gov_tx_id": gov_tx_id,
+                "verdict_id": expected_verdict_id,
+                "decision_id": authorization["decision_id"],
+                "capability_id": authorization["capability_id"],
+                "backend": provider,
+                "model": model,
+                "capability_outcome": consumption.get("outcome"),
+                "terminal_state": exc.terminal_state,
+                "provider_called": exc.provider_called,
+                "output_released": False,
+            },
+        )
+        raise
 
     outbound = _sentinel_outbound(
         text,
@@ -2208,20 +2316,39 @@ def build_web_app(session, kill_switch, active_backend):
                 "error": str(s_result.get("error", ""))[:200],
                 "action": "HARD_STOP",
             })
+            sentinel_unavailable = s_verdict in (
+                "SENTINEL_OFFLINE",
+                "SENTINEL_AUTH_MISSING",
+                "SENTINEL_REJECTED",
+                "UNKNOWN",
+            )
+
+            terminal_state = (
+                "UNAVAILABLE"
+                if sentinel_unavailable
+                else "BLOCKED"
+            )
+
             return jsonify({
                 "ok": False,
                 "blocked": True,
+                "terminal_state": terminal_state,
                 "error": (
                     "Sentinel OverWatch did not grant execution authority. "
                     f"Verdict: {s_verdict}."
                 ),
                 "mode": "SENTINEL_FAIL_CLOSED",
-            }), 503 if s_verdict in (
-                "SENTINEL_OFFLINE",
-                "SENTINEL_AUTH_MISSING",
-                "SENTINEL_REJECTED",
-                "UNKNOWN",
-            ) else 403
+                "governance": {
+                    "execution_status": (
+                        "unavailable"
+                        if sentinel_unavailable
+                        else "rejected"
+                    ),
+                    "sentinel_verdict": s_verdict,
+                    "provider_called": False,
+                    "output_released": False,
+                },
+            }), 503 if sentinel_unavailable else 403
 
         log_event("DISPATCH_SENTINEL_APPROVED", {
             "agent_id": agent_id,
@@ -2230,37 +2357,241 @@ def build_web_app(session, kill_switch, active_backend):
             "action": "PROCEED_TO_HAAP",
         })
 
-        try:
-            haap_gate(task, agent_drs_ceiling=80)
-        except HAAPViolation as e:
-            log_event("DISPATCH_BLOCKED", {"agent_id":agent_id,"reason":str(e)[:200]})
-            return jsonify({"ok":False,"error":str(e),"blocked":True}), 403
+        # Preserve hard constitutional/adversarial blocks before considering
+        # whether a request is merely high-risk and eligible for human approval.
+        constitutional_match = constitutional_check(task)
+        sentinel_match = sentinel_check(task)
+
+        if constitutional_match or sentinel_match:
+            try:
+                haap_gate(task, agent_drs_ceiling=80)
+            except HAAPViolation as exc:
+                log_event(
+                    "DISPATCH_BLOCKED",
+                    {
+                        "agent_id": agent_id,
+                        "reason": str(exc)[:200],
+                        "terminal_state": "BLOCKED",
+                    },
+                )
+                return jsonify({
+                    "ok": False,
+                    "blocked": True,
+                    "terminal_state": "BLOCKED",
+                    "mode": "GOVERNED_EXECUTION_REJECTED",
+                    "error": str(exc),
+                    "governance": {
+                        "execution_status": "rejected",
+                        "provider_called": False,
+                        "output_released": False,
+                    },
+                }), 403
 
         score, signals = drs_score(task)
-        mode, _, _     = drs_verdict(score)
+        mode, _, action = drs_verdict(score)
+
+        if action in ("HARD_STOP", "TERMINAL_STOP"):
+            log_event(
+                "DISPATCH_APPROVAL_REQUIRED",
+                {
+                    "agent_id": agent_id,
+                    "drs": score,
+                    "mode": mode,
+                    "signals": signals,
+                    "provider_called": False,
+                    "output_released": False,
+                },
+            )
+
+            return jsonify({
+                "ok": False,
+                "blocked": True,
+                "terminal_state": "APPROVAL_REQUIRED",
+                "mode": "APPROVAL_REQUIRED",
+                "error": (
+                    "Human approval is required before this governed dispatch "
+                    "may proceed."
+                ),
+                "approval": {
+                    "human_approval_required": True,
+                    "enforced": True,
+                    "risk_score": score,
+                    "risk_mode": mode,
+                    "reason": signals or ["jit_authorization_required"],
+                },
+                "governance": {
+                    "execution_status": "approval_required",
+                    "provider_called": False,
+                    "capability_issued": False,
+                    "capability_consumed": False,
+                    "output_released": False,
+                },
+            }), 409
+
+        try:
+            haap_gate(task, agent_drs_ceiling=80)
+        except HAAPViolation as exc:
+            log_event(
+                "DISPATCH_BLOCKED",
+                {
+                    "agent_id": agent_id,
+                    "reason": str(exc)[:200],
+                    "terminal_state": "BLOCKED",
+                },
+            )
+            return jsonify({
+                "ok": False,
+                "blocked": True,
+                "terminal_state": "BLOCKED",
+                "mode": "GOVERNED_EXECUTION_REJECTED",
+                "error": str(exc),
+                "governance": {
+                    "execution_status": "rejected",
+                    "provider_called": False,
+                    "output_released": False,
+                },
+            }), 403
         system_prompt  = agent_def.get("system_prompt") or ABIGAIL_SYSTEM_PROMPT
         agent_name     = agent_def.get("name", agent_id)
 
+        # Capability-bound provider execution requires authoritative transaction
+        # and verdict identifiers from the inbound Sentinel decision.
+        gov_tx_id = str(s_result.get("gov_tx_id") or "").strip()
+        verdict_id = str(s_result.get("verdict_id") or "").strip()
+
+        if not gov_tx_id or not verdict_id:
+            log_event("DISPATCH_AUTHORITY_EVIDENCE_MISSING", {
+                "agent_id": agent_id,
+                "session_id": sentinel_session_id,
+                "has_gov_tx_id": bool(gov_tx_id),
+                "has_verdict_id": bool(verdict_id),
+                "action": "HARD_STOP",
+            })
+            return jsonify({
+                "ok": False,
+                "blocked": True,
+                "mode": "AUTHORITY_EVIDENCE_MISSING",
+                "error": (
+                    "Sentinel approved the request without complete execution "
+                    "authority evidence."
+                ),
+            }), 503
+
+        provider = active_backend[0]
+        messages = [{"role": "user", "content": task}]
+
         t = time.monotonic()
         try:
-            text = BACKEND_DISPATCH.get(active_backend[0], call_groq)(
-                messages=[{"role":"user","content":task}],
-                system=system_prompt)
+            text, governance = _governed_provider_execute(
+                provider=provider,
+                messages=messages,
+                system=system_prompt,
+                sentinel_session_id=sentinel_session_id,
+                gov_tx_id=gov_tx_id,
+                expected_verdict_id=verdict_id,
+            )
+        except GovernedProviderError as exc:
+            terminal_state = getattr(
+                exc,
+                "terminal_state",
+                "BLOCKED",
+            ).upper()
+
+            governance = dict(
+                getattr(exc, "governance", {}) or {}
+            )
+
+            governance.setdefault("execution_status", "rejected")
+            governance.setdefault("gov_tx_id", gov_tx_id)
+            governance.setdefault("verdict_id", verdict_id)
+            governance.setdefault("backend", provider)
+            governance.setdefault("output_released", False)
+
+            # Compatibility and fail-closed semantics:
+            # any GovernedProviderError prevents execution/output release.
+            # terminal_state communicates the precise operator-facing reason.
+            blocked = True
+
+            http_status = {
+                "BLOCKED": 403,
+                "APPROVAL_REQUIRED": 409,
+                "UNAVAILABLE": 502,
+                "TIMED_OUT": 504,
+            }.get(terminal_state, 502)
+
+            log_event(
+                "DISPATCH_GOVERNED_EXECUTION_REJECTED",
+                {
+                    "agent_id": agent_id,
+                    "backend": provider,
+                    "gov_tx_id": gov_tx_id,
+                    "verdict_id": verdict_id,
+                    "error_type": type(exc).__name__,
+                    "terminal_state": terminal_state,
+                    "capability_consumed": bool(
+                        getattr(exc, "capability_consumed", False)
+                    ),
+                    "provider_called": bool(
+                        getattr(exc, "provider_called", False)
+                    ),
+                    "action": "NO_OUTPUT_RELEASED",
+                },
+            )
+
+            return jsonify({
+                "ok": False,
+                "blocked": blocked,
+                "terminal_state": terminal_state,
+                "mode": "GOVERNED_EXECUTION_REJECTED",
+                "error": str(exc),
+                "governance": governance,
+            }), http_status
         except Exception as exc:
-            log_event("DISPATCH_ERROR", {"agent_id":agent_id,"error_type":type(exc).__name__})
-            return jsonify({"ok":False,"error":_safe_error(agent_id, exc)}), 502
+            log_event("DISPATCH_ERROR", {
+                "agent_id": agent_id,
+                "backend": provider,
+                "gov_tx_id": gov_tx_id,
+                "verdict_id": verdict_id,
+                "error_type": type(exc).__name__,
+                "action": "NO_OUTPUT_RELEASED",
+            })
+            return jsonify({
+                "ok": False,
+                "blocked": True,
+                "mode": "DISPATCH_ERROR",
+                "error": _safe_error(agent_id, exc),
+            }), 502
 
         elapsed = round(time.monotonic() - t, 2)
         session.record_turn(task, score, signals)
+
         log_event("DISPATCH_COMPLETE", {
-            "agent_id":agent_id, "agent_name":agent_name,
-            "backend":active_backend[0], "drs":score, "mode":mode,
-            "elapsed":elapsed, "crsv":round(session.crsv(), 1)})
+            "agent_id": agent_id,
+            "agent_name": agent_name,
+            "backend": governance.get("backend"),
+            "model": governance.get("model"),
+            "gov_tx_id": governance.get("gov_tx_id"),
+            "verdict_id": governance.get("verdict_id"),
+            "decision_id": governance.get("decision_id"),
+            "capability_id": governance.get("capability_id"),
+            "capability_outcome": governance.get("capability_outcome"),
+            "outbound_verdict": governance.get("outbound_verdict"),
+            "drs": score,
+            "mode": mode,
+            "elapsed": elapsed,
+            "crsv": round(session.crsv(), 1),
+        })
 
         return jsonify({
-            "ok":True, "agent_id":agent_id, "agent_name":agent_name,
-            "text":text, "drs":score, "mode":mode,
-            "crsv":round(session.crsv(), 1)})
+            "ok": True,
+            "agent_id": agent_id,
+            "agent_name": agent_name,
+            "text": text,
+            "drs": score,
+            "mode": mode,
+            "crsv": round(session.crsv(), 1),
+            "governance": governance,
+        })
 
     @flask_app.route("/api/agents/spawn",methods=["POST","OPTIONS"])
     def api_agents_spawn():

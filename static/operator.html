@@ -772,7 +772,7 @@ function applyStatus(d) {
 /* ── LIVE: /api/audit-tail ── */
 async function fetchAuditTail() {
   try {
-    const token = localStorage.getItem('ABIGAIL_ADMIN_TOKEN') || '';
+    const token = sessionStorage.getItem('ABIGAIL_ADMIN_TOKEN') || '';
     const r = await fetch(apiUrl('/api/audit-tail?n=20'), {
       headers: token ? { 'Authorization': `Bearer ${token}` } : {}
     });

@@ -7,9 +7,11 @@ Sprint banner: Do not test whether Abigail can answer. Test whether Abigail can 
 /api/agents/dispatch runs a governed agent's system_prompt through live, billable model
 inference. It previously had no authentication — only a content-based haap_gate. These
 tests prove the route is now admin-authenticated fail-closed, that rejection happens
-BEFORE any provider call, and that an authenticated request still dispatches unchanged.
+BEFORE any provider call, and that an authenticated request enters the capability-bound governed
+execution boundary with complete authority evidence.
 
-No real provider calls — BACKEND_DISPATCH is replaced with a call-recording fake. No secrets.
+No real provider or Sentinel capability calls — the governed execution boundary
+is replaced with a call-recording fake. No secrets.
 """
 import sys
 from pathlib import Path
@@ -34,14 +36,19 @@ class _Recorder:
 
 def _app(monkeypatch):
     rec = _Recorder()
-    # No real inference for any backend.
-    for backend in list(A.BACKEND_DISPATCH):
-        monkeypatch.setitem(A.BACKEND_DISPATCH, backend, rec)
+
     # A resolvable agent, independent of on-disk YAML.
-    monkeypatch.setattr(A, "_get_yaml_agent",
-                        lambda _id: {"name": "Test Agent", "system_prompt": "You are a test agent."})
-    # Sentinel is authoritative in production. This suite isolates dispatch-auth behavior,
-    # so provide a deterministic approved corridor verdict without network access.
+    monkeypatch.setattr(
+        A,
+        "_get_yaml_agent",
+        lambda _id: {
+            "name": "Test Agent",
+            "system_prompt": "You are a test agent.",
+        },
+    )
+
+    # Deterministic authoritative Sentinel decision with the transaction-bound
+    # evidence now required by capability authorization.
     monkeypatch.setattr(
         A,
         "_sentinel_inspect",
@@ -50,8 +57,36 @@ def _app(monkeypatch):
             "verdict": "APPROVED",
             "tool_calls_disabled": False,
             "enhanced_logging": False,
+            "gov_tx_id": "GTX-DISPATCH-TEST",
+            "verdict_id": "SV-DISPATCH-TEST",
         },
     )
+
+    # No real Sentinel capability calls or provider inference. Record the exact
+    # governed execution invocation instead.
+    def _fake_governed_provider_execute(**kwargs):
+        rec.calls.append(kwargs)
+        return (
+            "fake agent response",
+            {
+                "execution_status": "completed",
+                "capability_outcome": "CAPABILITY_CONSUMED",
+                "outbound_verdict": "APPROVED",
+                "gov_tx_id": kwargs["gov_tx_id"],
+                "verdict_id": kwargs["expected_verdict_id"],
+                "decision_id": "DEC-DISPATCH-TEST",
+                "capability_id": "CAP-DISPATCH-TEST",
+                "backend": kwargs["provider"],
+                "model": "test-model",
+            },
+        )
+
+    monkeypatch.setattr(
+        A,
+        "_governed_provider_execute",
+        _fake_governed_provider_execute,
+    )
+
     ks = A.KillSwitch()
     sess = A.SessionState()
     app = A.build_web_app(sess, ks, ["groq"])
@@ -97,7 +132,7 @@ def test_dispatch_auth_rejected_is_audited(monkeypatch):
     assert "DISPATCH_AUTH_REJECTED" in events
 
 
-# ── authenticated: dispatches and behaves exactly as before ────────────────────
+# ── authenticated: enters capability-bound governed execution ─────────────────
 
 def test_dispatch_authenticated_succeeds_and_runs_inference(monkeypatch):
     monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", _ADMIN)
@@ -105,9 +140,24 @@ def test_dispatch_authenticated_succeeds_and_runs_inference(monkeypatch):
     r = c.post("/api/agents/dispatch", json=_BODY,
                headers={"Authorization": f"Bearer {_ADMIN}"})
     assert r.status_code == 200
-    assert len(rec.calls) == 1, "authenticated dispatch did not run exactly one inference"
-    # The agent's system_prompt is what gets run (governed persona), unchanged behavior.
-    assert rec.calls[0]["system"] == "You are a test agent."
+    assert len(rec.calls) == 1, (
+        "authenticated dispatch did not invoke exactly one governed execution"
+    )
+
+    call = rec.calls[0]
+    assert call["system"] == "You are a test agent."
+    assert call["provider"] == "groq"
+    assert call["gov_tx_id"] == "GTX-DISPATCH-TEST"
+    assert call["expected_verdict_id"] == "SV-DISPATCH-TEST"
+    assert call["messages"] == [{
+        "role": "user",
+        "content": _BODY["task"],
+    }]
+
+    data = r.get_json()
+    assert data["governance"]["execution_status"] == "completed"
+    assert data["governance"]["capability_outcome"] == "CAPABILITY_CONSUMED"
+    assert data["governance"]["outbound_verdict"] == "APPROVED"
 
 
 def test_dispatch_authenticated_response_shape_unchanged(monkeypatch):
@@ -116,8 +166,32 @@ def test_dispatch_authenticated_response_shape_unchanged(monkeypatch):
     r = c.post("/api/agents/dispatch", json=_BODY,
                headers={"Authorization": f"Bearer {_ADMIN}"})
     data = r.get_json()
-    for key in ("ok", "agent_id", "agent_name", "text", "drs", "mode", "crsv"):
+    for key in (
+        "ok",
+        "agent_id",
+        "agent_name",
+        "text",
+        "drs",
+        "mode",
+        "crsv",
+        "governance",
+    ):
         assert key in data, f"authenticated dispatch response missing key {key!r}"
+
+    for key in (
+        "execution_status",
+        "capability_outcome",
+        "outbound_verdict",
+        "gov_tx_id",
+        "verdict_id",
+        "decision_id",
+        "capability_id",
+        "backend",
+        "model",
+    ):
+        assert key in data["governance"], (
+            f"dispatch governance evidence missing key {key!r}"
+        )
     assert data["ok"] is True
     assert data["agent_id"] == "EN-01"
     assert data["text"] == "fake agent response"

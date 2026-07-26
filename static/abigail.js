@@ -24,14 +24,29 @@
     return '<span class="prov ' + k + '" title="Data provenance">' + k.toUpperCase() + "</span>";
   }
 
-  // ── admin token (set in Settings; IN-MEMORY ONLY) ────────────────────
-  // Per this environment's constraints the admin token is NEVER persisted to
-  // localStorage. It lives only in this closure for the current page session and
-  // is wiped on reload. adminHeaders() is the single source that attaches it to
-  // every admin-gated call the UI makes; the backend remains the real gate.
-  var adminTokenValue = "";
-  function adminToken() { return adminTokenValue; }
-  function setAdminToken(t) { adminTokenValue = String(t == null ? "" : t).trim(); }
+  // ── admin token (set in Settings; SESSION-SCOPED ONLY) ───────────────
+  // The admin token is never persisted to localStorage or sent anywhere except
+  // privileged backend calls. sessionStorage preserves it across reloads and
+  // same-tab navigation, then clears it when the browser tab/session ends.
+  // adminHeaders() is the single source that attaches it to gated calls.
+  function adminToken() {
+    try {
+      return sessionStorage.getItem("ABIGAIL_ADMIN_TOKEN") || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function setAdminToken(t) {
+    var token = String(t == null ? "" : t).trim();
+    try {
+      if (token) {
+        sessionStorage.setItem("ABIGAIL_ADMIN_TOKEN", token);
+      } else {
+        sessionStorage.removeItem("ABIGAIL_ADMIN_TOKEN");
+      }
+    } catch (e) {}
+  }
   function adminHeaders() { var t = adminToken(); return t ? { Authorization: "Bearer " + t } : {}; }
   function operatorName() { try { return localStorage.getItem("abigail.operator") || "Operator"; } catch (e) { return "Operator"; } }
 
@@ -40,9 +55,24 @@
     try {
       var r = await fetch(API + path, opts || {});
       var body = await r.json().catch(function () { return {}; });
-      return { ok: r.ok, status: r.status, body: body };
+      return {
+        ok: r.ok,
+        status: r.status,
+        body: body,
+        errorType: null
+      };
     } catch (e) {
-      return { ok: false, status: 0, body: { error: "unreachable" } };
+      var aborted = e && e.name === "AbortError";
+      return {
+        ok: false,
+        status: 0,
+        body: {
+          error: aborted
+            ? "The browser dispatch deadline expired."
+            : "Required service is unreachable."
+        },
+        errorType: aborted ? "AbortError" : "NetworkError"
+      };
     }
   }
 
@@ -62,6 +92,12 @@
     agentsLive: false,
     agentLoaderOk: false,
     agentGovernedBy: null,
+    agentDispatch: {
+      status: "ready",
+      evidence: null,
+      error: null,
+      agentId: null
+    },
     lastRefresh: null
   };
 
@@ -633,9 +669,257 @@
   // OPERATIONS — live read-only agent inventory.
   // Loaded means present in the registry; it does NOT imply execution authority.
   // ══════════════════════════════════════════════════════════════════════
+  function dispatchEvidenceVerified(governance) {
+    return Boolean(
+      governance &&
+      governance.execution_status === "completed" &&
+      governance.capability_outcome === "CAPABILITY_CONSUMED" &&
+      governance.outbound_verdict === "APPROVED" &&
+      governance.gov_tx_id &&
+      governance.verdict_id &&
+      governance.decision_id &&
+      governance.capability_id &&
+      governance.backend &&
+      governance.model
+    );
+  }
+
+  function dispatchPresentation() {
+    var d = state.agentDispatch || {};
+    var status = d.status || "ready";
+
+    if (status === "verifying") {
+      return {
+        label: "VERIFYING",
+        badge: "local",
+        detail: "A capability-bound governed agent dispatch is in progress."
+      };
+    }
+
+    if (status === "verified") {
+      var g = d.evidence || {};
+      return {
+        label: "VERIFIED",
+        badge: "live",
+        detail:
+          "Capability consumed · Outbound approved · " +
+          String(g.backend || "provider") + " · " +
+          String(g.model || "model")
+      };
+    }
+
+    if (status === "blocked") {
+      return {
+        label: "BLOCKED",
+        badge: "offline",
+        detail:
+          d.error ||
+          "The governed execution boundary rejected the dispatch."
+      };
+    }
+
+    if (status === "approval_required") {
+      return {
+        label: "APPROVAL REQUIRED",
+        badge: "offline",
+        detail:
+          d.error ||
+          "Human authorization is required before provider execution."
+      };
+    }
+
+    if (status === "unavailable") {
+      return {
+        label: "UNAVAILABLE",
+        badge: "offline",
+        detail:
+          d.error ||
+          "A required governance or provider service is unavailable."
+      };
+    }
+
+    if (status === "timed_out") {
+      return {
+        label: "TIMED OUT",
+        badge: "offline",
+        detail:
+          d.error ||
+          "The governed dispatch exceeded its bounded deadline."
+      };
+    }
+
+    if (status === "not_verified") {
+      return {
+        label: "NOT VERIFIED",
+        badge: "offline",
+        detail:
+          d.error ||
+          "The dispatch response lacked complete governance evidence."
+      };
+    }
+
+    return {
+      label: "READY",
+      badge: "local",
+      detail:
+        "No governed agent dispatch has been verified in this browser session."
+    };
+  }
+
+  async function verifyAgentDispatch(agentId) {
+    if (!agentId) return;
+    if (state.agentDispatch.status === "verifying") return;
+
+    if (!adminToken()) {
+      state.agentDispatch = {
+        status: "blocked",
+        evidence: null,
+        error: "Operator authorization is required to verify agent dispatch.",
+        agentId: agentId
+      };
+      renderOperations();
+      return;
+    }
+
+    state.agentDispatch = {
+      status: "verifying",
+      evidence: null,
+      error: null,
+      agentId: agentId
+    };
+    renderOperations();
+
+    var headers = adminHeaders();
+    headers["Content-Type"] = "application/json";
+
+    var controller = new AbortController();
+    var browserDeadlineMs = 70000;
+    var deadline = window.setTimeout(function () {
+      controller.abort();
+    }, browserDeadlineMs);
+
+    var response;
+
+    try {
+      response = await fetchJSON("/api/agents/dispatch", {
+        method: "POST",
+        headers: headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          agent_id: agentId,
+          task:
+            "Confirm this governed dispatch completed successfully. " +
+            "Return one concise sentence and perform no external actions."
+        })
+      });
+    } finally {
+      window.clearTimeout(deadline);
+    }
+
+    var body = response.body || {};
+    var governance = body.governance || null;
+    var terminalState = String(
+      body.terminal_state ||
+      body.mode ||
+      ""
+    ).trim().toUpperCase();
+
+    if (
+      response.ok &&
+      body.ok === true &&
+      dispatchEvidenceVerified(governance)
+    ) {
+      state.agentDispatch = {
+        status: "verified",
+        evidence: governance,
+        error: null,
+        agentId: agentId
+      };
+    } else if (
+      response.errorType === "AbortError" ||
+      terminalState === "TIMED_OUT" ||
+      response.status === 504
+    ) {
+      state.agentDispatch = {
+        status: "timed_out",
+        evidence: governance,
+        error:
+          body.error ||
+          "The governed dispatch exceeded its bounded deadline.",
+        agentId: agentId
+      };
+    } else if (
+      terminalState === "APPROVAL_REQUIRED" ||
+      body.approval?.human_approval_required === true ||
+      response.status === 409
+    ) {
+      state.agentDispatch = {
+        status: "approval_required",
+        evidence: governance,
+        error:
+          body.error ||
+          body.text ||
+          "Human approval is required before execution.",
+        agentId: agentId
+      };
+    } else if (
+      terminalState === "UNAVAILABLE" ||
+      response.errorType === "NetworkError" ||
+      response.status === 502 ||
+      response.status === 503
+    ) {
+      state.agentDispatch = {
+        status: "unavailable",
+        evidence: governance,
+        error:
+          body.error ||
+          "A required governance or provider service is unavailable.",
+        agentId: agentId
+      };
+    } else if (
+      terminalState === "BLOCKED" ||
+      body.blocked === true ||
+      response.status === 401 ||
+      response.status === 403
+    ) {
+      state.agentDispatch = {
+        status: "blocked",
+        evidence: governance,
+        error: body.error || "Governed dispatch was blocked.",
+        agentId: agentId
+      };
+    } else {
+      state.agentDispatch = {
+        status: "not_verified",
+        evidence: governance,
+        error:
+          body.error ||
+          "Dispatch completed without the full verification evidence conjunction.",
+        agentId: agentId
+      };
+    }
+
+    renderOperations();
+  }
+
   function renderOperations() {
     var el = document.getElementById("tab-operations");
     if (!el) return;
+
+    var openDepartments = {};
+    Array.prototype.forEach.call(
+      el.querySelectorAll("details.ops-dept[open][data-department]"),
+      function (details) {
+        openDepartments[
+          details.getAttribute("data-department")
+        ] = true;
+      }
+    );
+
+    var dispatchView = dispatchPresentation();
+    var dispatchBusy =
+      state.agentDispatch &&
+      state.agentDispatch.status === "verifying";
 
     if (!state.agentsLive) {
       el.innerHTML =
@@ -678,13 +962,30 @@
                 esc(specialty) +
               "</span>" +
             "</div>" +
-            '<div>' + provBadge("loaded") + "</div>" +
+            '<div class="ops-agent-actions">' +
+              provBadge("loaded") +
+              '<button type="button" class="ops-verify-btn" ' +
+                'data-dispatch-agent="' + esc(agent.id || "") + '" ' +
+                (dispatchBusy ? "disabled " : "") +
+                'aria-label="Verify governed dispatch for ' +
+                  esc(agent.name || agent.id || "agent") + '">' +
+                (dispatchBusy &&
+                 state.agentDispatch.agentId === agent.id
+                  ? "Verifying…"
+                  : "Verify dispatch") +
+              "</button>" +
+            "</div>" +
           "</div>"
         );
       }).join("");
 
+      var departmentOpen = openDepartments[dept] === true;
+
       return (
-        '<details class="ops-dept">' +
+        '<details class="ops-dept" data-department="' +
+          esc(dept) + '" ' +
+          (departmentOpen ? "open" : "") +
+        ">" +
           '<summary>' +
             '<span>' + esc(dept) + "</span>" +
             '<span class="tiny">' + agents.length + " loaded agents</span>" +
@@ -726,15 +1027,53 @@
           "</div>" +
         "</div>" +
         '<div class="ops-dispatch-note">' +
-          '<strong>Dispatch status: NOT VERIFIED.</strong> ' +
-          'LOADED means the definition is present in the live registry. ' +
-          'It does not yet prove capability-bound agent execution.' +
+          '<div class="row">' +
+            '<strong>Dispatch status: ' +
+              esc(dispatchView.label) +
+              ".</strong>" +
+            provBadge(dispatchView.badge) +
+          "</div>" +
+          '<div class="ops-dispatch-detail">' +
+            esc(dispatchView.detail) +
+          "</div>" +
+          '<div class="ops-dispatch-explainer">' +
+            'LOADED proves registry presence only. VERIFIED requires completed ' +
+            'execution, single-use capability consumption, outbound approval, ' +
+            'and complete transaction-bound authority evidence.' +
+          "</div>" +
         "</div>" +
       "</div>" +
 
       '<div class="ops-grid">' +
         cards +
       "</div>";
+
+    Array.prototype.forEach.call(
+      el.querySelectorAll("[data-dispatch-agent]"),
+      function (button) {
+        button.addEventListener("click", function () {
+          verifyAgentDispatch(
+            button.getAttribute("data-dispatch-agent")
+          );
+        });
+      }
+    );
+
+    Array.prototype.forEach.call(
+      el.querySelectorAll("details.ops-dept[data-department]"),
+      function (details) {
+        details.addEventListener("toggle", function () {
+          var department =
+            details.getAttribute("data-department");
+
+          if (details.open) {
+            openDepartments[department] = true;
+          } else {
+            delete openDepartments[department];
+          }
+        });
+      }
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -924,8 +1263,8 @@
         '<div class="section">' +
           '<div class="tiny">Display name (stored in this browser only)</div>' +
           '<input id="setName" class="btn" style="width:100%;margin-top:6px" value="' + esc(operatorName()) + '"/>' +
-          '<div class="tiny" style="margin-top:12px">Operator admin token (sent only on privileged calls; held in memory for this session only — never saved, cleared on page reload)</div>' +
-          '<input id="setTok" type="password" class="btn" style="width:100%;margin-top:6px" placeholder="paste admin token to enable admin-gated panels"/>' +
+          '<div class="tiny" style="margin-top:12px">Operator admin token (sent only on privileged calls; stored only in this browser tab session; survives reloads and clears when the session ends)</div>' +
+          '<input id="setTok" type="password" autocomplete="new-password" spellcheck="false" class="btn" style="width:100%;margin-top:6px" placeholder="paste admin token to enable admin-gated panels"/>' +
           '<div class="tiny" id="tokState" style="margin-top:6px">' + tokenStateHtml() + '</div>' +
           '<div style="margin-top:12px"><button class="btn primary" id="saveSettings">Save</button> ' +
           '<button class="btn" id="clearTok">Clear token</button></div>' +
@@ -938,12 +1277,44 @@
       if (st) st.innerHTML = tokenStateHtml();
     }
     document.getElementById("saveSettings").onclick = function () {
-      // Operator name is a cosmetic local preference; the admin token is NOT persisted.
-      try { localStorage.setItem("abigail.operator", document.getElementById("setName").value.trim() || "Operator"); } catch (e) {}
-      var t = document.getElementById("setTok").value.trim();
-      if (t) setAdminToken(t);   // set only on non-empty so an empty Save never silently wipes
+      var nameInput = document.getElementById("setName");
+      var tokenInput = document.getElementById("setTok");
+
+      try {
+        localStorage.setItem(
+          "abigail.operator",
+          nameInput.value.trim() || "Operator"
+        );
+      } catch (e) {}
+
+      var t = String(tokenInput.value || "").trim();
+
+      if (!t) {
+        var st = document.getElementById("tokState");
+        if (st) {
+          st.innerHTML =
+            '<span class="prov offline">TOKEN NOT SAVED</span> ' +
+            'The token field was empty. Paste or manually type the token, then Save.';
+        }
+        tokenInput.focus();
+        return;
+      }
+
+      setAdminToken(t);
+
+      if (!adminToken()) {
+        var failedState = document.getElementById("tokState");
+        if (failedState) {
+          failedState.innerHTML =
+            '<span class="prov offline">STORAGE FAILED</span> ' +
+            'The browser rejected sessionStorage access.';
+        }
+        return;
+      }
+
+      tokenInput.value = "";
       syncTokState();
-      refresh();                 // re-pull gated panels with the new header
+      refresh();
     };
     document.getElementById("clearTok").onclick = function () {
       setAdminToken("");

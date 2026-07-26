@@ -520,3 +520,46 @@ body.adv .adv-banner {
     grid-template-columns: 1fr;
   }
 }
+
+/* Governed agent dispatch verification */
+.ops-agent-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ops-verify-btn {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--silver);
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.ops-verify-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ops-verify-btn:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.ops-dispatch-detail {
+  margin-top: 8px;
+  color: var(--silver);
+  font-size: 0.82rem;
+}
+
+.ops-dispatch-explainer {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}

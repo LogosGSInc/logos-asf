@@ -253,10 +253,17 @@ body{min-height:100dvh;font-family:var(--font-b);font-size:1rem;color:var(--text
 
 <script>
 
+function abigailAdminToken() {
+  try {
+    return sessionStorage.getItem("ABIGAIL_ADMIN_TOKEN") || "";
+  } catch (_) {
+    return "";
+  }
+}
+
 function abigailAdminHeaders() {
-  return {
-    "Authorization": "Bearer " + (localStorage.getItem("ABIGAIL_ADMIN_TOKEN") || "")
-  };
+  const token = abigailAdminToken();
+  return token ? { "Authorization": "Bearer " + token } : {};
 }
 
 
@@ -370,6 +377,8 @@ let state = {
   lastRefresh: null,
   lastRefreshError: false,
   departments: buildDepartmentState(),
+  lifecycle: {},
+  lifecycleError: null,
   jobs: [
     { id:"JOB-ASF-201", title:"GovSec licensing one-pager", department:"MKT", status:"In Review", progress:61, priority:"High" },
     { id:"JOB-ASF-202", title:"Executive readiness brief", department:"EXE", status:"Drafting", progress:42, priority:"Critical" },
@@ -385,9 +394,9 @@ let state = {
 const navItems = [
   { id:"overview",    label:"Overview",    sub:"Global health and posture" },
   { id:"chat",        label:"Chat",        sub:"Governed Abigail interaction" },
-  { id:"departments", label:"Departments", sub:"12-department operating surface" },
-  { id:"agents",      label:"Agents",      sub:"Lead / primary / sub-agent visibility" },
-  { id:"governance",  label:"Governance",  sub:"Controls, posture, e-brake" }
+  { id:"departments", label:"Departments", sub:"Definitions and lifecycle state" },
+  { id:"agents",      label:"Agents",      sub:"Simulated roster scaffold" },
+  { id:"governance",  label:"Governance",  sub:"Live posture and status" }
 ];
 
 /* ── HELPERS ── */
@@ -477,13 +486,23 @@ async function getJSON(url, options = {}) {
 
   return await res.json();
 }
-async function postJSON(url, payload) {
+async function postJSON(url, payload, extraHeaders = {}) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type":"application/json", "Accept":"application/json" },
+    headers: {
+      "Content-Type":"application/json",
+      "Accept":"application/json",
+      ...extraHeaders
+    },
     body: JSON.stringify(payload || {})
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+
+  if (!res.ok) {
+    let body = "";
+    try { body = await res.text(); } catch (_) {}
+    throw new Error(`HTTP ${res.status} ${res.statusText}: ${body}`);
+  }
+
   return res.json();
 }
 
@@ -496,6 +515,8 @@ async function postJSON(url, payload) {
 async function refreshLive() {
   const refreshStart = Date.now();
   let abigail = null, sentinel = null, audit = [];
+  let lifecycle = {};
+  let lifecycleError = null;
   try { abigail = await getJSON(`${ENDPOINTS.abigailBase}/api/status`); }
   catch (e) { abigail = { error: String(e) }; }
   try { sentinel = await getJSON(`${ENDPOINTS.abigailBase}/api/sentinel-health`); }
@@ -503,10 +524,25 @@ async function refreshLive() {
   try {
     const t = await getJSON(`${ENDPOINTS.abigailBase}/api/audit-tail?n=25`, { headers: abigailAdminHeaders() });
     audit = Array.isArray(t.entries) ? t.entries : (Array.isArray(t.events) ? t.events : []);
-  } catch (e) { /* tail endpoint may not be live yet — non-fatal */ }
+  } catch (e) { /* audit requires operator authorization — non-fatal */ }
+
+  try {
+    const l = await getJSON(
+      `${ENDPOINTS.abigailBase}/api/agents/lifecycle`,
+      { headers: abigailAdminHeaders() }
+    );
+    lifecycle = l && typeof l.departments === "object"
+      ? l.departments
+      : {};
+  } catch (e) {
+    lifecycleError = String(e);
+  }
+
   state.abigail = abigail;
   state.sentinel = sentinel;
   state.audit = audit;
+  state.lifecycle = lifecycle;
+  state.lifecycleError = lifecycleError;
   state.lastRefresh = new Date();
   state.lastRefreshError = (abigail?.error || sentinel?.error) ? true : false;
   refreshSelective();
@@ -886,8 +922,8 @@ async function handleSlash(text) {
       pushChat("sys", `Slash commands:
   /status              — current Abigail/Sentinel state
   /audit [n]           — last N audit entries (default 10)
-  /kill                — activate kill switch (halts execution)
-  /clear-kill          — clear kill switch (requires principal)
+  /kill                — unavailable in this MVP; global state is read-only
+  /clear-kill          — unavailable in this MVP; global state is read-only
   /help                — this message
 
 Anything not starting with / goes through /api/chat with full HAAP enforcement.`);
@@ -903,20 +939,12 @@ Anything not starting with / goes through /api/chat with full HAAP enforcement.`
       const lines = entries.map(e => `[${formatTs(e.ts)}] ${e.event_type}`).join("\n");
       pushChat("sys", lines || "No audit entries.");
     }
-    else if (verb === "/kill") {
-      const r = await postJSON(`${ENDPOINTS.abigailBase}/api/ebrake`, { principal: "DASHBOARD" });
-      pushChat("sys", r.ok ? "🛑 KILL SWITCH ACTIVATED. All execution halted." : `Failed: ${escapeHtml(String(r.error || "unknown"))}`);
-    }
-    else if (verb === "/clear-kill") {
-      // SECURITY FIX: removed prompt() — principal must be supplied inline as
-      // "/clear-kill <name>". If omitted, guide the operator instead.
-      const principal = rest.join(" ").trim();
-      if (!principal) {
-        pushChat("sys", "Usage: /clear-kill <principal-name>  (principal required for audit integrity)");
-      } else {
-        const r = await postJSON(`${ENDPOINTS.abigailBase}/api/ebrake/clear`, { principal });
-        pushChat("sys", r.ok ? `✓ Kill switch cleared by ${escapeHtml(principal)}.` : `Failed: ${escapeHtml(String(r.error || "unknown"))}`);
-      }
+    else if (verb === "/kill" || verb === "/clear-kill") {
+      pushChat(
+        "blocked",
+        "Global kill-switch mutation is not exposed by this dashboard in the current MVP. " +
+        "The dashboard displays live global state only."
+      );
     }
     else {
       pushChat("sys", `Unknown command: ${verb} — type /help`);
@@ -929,6 +957,100 @@ Anything not starting with / goes through /api/chat with full HAAP enforcement.`
   refreshLive();
 }
 
+/* ── DEPARTMENT LIFECYCLE ── */
+function departmentLifecycle(code) {
+  const item = state.lifecycle && state.lifecycle[code];
+  if (!item || typeof item !== "object") {
+    return {
+      status: "unavailable",
+      since: null,
+      by: null,
+      reason: null
+    };
+  }
+
+  return {
+    status: item.status === "killed" ? "killed" : "active",
+    since: item.since || null,
+    by: item.by || null,
+    reason: item.reason || null
+  };
+}
+
+function lifecycleBadge(item) {
+  if (item.status === "killed") {
+    return badge("red", "Isolated");
+  }
+  if (item.status === "active") {
+    return badge("green", "Active");
+  }
+  return badge("yellow", "Unavailable");
+}
+
+async function isolateDepartment(code) {
+  const token = abigailAdminToken();
+  if (!token) {
+    alert("Operator admin token required. Set it in Abigail Settings first.");
+    return;
+  }
+
+  const reasonInput = window.prompt(
+    `Reason for isolating ${code}:`,
+    "operator-issued"
+  );
+
+  if (reasonInput === null) return;
+
+  const reason = reasonInput.trim() || "operator-issued";
+
+  try {
+    await postJSON(
+      `${ENDPOINTS.abigailBase}/api/agents/${encodeURIComponent(code)}/kill`,
+      {
+        principal: "Operator",
+        reason
+      },
+      abigailAdminHeaders()
+    );
+
+    await refreshLive();
+  } catch (error) {
+    console.error("Department isolation failed:", error);
+    alert(`Failed to isolate ${code}: ${String(error)}`);
+    await refreshLive();
+  }
+}
+
+async function reinstateDepartment(code) {
+  const token = abigailAdminToken();
+  if (!token) {
+    alert("Operator admin token required. Set it in Abigail Settings first.");
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Reinstate department ${code} and allow governed dispatch again?`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    await postJSON(
+      `${ENDPOINTS.abigailBase}/api/agents/${encodeURIComponent(code)}/restart`,
+      {
+        principal: "Operator"
+      },
+      abigailAdminHeaders()
+    );
+
+    await refreshLive();
+  } catch (error) {
+    console.error("Department reinstatement failed:", error);
+    alert(`Failed to reinstate ${code}: ${String(error)}`);
+    await refreshLive();
+  }
+}
+
 /* ── DEPARTMENTS TAB ── */
 function renderDepartments() {
   const el = document.getElementById("tab-departments");
@@ -938,11 +1060,17 @@ function renderDepartments() {
       <div class="row">
         <div>
           <h3>Department Operating Surface</h3>
-          <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem">Lead, alignment, completion, token load, model family, and localized controls per department.</div>
+          <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem">
+          Department definitions are scaffold data. Lifecycle state is loaded separately
+          from the governed backend; workload, completion, alignment, token, and model
+          values shown here are simulated.
+        </div>
         </div>
       </div>
       <div class="department-grid">
-        ${state.departments.map(d => `
+        ${state.departments.map(d => {
+          const lifecycle = departmentLifecycle(d.code);
+          return `
           <div class="dept">
             <div class="row">
               <div>
@@ -950,7 +1078,23 @@ function renderDepartments() {
                 <div class="small">${d.name}</div>
                 <div class="tiny">${d.lead}</div>
               </div>
-              ${badge(d.status, d.sensitivity)}
+              ${lifecycleBadge(lifecycle)}
+            </div>
+
+            <div class="section">
+              <div class="row">
+                <span class="tiny">Lifecycle state</span>
+                <strong style="font-size:.75rem">
+                  ${escapeHtml(lifecycle.status)}
+                </strong>
+              </div>
+              <div class="tiny" style="margin-top:.25rem">
+                ${lifecycle.status === "unavailable"
+                  ? "Operator authorization required or lifecycle service unavailable."
+                  : lifecycle.status === "killed"
+                    ? `Isolated by ${escapeHtml(lifecycle.by || "operator")}${lifecycle.reason ? ` · ${escapeHtml(lifecycle.reason)}` : ""}`
+                    : "Governed backend reports this department active."}
+              </div>
             </div>
             <div class="section">
               <div class="row" style="font-size:.75rem"><span class="tiny">Completion</span><span style="font-size:.8125rem">${d.completion}%</span></div>
@@ -966,11 +1110,41 @@ function renderDepartments() {
               <div class="kpi"><span class="tiny">Tokens</span><strong>${(d.tokenUsage/1000).toFixed(1)}K</strong></div>
             </div>
             <div class="dept-actions">
-              <button class="mini kill" disabled title="Sprint 6 backend">Kill ${d.code}</button>
-              <button class="mini restart" disabled title="Sprint 6 backend">Restart ${d.code}</button>
+              <button
+                class="mini kill"
+                onclick="isolateDepartment('${d.code}')"
+                ${lifecycle.status !== "active" ? "disabled" : ""}
+                title="${lifecycle.status === "active"
+                  ? `Isolate ${d.code} through the governed backend`
+                  : lifecycle.status === "killed"
+                    ? `${d.code} is already isolated`
+                    : "Lifecycle state unavailable"}">
+                ${lifecycle.status === "active"
+                  ? "Isolate"
+                  : lifecycle.status === "killed"
+                    ? "Isolated"
+                    : "Isolate unavailable"}
+              </button>
+
+              <button
+                class="mini restart"
+                onclick="reinstateDepartment('${d.code}')"
+                ${lifecycle.status !== "killed" ? "disabled" : ""}
+                title="${lifecycle.status === "killed"
+                  ? `Reinstate ${d.code} through the governed backend`
+                  : lifecycle.status === "active"
+                    ? `${d.code} is already active`
+                    : "Lifecycle state unavailable"}">
+                ${lifecycle.status === "killed"
+                  ? "Reinstate"
+                  : lifecycle.status === "active"
+                    ? "Active"
+                    : "Reinstate unavailable"}
+              </button>
             </div>
           </div>
-        `).join("")}
+        `;
+        }).join("")}
       </div>
     </div>
   `;
@@ -984,7 +1158,10 @@ function renderAgents() {
   el.innerHTML = `
     <div class="card panel">
       <h3>Agent Chain Visibility</h3>
-      <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem;margin-bottom:1rem">Lead, primary, and sub-agent view across all 12 departments. Telemetry columns expand as runtime reporting comes online.</div>
+      <div style="font-size:.8125rem;color:var(--muted);margin-top:.2rem;margin-bottom:1rem">
+        SIMULATED roster and telemetry scaffold. This table does not represent live
+        agent execution or token accounting.
+      </div>
       <table class="agent-table">
         <thead>
           <tr>
@@ -1046,16 +1223,15 @@ function renderGovernance() {
         </div>
 
         <div class="ebrake-box">
-          <div class="ebrake-title">⚠ Emergency Brake</div>
+          <div class="ebrake-title">Global Kill Switch</div>
           <div class="ebrake-desc">
-            Activates the kill switch immediately. All in-flight execution halts. New requests are blocked at HAAP Layer 0.
-            Audit event <code>KILL_SWITCH_ACTIVATED</code> is written. Clearing requires a named principal.
+            Current state is read live from Abigail. Global activation and clearing
+            are not exposed by this dashboard in the current MVP.
           </div>
           <div class="ebrake-actions">
             ${ks
-              ? `<button id="ebrakeClear" class="btn-clear">Clear kill switch</button>
-                 <span class="status red" style="align-self:center">🛑 Currently active</span>`
-              : `<button id="ebrakeFire" class="btn-ebrake">🛑 Activate kill switch</button>`}
+              ? `<span class="status red">ACTIVE · execution halted</span>`
+              : `<span class="status green">Armed · status only</span>`}
           </div>
         </div>
       </div>
@@ -1085,7 +1261,7 @@ function renderGovernance() {
       </div>
     </div>
   `;
-  wireGovernance();
+  // Global kill-switch controls are status-only in the current MVP.
 }
 
 /* SECURITY FIX: Replaced browser prompt()/confirm()/alert() with inline DOM
@@ -1105,83 +1281,6 @@ function showEbrakeNotice(msg, isError) {
   notice.style.color = isError ? "var(--error)" : "var(--success)";
   notice.textContent = msg;
   setTimeout(() => { notice.textContent = ""; }, 8000);
-}
-
-function wireGovernance() {
-  const fire = document.getElementById("ebrakeFire");
-  const clear = document.getElementById("ebrakeClear");
-
-  if (fire) {
-    let armed = false;
-    fire.onclick = async () => {
-      if (!armed) {
-        armed = true;
-        fire.textContent = "⚠ Confirm halt — click again";
-        fire.classList.add("armed");
-        setTimeout(() => {
-          armed = false;
-          fire.textContent = "🛑 Activate kill switch";
-          fire.classList.remove("armed");
-        }, 5000);
-        return;
-      }
-      armed = false;
-      fire.disabled = true;
-      fire.textContent = "Activating…";
-      try {
-        const r = await postJSON(`${ENDPOINTS.abigailBase}/api/ebrake`, { principal: "DASHBOARD-OPERATOR" });
-        showEbrakeNotice(r.ok ? "✓ Kill switch activated. All execution halted." : `Failed: ${escapeHtml(String(r.error || "unknown"))}`, !r.ok);
-        await refreshLive();
-      } catch (e) {
-        showEbrakeNotice(`Error: ${escapeHtml(String(e))}`, true);
-      } finally {
-        fire.disabled = false;
-        fire.textContent = "🛑 Activate kill switch";
-        fire.classList.remove("armed");
-      }
-    };
-  }
-
-  if (clear) {
-    let principalInput = document.getElementById("ebrakePrincipal");
-    if (!principalInput) {
-      principalInput = document.createElement("input");
-      principalInput.id = "ebrakePrincipal";
-      principalInput.type = "text";
-      principalInput.placeholder = "Principal name (required)";
-      principalInput.maxLength = 80;
-      principalInput.style.cssText = [
-        "background:var(--surface-3)", "border:1px solid var(--border)",
-        "border-radius:var(--r-sm)", "color:var(--text)", "font-family:var(--font-b)",
-        "font-size:.8125rem", "padding:.55rem .75rem", "flex:1", "min-width:160px"
-      ].join(";");
-      clear.parentNode.insertBefore(principalInput, clear);
-    }
-    clear.onclick = async () => {
-      const principal = principalInput.value.trim();
-      if (!principal) {
-        showEbrakeNotice("Principal name required to clear kill switch.", true);
-        principalInput.focus();
-        return;
-      }
-      clear.disabled = true;
-      clear.textContent = "Clearing…";
-      try {
-        const r = await postJSON(`${ENDPOINTS.abigailBase}/api/ebrake/clear`, { principal });
-        showEbrakeNotice(
-          r.ok ? `✓ Kill switch cleared by ${escapeHtml(principal)}.` : `Failed: ${escapeHtml(String(r.error || "unknown"))}`,
-          !r.ok
-        );
-        if (r.ok) principalInput.value = "";
-        await refreshLive();
-      } catch (e) {
-        showEbrakeNotice(`Error: ${escapeHtml(String(e))}`, true);
-      } finally {
-        clear.disabled = false;
-        clear.textContent = "Clear kill switch";
-      }
-    };
-  }
 }
 
 /* ── RENDER ALL ── */
