@@ -62,6 +62,10 @@ services:
       # Operator console: honor governed operator commands (status/help) — still
       # HAAP/command-bus governed; privileged routes remain admin-token fail-closed.
       - ABIGAIL_ALLOW_LOCAL_OPERATOR_COMMANDS=1
+      # Acceptance-only fault injection. Disabled by default and enabled only
+      # through an explicit operator-controlled Compose environment override.
+      - ABIGAIL_ENABLE_TEST_FAULTS=${ABIGAIL_ENABLE_TEST_FAULTS:-0}
+      - ABIGAIL_TEST_GROQ_TIMEOUT_SECONDS=${ABIGAIL_TEST_GROQ_TIMEOUT_SECONDS:-0}
       # BYOAPIKEY — all providers, operator supplies the key they have
       # Auth tokens
       - ABIGAIL_ADMIN_TOKEN=${ABIGAIL_ADMIN_TOKEN}

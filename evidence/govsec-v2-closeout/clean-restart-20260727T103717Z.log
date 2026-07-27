@@ -1,0 +1,55 @@
+=== CLEAN RESTART ACCEPTANCE ===
+started_utc=2026-07-27T10:37:17Z
+
+=== docker compose down ===
+ Container c9e256820666_asf-abby Stopping
+ Container c9e256820666_asf-abby Stopped
+ Container c9e256820666_asf-abby Removing
+ Container c9e256820666_asf-abby Removed
+ Container asf-sentinel Stopping
+ Container asf-sentinel Stopped
+ Container asf-sentinel Removing
+ Container asf-sentinel Removed
+ Network abigailv1_default Removing
+ Network abigailv1_default Removed
+
+=== docker compose up -d --no-build ===
+ Network abigailv1_default Creating
+ Network abigailv1_default Created
+ Container asf-sentinel Creating
+ Container asf-sentinel Created
+ Container asf-abby Creating
+ Container asf-abby Created
+ Container asf-sentinel Starting
+ Container asf-sentinel Started
+ Container asf-sentinel Waiting
+ Container asf-sentinel Healthy
+ Container asf-abby Starting
+ Container asf-abby Started
+
+=== waiting for health ===
+NAME           IMAGE                COMMAND                  SERVICE    CREATED          STATUS                             PORTS
+asf-abby       abigailv1-abby       "/app/entrypoint.sh …"   abby       36 seconds ago   Up 20 seconds (health: starting)   127.0.0.1:7070->7070/tcp
+asf-sentinel   abigailv1-sentinel   "./governance_spine_…"   sentinel   36 seconds ago   Up 36 seconds (healthy)            127.0.0.1:9091->8080/tcp
+
+=== Abigail health ===
+{
+    "backend": "groq",
+    "crsv": 0.0,
+    "kill_switch": false,
+    "sandbox": "docker+venv",
+    "turns": 0,
+    "version": "1.2.0-sprint6-docker-sandbox"
+}
+
+=== Sentinel health ===
+{
+    "ok": true,
+    "service": "sentinel-overwatch",
+    "audit_entries": 0,
+    "chain_length": 1
+}
+
+finished_utc=2026-07-27T10:38:14Z
+manual_intervention=none
+rebuild_performed=no

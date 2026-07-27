@@ -273,11 +273,14 @@ def test_agent_dispatch_returns_approval_required_before_provider_execution(
 
     assert data["approval"]["human_approval_required"] is True
     assert data["approval"]["enforced"] is True
+    assert data["approval"]["approval_evidence_id"].startswith("APR-")
     assert data["approval"]["risk_score"] == 65
     assert data["approval"]["risk_mode"] == "JIT_AUTHORIZATION"
 
     governance = data["governance"]
     assert governance["execution_status"] == "approval_required"
+    assert governance["sentinel_verdict"] == "APPROVED"
+    assert governance["sentinel_session_id"].startswith("dispatch_")
     assert governance["provider_called"] is False
     assert governance["capability_issued"] is False
     assert governance["capability_consumed"] is False

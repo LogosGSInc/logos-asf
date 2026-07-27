@@ -1,5 +1,9 @@
+import sys
+from pathlib import Path
+
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as R
 
 
@@ -261,3 +265,79 @@ def test_successful_execution_is_ordered_and_returns_evidence(monkeypatch):
         "outbound_verdict": "APPROVED",
         "execution_status": "completed",
     }
+
+
+def test_guarded_groq_timeout_injector_is_disabled_by_default(
+    monkeypatch,
+):
+    monkeypatch.delenv("ABIGAIL_ENABLE_TEST_FAULTS", raising=False)
+    monkeypatch.setenv("ABIGAIL_TEST_GROQ_TIMEOUT_SECONDS", "0.01")
+
+    class FakeResponse:
+        class Choices:
+            class Message:
+                content = "normal governed response"
+
+            message = Message()
+
+        choices = [Choices()]
+
+    class FakeCompletions:
+        def create(self, **_kwargs):
+            return FakeResponse()
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeGroq:
+        def __init__(self, **_kwargs):
+            self.chat = FakeChat()
+
+    import types
+    import sys
+
+    monkeypatch.setitem(
+        sys.modules,
+        "groq",
+        types.SimpleNamespace(Groq=FakeGroq),
+    )
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+
+    result = R.call_groq(
+        messages=[{"role": "user", "content": "test"}],
+        system="test",
+    )
+
+    assert result == "normal governed response"
+
+
+def test_guarded_groq_timeout_injector_returns_typed_timeout(
+    monkeypatch,
+):
+    monkeypatch.setenv("ABIGAIL_ENABLE_TEST_FAULTS", "1")
+    monkeypatch.setenv("ABIGAIL_TEST_GROQ_TIMEOUT_SECONDS", "0.001")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+
+    import types
+    import sys
+
+    class FakeGroq:
+        def __init__(self, **_kwargs):
+            raise AssertionError(
+                "real Groq client must not be constructed during injection"
+            )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "groq",
+        types.SimpleNamespace(Groq=FakeGroq),
+    )
+
+    with pytest.raises(R.GovernedProviderError) as caught:
+        R.call_groq(
+            messages=[{"role": "user", "content": "test"}],
+            system="test",
+        )
+
+    assert caught.value.terminal_state == "TIMED_OUT"
+    assert caught.value.provider_called is True

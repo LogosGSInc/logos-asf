@@ -335,6 +335,42 @@ def call_groq(messages, system, model=None):
     try:
         from groq import Groq
 
+        # Deterministic acceptance-only timeout injection.
+        # Disabled unless both explicit test guards are configured. It is not
+        # request-controlled and executes only after the governed capability
+        # has already been authorized and atomically consumed upstream.
+        test_faults_enabled = (
+            os.environ.get("ABIGAIL_ENABLE_TEST_FAULTS", "0").strip() == "1"
+        )
+
+        try:
+            injected_delay = float(
+                os.environ.get(
+                    "ABIGAIL_TEST_GROQ_TIMEOUT_SECONDS",
+                    "0",
+                ).strip()
+                or "0"
+            )
+        except ValueError:
+            injected_delay = 0.0
+
+        if test_faults_enabled and injected_delay > 0:
+            bounded_delay = min(injected_delay, 10.0)
+
+            log_event(
+                "TEST_PROVIDER_TIMEOUT_INJECTED",
+                {
+                    "backend": "groq",
+                    "delay_seconds": bounded_delay,
+                    "test_faults_enabled": True,
+                },
+            )
+
+            time.sleep(bounded_delay)
+            raise TimeoutError(
+                "Injected Groq provider deadline exceeded for acceptance testing"
+            )
+
         response = Groq(
             api_key=_require_env_key("GROQ_API_KEY"),
             timeout=GROQ_TIMEOUT,
@@ -2436,16 +2472,29 @@ def build_web_app(session, kill_switch, active_backend):
         mode, _, action = drs_verdict(score)
 
         if action in ("HARD_STOP", "TERMINAL_STOP"):
+            approval_evidence_id = f"APR-{uuid.uuid4().hex}"
+            sentinel_gov_tx_id = s_result.get("gov_tx_id")
+            sentinel_verdict_id = s_result.get("verdict_id")
+
+            approval_evidence = {
+                "approval_evidence_id": approval_evidence_id,
+                "agent_id": agent_id,
+                "drs": score,
+                "mode": mode,
+                "signals": signals,
+                "sentinel_verdict": s_verdict,
+                "sentinel_session_id": sentinel_session_id,
+                "gov_tx_id": sentinel_gov_tx_id,
+                "verdict_id": sentinel_verdict_id,
+                "provider_called": False,
+                "capability_issued": False,
+                "capability_consumed": False,
+                "output_released": False,
+            }
+
             log_event(
                 "DISPATCH_APPROVAL_REQUIRED",
-                {
-                    "agent_id": agent_id,
-                    "drs": score,
-                    "mode": mode,
-                    "signals": signals,
-                    "provider_called": False,
-                    "output_released": False,
-                },
+                approval_evidence,
             )
 
             return jsonify({
@@ -2460,12 +2509,17 @@ def build_web_app(session, kill_switch, active_backend):
                 "approval": {
                     "human_approval_required": True,
                     "enforced": True,
+                    "approval_evidence_id": approval_evidence_id,
                     "risk_score": score,
                     "risk_mode": mode,
                     "reason": signals or ["jit_authorization_required"],
                 },
                 "governance": {
                     "execution_status": "approval_required",
+                    "sentinel_verdict": s_verdict,
+                    "sentinel_session_id": sentinel_session_id,
+                    "gov_tx_id": sentinel_gov_tx_id,
+                    "verdict_id": sentinel_verdict_id,
                     "provider_called": False,
                     "capability_issued": False,
                     "capability_consumed": False,
