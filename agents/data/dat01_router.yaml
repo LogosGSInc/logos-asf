@@ -1,0 +1,59 @@
+routing:
+  department: DAT-01
+  intake_rules:
+    - if_request_contains:
+        - data architecture
+        - schema
+        - data model
+        - warehouse
+        - lakehouse
+      assign:
+        primary: DAT-01-SA-CYRUS
+        secondary: DAT-01-FA
+    - if_request_contains:
+        - pipeline
+        - etl
+        - ingestion
+        - transform
+        - data flow
+      assign:
+        primary: DAT-01-SA-ELEAZAR
+        secondary: DAT-01-FA
+    - if_request_contains:
+        - analytics
+        - dashboard
+        - metric
+        - reporting
+        - kpi
+      assign:
+        primary: DAT-01-SA-BOAZ
+        secondary: DAT-01-FA
+    - if_request_contains:
+        - insight
+        - synthesis
+        - finding
+        - pattern
+        - trend analysis
+      assign:
+        primary: DAT-01-SA-ASA
+        secondary: DAT-01-FA
+    - if_request_is:
+        - ambiguous
+        - multi_stream
+        - high_impact
+      assign:
+        primary: DAT-01-MA
+        secondary:
+          - DAT-01-FA
+  escalation_rules:
+    - if_confidence_below: 0.80
+      and_impact_level: high
+      escalate_to: DAT-01-MA
+    - if_pii_exposure_risk: true
+      notify:
+        - SEC-01
+        - LGL-01
+        - CP-00
+    - if_cross_department_dependency: true
+      notify:
+        - relevant_department_head

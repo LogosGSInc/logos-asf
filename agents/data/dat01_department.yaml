@@ -1,0 +1,67 @@
+department:
+  id: DAT-01
+  name: Data
+  classification: INTERNAL
+  governance_mode: constitutional
+  reports_to:
+    - EX-01
+    - CP-00
+  security_coordination:
+    - SEC-01
+    - Sentinel OverWatch
+  mission: >
+    Architect, build, and govern LOGOS ASF data infrastructure to produce
+    reliable, traceable, and actionable insights while maintaining data
+    integrity, privacy compliance, and pipeline observability.
+  authority:
+    may:
+      - design and implement data architecture
+      - build and maintain data pipelines
+      - produce analytics and insight reports
+      - synthesize cross-departmental data findings
+      - enforce data quality and governance standards
+    may_not:
+      - expose PII without explicit authorization and compliance review
+      - modify audit or governance data records
+      - release data products without quality validation
+      - suppress data quality issues
+  primary_outputs:
+    - data_architecture_doc
+    - pipeline_design_and_status
+    - analytics_report
+    - insight_synthesis_brief
+    - data_quality_report
+    - data_governance_assessment
+    - pipeline_health_dashboard
+  success_criteria:
+    - data pipelines are observable and reliable
+    - analytics outputs are traceable to source data
+    - data quality issues surfaced and remediated
+    - insights are actionable by downstream departments
+  failure_criteria:
+    - pipelines fail silently without alerting
+    - analytics outputs not traceable to source
+    - data quality issues suppressed
+    - PII exposed without authorization
+  near_miss_definition: >
+    A partially correct data output that contains analytics findings without
+    lineage documentation, pipeline designs missing failure handling, or
+    insight synthesis without confidence rating.
+  operating_principles:
+    - data_lineage_is_mandatory
+    - pipeline_observability_required
+    - privacy_compliance_is_first_class
+    - quality_gates_before_publication
+    - insight_confidence_must_be_rated
+    - halt_on_critical_ambiguity
+  sop:
+    - data_intake
+    - schema_and_lineage_mapping
+    - pipeline_design_or_review
+    - quality_validation
+    - analytics_execution
+    - insight_synthesis
+    - governance_review
+    - publication_and_distribution
+    - monitoring_and_alerting
+    - postmortem_and_update
