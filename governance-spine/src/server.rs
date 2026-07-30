@@ -56,7 +56,7 @@ fn json_response(status: u16, body: Value) -> String {
     )
 }
 
-fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
+pub(crate) fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
     let field = value.get(key)
         .and_then(Value::as_str)
         .map(str::trim)
@@ -69,7 +69,7 @@ fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
     }
 }
 
-fn parse_json_field(json: &str, key: &str) -> Option<String> {
+pub(crate) fn parse_json_field(json: &str, key: &str) -> Option<String> {
     let search = format!("\"{}\"", key);
     let pos = json.find(&search)?;
     let after = &json[pos + search.len()..];
