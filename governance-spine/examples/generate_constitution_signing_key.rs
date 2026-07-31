@@ -64,11 +64,19 @@ fn main() {
         f.set_permissions(fs::Permissions::from_mode(0o600)).expect("chmod public key");
     }
 
+    let pub_hex = hex::encode(verifying_key.to_bytes());
+
+    // Must match constitution::public_key_fingerprint exactly (hash of the
+    // HEX-ENCODED key string, not the raw bytes) — that's the formula
+    // Sentinel actually logs at startup as `[CONSTITUTION] verified ...
+    // signer_fingerprint=...`, and an operator needs to compare the two
+    // values directly to confirm the pinned key matches what they
+    // generated. (Previously hashed the raw bytes instead — a distinct
+    // value from what the server logs for the identical key.)
     let fingerprint = {
-        let digest = Sha256::digest(verifying_key.to_bytes());
+        let digest = Sha256::digest(pub_hex.as_bytes());
         hex::encode(digest)[..16].to_string()
     };
-    let pub_hex = hex::encode(verifying_key.to_bytes());
 
     println!("Constitution-authority signing key generated.");
     println!("  private key path : {}", priv_path.display());
