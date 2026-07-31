@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as A  # noqa: E402
 
 
-ADMIN = "dispatch-governance-admin"
+ADMIN = "dispatch-governance-admin-9f86d081884c7d659a2feaa0c55"
 BODY = {
     "agent_id": "EN-01",
     "task": "summarize the governed release status",
@@ -19,6 +19,13 @@ BODY = {
 
 def _client(monkeypatch, *, sentinel=None, executor=None, agent=None):
     monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", ADMIN)
+
+    # A1: no real Sentinel is reachable in tests — treat every conversation's
+    # session as already started so tests can reach the behavior under test
+    # instead of getting fail-closed at the (new, unrelated) session-start
+    # gate. Session_id VALUES/inheritance are unaffected by this — only
+    # whether the start call itself is skipped.
+    monkeypatch.setattr(A, "_ensure_session_started", lambda _session: True)
 
     monkeypatch.setattr(
         A,
@@ -249,6 +256,14 @@ def test_agent_dispatch_returns_approval_required_before_provider_execution(
 
     client = _client(monkeypatch, executor=executor)
 
+    # A1: this dispatch call belongs to a specific conversation — resolve
+    # that conversation's SessionState up front so we can prove dispatch
+    # inherits its sentinel_session_id rather than minting its own.
+    conversation_session = client.application._session_registry.get_or_create(
+        "dispatch-inherits-conversation-test"
+    )
+    headers = {**_headers(), "X-Session-ID": "dispatch-inherits-conversation-test"}
+
     response = client.post(
         "/api/agents/dispatch",
         json={
@@ -258,7 +273,7 @@ def test_agent_dispatch_returns_approval_required_before_provider_execution(
                 "update billing, and make the action permanent."
             ),
         },
-        headers=_headers(),
+        headers=headers,
     )
 
     assert response.status_code == 409
@@ -280,7 +295,10 @@ def test_agent_dispatch_returns_approval_required_before_provider_execution(
     governance = data["governance"]
     assert governance["execution_status"] == "approval_required"
     assert governance["sentinel_verdict"] == "APPROVED"
-    assert governance["sentinel_session_id"].startswith("dispatch_")
+    # A1: dispatch must inherit the conversation's durable session_id, not
+    # mint its own dispatch_{agent_id}_{uuid} — proves the governance
+    # binding, not just that the old format is gone.
+    assert governance["sentinel_session_id"] == conversation_session.sentinel_session_id
     assert governance["provider_called"] is False
     assert governance["capability_issued"] is False
     assert governance["capability_consumed"] is False

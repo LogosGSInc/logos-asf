@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use regex::Regex;
 use thiserror::Error;
 use crate::crypto::CryptoEngine;
+use chrono::{DateTime, Utc};
+use ed25519_dalek::{Signature, VerifyingKey, Verifier};
 
 #[derive(Error, Debug)]
 pub enum ConstitutionError {
@@ -14,6 +16,28 @@ pub enum ConstitutionError {
     MissingField(String),
     #[error("Regex compile error: {0}")]
     RegexError(#[from] regex::Error),
+}
+
+/// A2: the single trust boundary for accepting a constitution document.
+/// Every distinct failure mode is its own variant so startup logging (and
+/// tests) can be precise about which fail-closed condition fired — never
+/// collapsed into one generic "invalid" error.
+#[derive(Error, Debug, PartialEq)]
+pub enum ConstitutionLoadError {
+    #[error("constitution signature is missing or empty")]
+    MissingSignature,
+    #[error("constitution signature is not valid hex or not 64 bytes")]
+    MalformedSignature,
+    #[error("constitution signature verification failed against the pinned trusted authority key")]
+    SignatureInvalid,
+    #[error("constitution JSON is malformed: {0}")]
+    MalformedJson(String),
+    #[error("constitution is missing required field: {0}")]
+    MissingField(String),
+    #[error("constitution is outside its validity period: {0}")]
+    InvalidValidityPeriod(String),
+    #[error("constitution industry_profile {found:?} does not match the runtime profile {expected:?}")]
+    ProfileMismatch { expected: String, found: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,9 +77,19 @@ impl Default for EscalationThresholds {
 /// Immutable after deployment — version-locked and hash-verified.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Constitution {
+    /// A2: a stable identifier for this constitutional document, distinct
+    /// from policy_version (which tracks revisions of the same document).
+    /// Required, non-empty — validated by load_verified().
+    pub constitution_id: String,
     pub client_id: String,
     pub policy_version: String,
     pub industry_profile: String,
+    /// A2: this document's validity window. effective_at is required;
+    /// expires_at is optional (None = no expiry). Both are validated by
+    /// load_verified() against wall-clock time at load — a document that
+    /// is not yet effective, or already expired, fails closed.
+    pub effective_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
     pub prohibited_categories: Vec<String>,
     pub prohibited_patterns: Vec<String>,
     pub required_deferrals: Vec<String>,
@@ -96,12 +130,85 @@ impl Constitution {
         false
     }
 
+    /// A2: the single trust boundary for accepting a constitution document
+    /// at startup. Order matters and is deliberate:
+    ///   1. detached-signature verification over the RAW bytes (not a
+    ///      re-serialization — avoids any canonicalization ambiguity
+    ///      between what was signed and what is verified) against the
+    ///      PINNED trusted authority key (never a key from within the
+    ///      document itself — an embedded key would be trivially
+    ///      defeated by an attacker signing their own tampered copy);
+    ///   2. JSON parsing;
+    ///   3. schema/temporal-validity/profile checks.
+    /// Any failure returns Err — this function never partially trusts a
+    /// document. `seal()`/`verify_integrity()` (the pre-A2 self-referential
+    /// hash) is NOT part of this trust boundary and is not called here —
+    /// it detects accidental in-memory mutation only, it does not prove
+    /// authorship, and it must never substitute for the detached signature.
+    pub fn load_verified(
+        json_bytes: &[u8],
+        signature_hex: &str,
+        trusted_public_key: &VerifyingKey,
+        expected_profile: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Self, ConstitutionLoadError> {
+        let sig_hex = signature_hex.trim();
+        if sig_hex.is_empty() {
+            return Err(ConstitutionLoadError::MissingSignature);
+        }
+        let sig_bytes = hex::decode(sig_hex)
+            .map_err(|_| ConstitutionLoadError::MalformedSignature)?;
+        let sig_array: [u8; 64] = sig_bytes.try_into()
+            .map_err(|_| ConstitutionLoadError::MalformedSignature)?;
+        let signature = Signature::from_bytes(&sig_array);
+        trusted_public_key.verify(json_bytes, &signature)
+            .map_err(|_| ConstitutionLoadError::SignatureInvalid)?;
+
+        let constitution: Constitution = serde_json::from_slice(json_bytes)
+            .map_err(|e| ConstitutionLoadError::MalformedJson(e.to_string()))?;
+
+        if constitution.constitution_id.trim().is_empty() {
+            return Err(ConstitutionLoadError::MissingField("constitution_id".to_string()));
+        }
+        if constitution.policy_version.trim().is_empty() {
+            return Err(ConstitutionLoadError::MissingField("policy_version".to_string()));
+        }
+        if constitution.effective_at > now {
+            return Err(ConstitutionLoadError::InvalidValidityPeriod(
+                format!("effective_at {} is in the future", constitution.effective_at)
+            ));
+        }
+        if let Some(expires_at) = constitution.expires_at {
+            if expires_at <= now {
+                return Err(ConstitutionLoadError::InvalidValidityPeriod(
+                    format!("expires_at {expires_at} has already passed")
+                ));
+            }
+            if expires_at <= constitution.effective_at {
+                return Err(ConstitutionLoadError::InvalidValidityPeriod(
+                    "expires_at must be after effective_at".to_string()
+                ));
+            }
+        }
+        if constitution.industry_profile != expected_profile {
+            return Err(ConstitutionLoadError::ProfileMismatch {
+                expected: expected_profile.to_string(),
+                found: constitution.industry_profile.clone(),
+            });
+        }
+
+        Ok(constitution)
+    }
+
     /// Default medical-grade constitution for testing.
     pub fn default_medical() -> Self {
         let mut c = Self {
+            constitution_id: "test_medical_constitution".to_string(),
             client_id: "test_medical_client".to_string(),
             policy_version: "v1.0.0".to_string(),
             industry_profile: "medical".to_string(),
+            effective_at: DateTime::parse_from_rfc3339("2020-01-01T00:00:00Z").unwrap().with_timezone(&Utc),
+            expires_at: None,
             prohibited_categories: vec![
                 "PII".to_string(),
                 "SYSTEM_PROMPT_EXPOSURE".to_string(),
@@ -139,6 +246,56 @@ impl Constitution {
         c.seal();
         c
     }
+}
+
+/// A2: the pinned constitution-authoring authority public key, compiled
+/// into the release binary — the actual trust anchor. Generated once via
+/// `cargo run --example generate_constitution_signing_key` (the matching
+/// private key is held OFFLINE outside this repo and outside any build
+/// context; the running process never has it). Rotating this key requires
+/// a source change and rebuild, by design — a runtime-loadable "trusted
+/// key" file would only be as trustworthy as whatever controls the build,
+/// which this constant already is, without the extra indirection.
+pub const TRUSTED_CONSTITUTION_AUTHORITY_PUBLIC_KEY_HEX: &str =
+    "1dba4211f696d9230361a5e0320b6f0e93a24df21aea84f8f1eb8aa127e0fbec";
+
+/// Parses the pinned trusted key. Panics only on a corrupted compiled-in
+/// constant (a build-time defect, not a runtime/input condition — there is
+/// no sensible fail-closed recovery from "our own pinned key is invalid").
+pub fn trusted_constitution_authority_key() -> VerifyingKey {
+    let bytes = hex::decode(TRUSTED_CONSTITUTION_AUTHORITY_PUBLIC_KEY_HEX)
+        .expect("compiled-in trusted constitution key must be valid hex");
+    let array: [u8; 32] = bytes.try_into()
+        .expect("compiled-in trusted constitution key must be 32 bytes");
+    VerifyingKey::from_bytes(&array)
+        .expect("compiled-in trusted constitution key must be a valid Ed25519 public key")
+}
+
+/// SHA-256 fingerprint of a public key, truncated to 16 hex chars —
+/// matches the format `generate_constitution_signing_key` prints, so logs
+/// and the keygen tool's output are directly comparable.
+pub fn public_key_fingerprint(key: &VerifyingKey) -> String {
+    CryptoEngine::compute_hash(&hex::encode(key.to_bytes()))[..16].to_string()
+}
+
+/// A2: file-I/O wrapper around `Constitution::load_verified` — reads the
+/// constitution document and its detached signature from disk, then
+/// delegates to the pure verification logic. Kept separate from
+/// `load_verified` so both layers (pure verification logic; file-missing
+/// conditions) are independently unit-testable without a running server.
+pub fn load_verified_from_paths(
+    json_path: &std::path::Path,
+    signature_path: &std::path::Path,
+    trusted_public_key: &VerifyingKey,
+    expected_profile: &str,
+    now: DateTime<Utc>,
+) -> Result<Constitution, String> {
+    let json_bytes = std::fs::read(json_path)
+        .map_err(|e| format!("constitution file missing or unreadable at {}: {e}", json_path.display()))?;
+    let sig_hex = std::fs::read_to_string(signature_path)
+        .map_err(|e| format!("constitution signature missing or unreadable at {}: {e}", signature_path.display()))?;
+    Constitution::load_verified(&json_bytes, sig_hex.trim(), trusted_public_key, expected_profile, now)
+        .map_err(|e| e.to_string())
 }
 
 /// Verdict from constitutional evaluation.

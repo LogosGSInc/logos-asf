@@ -21,8 +21,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as A  # noqa: E402
 
 
-def _app(monkeypatch, admin_token="p0-admin-token"):
+def _app(monkeypatch, admin_token="p0-admin-token-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b"):
     monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", admin_token)
+    # A1: no real Sentinel reachable in tests — treat sessions as already
+    # started (unrelated to P0-3 session-isolation behavior this file tests).
+    monkeypatch.setattr(A, "_ensure_session_started", lambda _session: True)
     app = A.build_web_app(A.SessionState(), A.KillSwitch(), ["groq"])
     app.testing = True
     return app, admin_token

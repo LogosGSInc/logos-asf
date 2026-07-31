@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as A  # noqa: E402
 
 
-_ADMIN = "dispatch-admin-token"
+_ADMIN = "dispatch-admin-token-9f86d081884c7d659a2feaa0c55ad015a"
 
 
 class _Recorder:
@@ -36,6 +36,10 @@ class _Recorder:
 
 def _app(monkeypatch):
     rec = _Recorder()
+
+    # A1: no real Sentinel reachable in tests — treat the session as already
+    # started (unrelated to what this file tests).
+    monkeypatch.setattr(A, "_ensure_session_started", lambda _session: True)
 
     # A resolvable agent, independent of on-disk YAML.
     monkeypatch.setattr(

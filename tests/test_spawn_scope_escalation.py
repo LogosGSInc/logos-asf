@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as A  # noqa: E402
 
 
-_ADMIN = "spawn-scope-admin-token"
+_ADMIN = "spawn-scope-admin-token-9f86d081884c7d659a2feaa0c55ad0"
 _AUTH = {"Authorization": "Bearer " + _ADMIN}
 
 
@@ -37,6 +37,9 @@ class _SpawnRecorder:
 
 def _app(monkeypatch, agent_def=None):
     monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", _ADMIN)
+    # A1: no real Sentinel reachable in tests — treat the session as already
+    # started (unrelated to what this file tests).
+    monkeypatch.setattr(A, "_ensure_session_started", lambda _session: True)
     rec = _SpawnRecorder()
     monkeypatch.setattr(A, "spawn_agent_container", rec)
     # 0/125 YAMLs declare scope today -> default to an empty def (interim ceilings apply).

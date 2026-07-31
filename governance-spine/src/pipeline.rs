@@ -19,6 +19,7 @@ use crate::{
     },
     govmem::{GovMem, GovMemMode, MessageDirection},
     haap::{HaapGate, HaapConfig, HaapVerdict, AgencyLevel},
+    operator_reset::OperatorResetAuthority,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -115,12 +116,16 @@ pub struct GovernancePipeline {
 }
 
 impl GovernancePipeline {
+    /// A3: `crypto` is constructed by the caller (server.rs::main() loads it
+    /// from the persisted audit-signing key, failing closed before this is
+    /// ever called; tests construct an ephemeral one) rather than being
+    /// built internally with a hardcoded seed — mirrors how `constitution`
+    /// is passed in already-verified rather than loaded here.
     pub fn new(
         arbiter_config: ArbiterConfig,
         constitution: Option<Constitution>,
+        crypto: Arc<CryptoEngine>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let crypto = Arc::new(CryptoEngine::new("logos_governance_v1_seed"));
-
         let sentinel = Sentinel::new(crypto.clone());
         let corridor = Corridor::new(crypto.clone());
 
@@ -187,15 +192,19 @@ impl GovernancePipeline {
         })
     }
 
-    /// Default pipeline — consumer profile, no constitution
+    /// Default pipeline — consumer profile, no constitution. Test/demo
+    /// convenience: an ephemeral audit-signing identity, not the persisted
+    /// A3 key — callers that need restart-durable signatures must go
+    /// through server.rs's fail-closed load and call `new` directly.
     pub fn default_pipeline() -> Result<Self, Box<dyn std::error::Error>> {
-        Self::new(ArbiterConfig::default(), None)
+        Self::new(ArbiterConfig::default(), None, Arc::new(CryptoEngine::new("logos_governance_v1_seed")))
     }
 
-    /// Medical-grade pipeline with sealed constitution
+    /// Medical-grade pipeline with sealed constitution. Same ephemeral-key
+    /// caveat as `default_pipeline`.
     pub fn medical_pipeline() -> Result<Self, Box<dyn std::error::Error>> {
         let constitution = Constitution::default_medical();
-        Self::new(ArbiterConfig::medical(), Some(constitution))
+        Self::new(ArbiterConfig::medical(), Some(constitution), Arc::new(CryptoEngine::new("logos_governance_v1_seed")))
     }
 
     /// INBOUND: Memory-aware pipeline
@@ -416,6 +425,14 @@ impl GovernancePipeline {
         };
         // Clean up session memory (fingerprint is now in strategic memory)
         self.session_memories.write().remove(session_id);
+        // A1: a conversation ending must forget ALL per-session state, not
+        // just session_memories — otherwise Arbiter/OverWatch entries would
+        // accumulate forever now that end_session() is actually invoked in
+        // production. Plain removal, same as operator_reset() already does
+        // for overwatch; does not touch operator_reset()'s own token-gated
+        // path (C3, unchanged).
+        self.arbiter.forget_session(session_id);
+        self.overwatch.write().reset_session(session_id);
         persisted
     }
 
@@ -427,6 +444,10 @@ impl GovernancePipeline {
     }
 
     /// Operator-authorized session reset.
+    ///
+    /// Authority is verified inside the Arbiter before anything here runs;
+    /// on denial, `operator_reset_session` returns `Err` and OverWatch /
+    /// session memory are never touched.
     pub fn operator_reset(
         &self,
         session_id: &str,
@@ -437,6 +458,22 @@ impl GovernancePipeline {
         // Reset session memory but keep strategic memory intact
         self.session_memories.write().remove(session_id);
         Ok(())
+    }
+
+    /// Inject the validated Sentinel operator-reset authority
+    /// (SENTINEL_OPERATOR_RESET_TOKEN). Call exactly once, at process
+    /// startup, before serving requests.
+    pub fn configure_operator_reset_authority(
+        &self,
+        authority: OperatorResetAuthority,
+    ) -> Result<(), &'static str> {
+        self.arbiter.configure_operator_reset_authority(authority)
+    }
+
+    /// Diagnostic accessor for OverWatch's per-session drift score. Used to
+    /// prove a failed operator reset never touches OverWatch state.
+    pub fn session_overwatch_drift(&self, session_id: &str) -> f32 {
+        self.overwatch.read().session_drift_score(session_id)
     }
 
     // ── MEMORY HELPER METHODS ──────────────────────────────────────────

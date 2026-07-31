@@ -62,6 +62,38 @@ impl CryptoEngine {
         })
     }
 
+    /// A3: file-I/O wrapper around `from_bytes` — reads the persisted
+    /// audit-signing key (a raw 32-byte Ed25519 seed, provisioned offline by
+    /// `cargo run --example generate_audit_signing_key` and bind-mounted
+    /// read-only into the container) from disk. Kept separate from
+    /// `from_bytes` so both layers (pure key-loading logic; file-missing/
+    /// wrong-length conditions) are independently unit-testable without a
+    /// running server, matching the split `Constitution::load_verified` /
+    /// `load_verified_from_paths` already established for A2.
+    ///
+    /// Loading the SAME key file across process restarts is the entire
+    /// point of A3: it is what lets a signature produced before a restart
+    /// still verify against the `CryptoEngine` constructed after it. This
+    /// does not persist the hash chain — `hash_chain` still starts fresh
+    /// from `seed_hash` on every construction — so chain-linkage continuity
+    /// across a restart remains a separate, unaddressed concern; only
+    /// signing-key identity (and therefore per-entry signature
+    /// verifiability) survives a restart via this path.
+    pub fn from_persisted_key_file(
+        path: &std::path::Path,
+        seed: &str,
+    ) -> Result<Self, String> {
+        let bytes = std::fs::read(path)
+            .map_err(|e| format!("audit signing key missing or unreadable at {}: {e}", path.display()))?;
+        let array: [u8; 32] = bytes.try_into()
+            .map_err(|v: Vec<u8>| format!(
+                "audit signing key at {} is not 32 bytes (got {})",
+                path.display(), v.len()
+            ))?;
+        Self::from_bytes(&array, seed)
+            .map_err(|e| format!("audit signing key at {} is invalid: {e}", path.display()))
+    }
+
     pub fn sign(&self, data: &[u8]) -> String {
         let key = self.signing_key.read();
         let signature: Signature = key.sign(data);
@@ -114,6 +146,14 @@ impl CryptoEngine {
 
     pub fn verifying_key_hex(&self) -> String {
         hex::encode(self.verifying_key.as_bytes())
+    }
+
+    /// SHA-256 fingerprint of the verifying key, truncated to 16 hex chars —
+    /// matches the format `generate_audit_signing_key` prints, so startup
+    /// logs and the keygen tool's output are directly comparable, and
+    /// matches `constitution::public_key_fingerprint`'s format too.
+    pub fn verifying_key_fingerprint(&self) -> String {
+        Self::compute_hash(&self.verifying_key_hex())[..16].to_string()
     }
 }
 

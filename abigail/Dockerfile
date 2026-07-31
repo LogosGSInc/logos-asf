@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+ARG VCS_REF
+LABEL org.opencontainers.image.revision=$VCS_REF
+
 WORKDIR /app
 
 COPY abigail/abigail_hardened_enhanced.py /app/abigail_hardened_enhanced.py
@@ -9,6 +12,10 @@ COPY agents /app/agents
 
 # Governance stack — required for command bus (CB-01) and MM-01/02/03 orchestration
 # (approval gate). Placed at /app so top-level imports resolve, matching local sys.path.
+# privileged_credentials.py (C4) is imported at module load by both
+# abigail_hardened_enhanced.py and command_bus.py — without it, python raises
+# ImportError before Flask starts and the container restart-loops.
+COPY abigail/privileged_credentials.py /app/privileged_credentials.py
 COPY abigail/command_bus.py /app/command_bus.py
 COPY abigail/agent_loader.py /app/agent_loader.py
 COPY abigail/orchestration /app/orchestration

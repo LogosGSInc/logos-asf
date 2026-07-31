@@ -1,7 +1,14 @@
 use governance_spine::{
     pipeline::{GovernancePipeline, EnforcementResult},
     arbiter::SecurityState,
+    operator_reset::OperatorResetAuthority,
 };
+
+/// Demo-only operator-reset credential — never a production secret. Real
+/// deployments load SENTINEL_OPERATOR_RESET_TOKEN once at Sentinel startup
+/// (see src/server.rs); this binary just exercises the same authority path
+/// so the demo doesn't need a live environment variable.
+const DEMO_OPERATOR_RESET_TOKEN: &str = "demo-9f2c7a1e4b6d8053f1a2c3e4b5d6f7081930-not-for-prod";
 
 fn main() {
     println!("=================================================================");
@@ -85,16 +92,28 @@ fn main() {
     }
 
     // --- TEST 4: Operator reset ---
-    println!("\n[ TEST 4 ] Operator Reset — Requires Token, Never Clears Audit");
+    println!("\n[ TEST 4 ] Operator Reset — Requires Configured Authority, Never Clears Audit");
     let audit_before = pipeline.audit_entry_count();
+
+    pipeline
+        .configure_operator_reset_authority(
+            OperatorResetAuthority::from_config(Some(DEMO_OPERATOR_RESET_TOKEN.to_string()))
+                .expect("demo operator reset token passes config validation"),
+        )
+        .expect("operator reset authority configured exactly once");
 
     // Attempt reset without token — must fail
     let fail_result = pipeline.operator_reset(drift_session, "");
     assert!(fail_result.is_err(), "Empty token reset should fail");
     println!("  Empty token reset correctly rejected: {:?}", fail_result.err());
 
-    // Reset with token
-    let ok_result = pipeline.operator_reset(drift_session, "OPERATOR_TOKEN_PLACEHOLDER");
+    // Wrong token — must fail, and must not substitute for the real one
+    let wrong_result = pipeline.operator_reset(drift_session, "not-the-configured-token");
+    assert!(wrong_result.is_err(), "Wrong token reset should fail");
+    println!("  Wrong token reset correctly rejected: {:?}", wrong_result.err());
+
+    // Reset with the correctly configured token
+    let ok_result = pipeline.operator_reset(drift_session, DEMO_OPERATOR_RESET_TOKEN);
     println!("  Authorized reset: {:?}", ok_result);
 
     let audit_after = pipeline.audit_entry_count();

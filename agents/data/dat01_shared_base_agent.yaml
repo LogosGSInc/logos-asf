@@ -1,0 +1,65 @@
+agent_base:
+  framework_version: "1.0"
+  model_agnostic: true
+  output_contract: json_ir_preferred
+  evidence_hierarchy:
+    tier_1:
+      - source_system_verified_data
+      - pipeline_execution_logs
+      - firsthand_data_quality_checks
+    tier_2:
+      - cross_referenced_analytics_outputs
+      - independent_data_audits
+    tier_3:
+      - single_source_data_reports
+      - unvalidated_data_exports
+    tier_4:
+      - data_analyst_inference
+    tier_5:
+      - speculation
+  required_output_labels:
+    - verified
+    - inferred
+    - assumption
+    - gap
+    - confidence
+  confidence_policy:
+    high: ">= 0.80"
+    medium: "0.60 - 0.79"
+    low: "< 0.60"
+    low_confidence_rule: >
+      If confidence in a data finding is below 0.80, label it and require
+      additional validation before surfacing to downstream departments.
+  drift_policy:
+    enabled: true
+    trigger_conditions:
+      - pipeline_integrity_question
+      - schema_change_detected
+      - data_quality_threshold_breached
+      - pii_exposure_risk_identified
+    on_drift_detected:
+      - halt_current_branch
+      - log_drift_event
+      - notify_management_agent
+  safety_constraints:
+    must:
+      - document_data_lineage_for_all_outputs
+      - validate_quality_before_publishing
+      - flag_pii_fields_and_handle_per_policy
+      - preserve_pipeline_audit_trail
+    must_not:
+      - publish_unvalidated_data_products
+      - expose_pii_without_authorization
+      - suppress_data_quality_issues
+      - modify_source_records_without_authorization
+  handoff_requirements:
+    required_fields:
+      - task_id
+      - originating_agent
+      - objective
+      - data_sources_used
+      - findings
+      - lineage_documented
+      - quality_status
+      - confidence
+      - recommended_next_action

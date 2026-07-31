@@ -1,0 +1,32 @@
+{
+  "control": "C4",
+  "description": "Privileged credential validation",
+  "status": "closed",
+  "branch": "sec/f1-boundary-closure",
+  "source_revision": "c4511b519cff092d4075c8e8df5a8f42fa25c92f",
+  "implementation_commit": "0a89881",
+  "container_packaging_commit": "c4511b5",
+  "abby_image_id": "b43ef6000aca2cc5186678197d714b44770bd3fd52147ab2f3a758c69350d01d",
+  "abby_image_revision": "c4511b519cff092d4075c8e8df5a8f42fa25c92f",
+  "verification": {
+    "python_tests": 1653,
+    "python_tests_passed": 1653,
+    "rust_tests": 54,
+    "rust_tests_passed": 54,
+    "abby_healthcheck_exit": 0,
+    "sentinel_healthcheck_exit": 0,
+    "abby_http": 200,
+    "sentinel_http": 200,
+    "credential_module_import": true
+  },
+  "security_properties": {
+    "minimum_token_length": 43,
+    "placeholder_tokens_rejected": true,
+    "whitespace_ambiguity_rejected": true,
+    "constant_time_comparison": "hmac.compare_digest",
+    "demo_admin_authority_separated": true,
+    "live_tokens_not_logged_by_setup": true,
+    "invalid_configuration_fails_closed": true
+  },
+  "verified_at": "2026-07-31T15:03:01.428912+00:00"
+}

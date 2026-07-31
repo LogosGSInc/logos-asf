@@ -22,6 +22,8 @@ import datetime, hashlib, json, logging, os, re, stat
 import subprocess, sys, threading, time, uuid, webbrowser
 from pathlib import Path
 
+import privileged_credentials
+
 # ── Agent loader (YAML definitions) ──────────────────────────────────────────
 try:
     from agent_loader import get_agent as _get_yaml_agent, list_agents as _list_yaml_agents
@@ -236,18 +238,37 @@ def resolve_bind_host():
     return "127.0.0.1"
 
 
+_DEFAULT_MAX_REQUEST_BYTES = 1_048_576  # 1 MiB
+
+
+def resolve_max_request_bytes():
+    """C6: request body size boundary. Werkzeug/Flask enforce this before any
+    route handler runs (413 Request Entity Too Large), so an oversized body
+    never reaches process_message()/agent dispatch/etc. Configurable via
+    ABIGAIL_MAX_REQUEST_BYTES; a missing, non-numeric, or non-positive value
+    falls back to the safe default rather than disabling the limit."""
+    try:
+        value = int(os.environ.get("ABIGAIL_MAX_REQUEST_BYTES", ""))
+    except (TypeError, ValueError):
+        value = 0
+    return value if value > 0 else _DEFAULT_MAX_REQUEST_BYTES
+
+
 def require_admin_token(req):
-    """SEC-02 (L1-1): fail-closed admin authentication.
+    """SEC-02 (L1-1) / C4: fail-closed admin authentication.
     Returns (ok, http_status, error). ok is True only when a server-side
-    ABIGAIL_ADMIN_TOKEN is configured AND the request presents the matching token.
-    A missing server token is a misconfiguration and fails closed (503). A missing or
-    incorrect client token is 401. Error text never reveals token contents or closeness."""
-    admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN","").strip()
-    if not admin_token:
+    ABIGAIL_ADMIN_TOKEN is configured (per the centralized C4 validator —
+    present, non-placeholder, >=43 chars) AND the request presents the
+    matching token (constant-time compare). A missing OR invalid/placeholder
+    server token is a misconfiguration and fails closed (503) — identically,
+    so a caller can never distinguish "not set" from "set to a placeholder".
+    A missing or incorrect client token is 401. Error text never reveals
+    token contents or closeness."""
+    if privileged_credentials.resolve_configured_token("ABIGAIL_ADMIN_TOKEN") is None:
         return (False, 503, "Admin control unavailable: server auth not configured.")
     auth = req.headers.get("Authorization","").removeprefix("Bearer ").strip()
     token = auth or req.headers.get("X-HAAP-Token","").strip()
-    if not token or token != admin_token:
+    if not privileged_credentials.credential_matches(token, "ABIGAIL_ADMIN_TOKEN"):
         return (False, 401, "Admin token required.")
     return (True, 200, None)
 
@@ -433,7 +454,7 @@ def call_anthropic(messages, system, model=None):
     try:
         import anthropic
         model=model or os.environ.get("ABIGAIL_ANTHROPIC_MODEL","claude-sonnet-5")
-        r=anthropic.Anthropic(api_key=_require_env_key("ANTHROPIC_API_KEY")).messages.create(
+        r=anthropic.Anthropic(api_key=_require_env_key("ANTHROPIC_API_KEY"),timeout=GROQ_TIMEOUT).messages.create(
             model=model,max_tokens=2048,system=system,messages=messages)
         return r.content[0].text.strip()
     except ImportError: return "[anthropic not installed]"
@@ -676,7 +697,14 @@ SESSION_HISTORY_WINDOW = max(2, int(os.environ.get("ABIGAIL_SESSION_HISTORY_WIND
 
 
 class SessionState:
-    def __init__(self): self.turn_count=0; self.cumulative_drs=0; self.messages=[]; self.flags=[]
+    def __init__(self):
+        self.turn_count=0; self.cumulative_drs=0; self.messages=[]; self.flags=[]
+        # A1: one durable Sentinel session_id for this conversation's whole
+        # lifetime (not reminted per turn — see process_message()).
+        # session_started tracks whether /session/start has been called yet,
+        # so it happens exactly once per conversation.
+        self.sentinel_session_id=f"conv_{uuid.uuid4().hex}"
+        self.session_started=False
     def record_turn(self,user_input,score,signals):
         self.turn_count+=1; self.cumulative_drs+=score
         if signals: self.flags.append({"turn":self.turn_count,"score":score,"signals":signals})
@@ -715,7 +743,16 @@ class SessionRegistry:
                     # Bound memory: evict an arbitrary non-default session.
                     for k in list(self._store.keys()):
                         if k != "default":
-                            del self._store[k]; break
+                            evicted = self._store.pop(k)
+                            # A1: best-effort /session/end for the evicted
+                            # conversation. Never fail-closed here — a failed
+                            # cleanup call must not block creating the new
+                            # session that triggered this eviction.
+                            try:
+                                _sentinel_session_end(evicted.sentinel_session_id)
+                            except Exception:
+                                pass
+                            break
                 s = SessionState()
                 self._store[key] = s
             return s
@@ -890,6 +927,23 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
     try: kill_switch.check()
     except HAAPViolation as e:
         return {"ok":False,"text":str(e),"drs":0,"mode":"KILL_SWITCH","crsv":session.crsv()}
+
+    # A1: the conversation's durable Sentinel session must be started before
+    # anything else — including a grounded/canned answer, which is still
+    # part of this conversation's turn sequence. No provider call, no
+    # dispatch, and no session_id churn happen on this path; it either
+    # proceeds or fails closed here, before any of that.
+    if not _ensure_session_started(session):
+        return {
+            "ok": False,
+            "text": ("[Sentinel OverWatch] Request blocked — the authoritative "
+                      "governance tier could not start this session and "
+                      "SENTINEL_REQUIRED is enforced."),
+            "drs": 100,
+            "mode": "SENTINEL_UNREACHABLE",
+            "crsv": session.crsv(),
+        }
+
     grounded=try_grounded_answer(raw,session)
     if grounded is not None: return grounded
 
@@ -903,7 +957,15 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
     # Layer 1b — Rust Sentinel OverWatch (authoritative threat classification)
     # Every verdict maps to exactly one of proceed / step-up / block.
     # No unknown or unreachable verdict may fall through implicitly.
-    sentinel_session_id = f"session_{session.turn_count}_{uuid.uuid4().hex[:12]}"
+    # A1: one durable session_id for the whole conversation, not reminted
+    # per turn — this is what lets Sentinel accumulate drift/threat/lock
+    # state across turns instead of seeing a "new session" every message.
+    # Sessions that don't model this at all (minimal test doubles predating
+    # A1 — see _ensure_session_started) fall back to the old per-call mint,
+    # unchanged for them.
+    sentinel_session_id = getattr(
+        session, "sentinel_session_id", None
+    ) or f"session_{session.turn_count}_{uuid.uuid4().hex[:12]}"
     s_result = _sentinel_inspect(raw, sentinel_session_id)
     s_verdict = s_result.get("verdict", "unknown")
     s_verdict_norm = str(s_verdict).strip().lower()
@@ -1383,6 +1445,86 @@ def _sentinel_inspect(payload:str, session_id:str) -> dict:
     except Exception as e:
         log_event("SENTINEL_INSPECT_ERROR",{"error":str(e)})
         return {"ok":False,"verdict":"sentinel_offline","approved":False,"error":str(e)}
+
+
+# ── A1: durable session lifecycle — /session/start, /session/end ───────────
+def _sentinel_session_start(session_id: str, actor_id: str = "abigail") -> tuple:
+    """POST /session/start. Called exactly once per conversation (see
+    _ensure_session_started). Returns (ok, info)."""
+    if not SENTINEL_SERVICE_TOKEN:
+        log_event("SENTINEL_AUTH_MISCONFIGURED", {"endpoint": "/session/start"})
+        return (False, {"error": "Sentinel service token missing"})
+    try:
+        import httpx
+        r = httpx.post(
+            f"{SENTINEL_URL}/session/start",
+            headers={"Authorization": f"Bearer {SENTINEL_SERVICE_TOKEN}"},
+            json={"session_id": session_id, "actor_id": actor_id},
+            timeout=5)
+        if r.status_code != 200:
+            log_event("SENTINEL_SESSION_START_REJECTED", {"status": r.status_code})
+            return (False, {"status": r.status_code})
+        return (True, r.json())
+    except Exception as e:
+        log_event("SENTINEL_SESSION_START_ERROR", {"error": str(e)})
+        return (False, {"error": str(e)})
+
+
+def _sentinel_session_end(session_id: str, actor_id: str = "abigail", escalated: bool = False) -> bool:
+    """POST /session/end. Best-effort cleanup — deliberately NOT fail-closed:
+    a failed call here must never block creating a new session or exiting
+    the CLI. Returns whether the call was acknowledged."""
+    if not SENTINEL_SERVICE_TOKEN:
+        return False
+    try:
+        import httpx
+        r = httpx.post(
+            f"{SENTINEL_URL}/session/end",
+            headers={"Authorization": f"Bearer {SENTINEL_SERVICE_TOKEN}"},
+            json={"session_id": session_id, "actor_id": actor_id, "escalated": escalated},
+            timeout=5)
+        return r.status_code == 200
+    except Exception as e:
+        log_event("SENTINEL_SESSION_END_ERROR", {"error": str(e)})
+        return False
+
+
+def _ensure_session_started(session) -> bool:
+    """A1: idempotent gate — calls /session/start exactly once for this
+    conversation's SessionState. Returns True once the session is (now or
+    already) started; False when a required start could not be established,
+    in which case the CALLER must refuse the current turn/request (fail
+    closed) rather than proceed with an unstarted governance session. Gated
+    by the same SENTINEL_REQUIRED policy /inspect already uses — not a new
+    policy, applied to a new call site.
+
+    Duck-typed session objects that don't model conversation lifecycle at
+    all (minimal test doubles predating A1, e.g. objects only providing
+    turn_count/crsv()) are treated as already-started rather than crashing
+    or gaining a new hard network dependency they were never designed
+    around — the same accommodation command_bus.py already makes elsewhere
+    via hasattr(session, 'crsv'). Real SessionState always has
+    session_started, so production callers always go through the full
+    gate below."""
+    if getattr(session, "session_started", True):
+        return True
+    ok, info = _sentinel_session_start(session.sentinel_session_id)
+    if ok:
+        session.session_started = True
+        return True
+    if SENTINEL_REQUIRED:
+        log_event("SENTINEL_SESSION_START_BLOCK", {
+            "session_id": session.sentinel_session_id,
+            "sentinel_url": SENTINEL_URL,
+            "error": str((info or {}).get("error", ""))[:200],
+        })
+        return False
+    log_event("SENTINEL_SESSION_START_DEGRADED_OPEN", {
+        "session_id": session.sentinel_session_id,
+        "note": "SENTINEL_REQUIRED=0 — proceeding on Python HAAP backstop only",
+    })
+    session.session_started = True
+    return True
 
 
 
@@ -2062,7 +2204,8 @@ def build_web_app(session, kill_switch, active_backend):
     server. Exposed separately so tests can exercise routes via a test client; run_web()
     handles bind-host resolution, the banner, and flask_app.run()."""
     try:
-        from flask import Flask, Response, jsonify, request
+        from flask import Flask, Response, jsonify, request, send_from_directory, abort
+        from werkzeug.utils import safe_join
     except ImportError:
         print("\033[31m[ERROR] Flask required: pip install flask\033[0m"); sys.exit(1)
 
@@ -2073,22 +2216,24 @@ def build_web_app(session, kill_switch, active_backend):
         print("[WARN] flask-cors not installed. pip install flask-cors")
 
     flask_app=Flask(__name__)
+    flask_app.config["MAX_CONTENT_LENGTH"] = resolve_max_request_bytes()  # C6: request body size boundary
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     def _request_authority():
-        """Resolve caller authority. Missing configured tokens never grant access."""
+        """Resolve caller authority via the centralized C4 validator. Missing
+        OR invalid/placeholder configured tokens never grant access."""
         auth = request.headers.get("Authorization", "").strip()
         token = auth[7:].strip() if auth.lower().startswith("bearer ") else auth
         token = token or request.headers.get("X-HAAP-Token", "").strip()
 
-        admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN", "").strip()
-        demo_token = os.environ.get("ABIGAIL_DEMO_TOKEN", "").strip()
+        admin_configured = privileged_credentials.resolve_configured_token("ABIGAIL_ADMIN_TOKEN")
+        demo_configured = privileged_credentials.resolve_configured_token("ABIGAIL_DEMO_TOKEN")
 
-        if not admin_token or not demo_token:
+        if admin_configured is None or demo_configured is None:
             return "MISCONFIGURED"
-        if token == admin_token:
+        if privileged_credentials.credential_matches(token, "ABIGAIL_ADMIN_TOKEN"):
             return "ADMIN"
-        if token == demo_token:
+        if privileged_credentials.credential_matches(token, "ABIGAIL_DEMO_TOKEN"):
             return "DEMO"
         return "UNAUTHENTICATED"
 
@@ -2136,18 +2281,17 @@ def build_web_app(session, kill_switch, active_backend):
         return sessions.get_or_create(key), key
 
     def _valid_step_up(req):
-        """P0-2: a valid step-up authorization is a presented token matching the
-        configured admin or demo token. Fail-closed: no configured token => no step-up."""
+        """P0-2 / C4: a valid step-up authorization is a presented token
+        matching the configured admin or demo token, both resolved through
+        the centralized C4 validator. Fail-closed: no valid configured
+        token => no step-up."""
         presented = (req.headers.get("Authorization", "").removeprefix("Bearer ").strip()
                      or req.headers.get("X-HAAP-Token", "").strip())
         if not presented:
             return False
         for name in ("ABIGAIL_ADMIN_TOKEN", "ABIGAIL_DEMO_TOKEN"):
-            configured = os.environ.get(name, "").strip()
-            if configured and not ("GENERATE" in configured or "PLACEHOLDER" in configured):
-                import hmac as _hmac
-                if _hmac.compare_digest(presented, configured):
-                    return True
+            if privileged_credentials.credential_matches(presented, name):
+                return True
         return False
 
     @flask_app.route("/")
@@ -2164,15 +2308,10 @@ def build_web_app(session, kill_switch, active_backend):
 
     @flask_app.route("/<path:filename>")
     def static_files(filename):
-        p = _os.path.join(STATIC_DIR, filename)
-        if _os.path.exists(p) and _os.path.isfile(p):
-            ext = filename.rsplit(".", 1)[-1].lower()
-            mime = {"html":"text/html","css":"text/css","js":"application/javascript",
-                    "json":"application/json","png":"image/png","svg":"image/svg+xml",
-                    "ico":"image/x-icon"}.get(ext, "text/plain")
-            return Response(open(p, "rb").read(), mimetype=mime)
-        from flask import abort
-        abort(404)
+        full = safe_join(STATIC_DIR, filename)
+        if full is None:
+            abort(404)
+        return send_from_directory(STATIC_DIR, filename)
 
     @flask_app.route("/api/status")
     def api_status():
@@ -2383,8 +2522,30 @@ def build_web_app(session, kill_switch, active_backend):
         if not agent_def:
             return jsonify({"ok":False,"error":f"Agent '{agent_id}' not found."}), 404
 
+        # A1: dispatch inherits the caller's conversation session rather than
+        # minting its own — same resolution _api_chat_ uses (X-Session-ID
+        # header, then body session_id, then remote_addr), so a dispatch call
+        # from an active conversation shares that conversation's durable
+        # Sentinel session_id, and a standalone dispatch call still gets a
+        # coherent, durable session of its own.
+        _dispatch_sess, _dispatch_skey = _resolve_chat_session(body.get("session_id"))
+        if not _ensure_session_started(_dispatch_sess):
+            return jsonify({
+                "ok": False,
+                "blocked": True,
+                "terminal_state": "UNAVAILABLE",
+                "error": "Sentinel OverWatch could not start this governance session.",
+                "mode": "SENTINEL_FAIL_CLOSED",
+                "governance": {
+                    "execution_status": "unavailable",
+                    "sentinel_verdict": "SESSION_START_FAILED",
+                    "provider_called": False,
+                    "output_released": False,
+                },
+            }), 503
+        sentinel_session_id = _dispatch_sess.sentinel_session_id
+
         # Authoritative Sentinel Corridor-In gate.
-        sentinel_session_id = f"dispatch_{agent_id}_{uuid.uuid4().hex[:12]}"
         s_result = _sentinel_inspect(task, sentinel_session_id)
         s_verdict = str(s_result.get("verdict", "UNKNOWN")).strip().upper()
 
@@ -2878,6 +3039,10 @@ def handle_command(cmd, session, kill_switch, active_backend):
         print()
     elif verb=="/exit":
         log_event("SESSION_END",{"turns":session.turn_count,"crsv":session.crsv()})
+        # A1: best-effort — never blocks CLI exit on a failed Sentinel call.
+        if session.session_started:
+            try: _sentinel_session_end(session.sentinel_session_id)
+            except Exception: pass
         print("\n[Abigail] Session closed.\n"); sys.exit(0)
     else: print(f"  Unknown: {verb}")
     return True
@@ -2890,12 +3055,13 @@ def startup_checks(default_backend, web_mode=False):
     if env_key:
         try: _require_env_key(env_key)
         except RuntimeError as e: print(f"\033[31m{e}\033[0m\n"); sys.exit(1)
-    # Web control plane must fail closed when authority tokens are missing or placeholders.
-    invalid_tokens = []
-    for tok_name in ("ABIGAIL_ADMIN_TOKEN","ABIGAIL_DEMO_TOKEN"):
-        val = os.environ.get(tok_name,"").strip()
-        if not val or "GENERATE" in val.upper() or "PLACEHOLDER" in val.upper():
-            invalid_tokens.append(tok_name)
+    # Web control plane must fail closed when authority tokens are missing,
+    # too short, or placeholders (C4 centralized validator — same policy
+    # require_admin_token()/command_bus/control-plane use).
+    invalid_tokens = [
+        tok_name for tok_name in ("ABIGAIL_ADMIN_TOKEN", "ABIGAIL_DEMO_TOKEN")
+        if privileged_credentials.resolve_configured_token(tok_name) is None
+    ]
 
     if invalid_tokens:
         names = ", ".join(invalid_tokens)

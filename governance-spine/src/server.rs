@@ -16,8 +16,10 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
@@ -31,7 +33,13 @@ use governance_spine::{
     GovernancePipeline,
     EnforcementResult,
     ArbiterConfig,
+    OperatorResetAuthority,
+    load_verified_from_paths,
+    trusted_constitution_authority_key,
+    public_key_fingerprint,
+    CryptoEngine,
 };
+use chrono::Utc;
 
 fn ok_json(body: &str) -> String {
     format!(
@@ -56,7 +64,7 @@ fn json_response(status: u16, body: Value) -> String {
     )
 }
 
-fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
+pub(crate) fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
     let field = value.get(key)
         .and_then(Value::as_str)
         .map(str::trim)
@@ -69,34 +77,110 @@ fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
     }
 }
 
-fn parse_json_field(json: &str, key: &str) -> Option<String> {
-    let search = format!("\"{}\"", key);
-    let pos = json.find(&search)?;
-    let after = &json[pos + search.len()..];
-    let colon = after.find(':')? + 1;
-    let val = after[colon..].trim_start();
-    if val.starts_with('"') {
-        let inner = &val[1..];
-        let end = inner.find('"')?;
-        Some(inner[..end].to_string())
-    } else {
-        let end = val.find(|c: char| c == ',' || c == '}' || c == '\n')
-            .unwrap_or(val.len());
-        Some(val[..end].trim().to_string())
-    }
+pub(crate) fn optional_json_string(value: &Value, key: &str) -> Option<String> {
+    value.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 const MAX_BODY_BYTES: usize = 262_144; // 256 KB — prevents OOM on adversarial oversized payloads
 
-fn read_request(reader: &mut BufReader<&mut TcpStream>) -> (HashMap<String, String>, String) {
+// C6: an attacker can otherwise stream an unterminated line (no '\n') or an
+// unbounded number of header lines and grow server memory without limit,
+// even though MAX_BODY_BYTES already caps the declared request body.
+const MAX_HEADER_LINE_BYTES: usize = 8_192; // 8 KB — generous for any real header
+const MAX_HEADER_COUNT: usize = 100;
+
+// C6: default per-connection socket read/write timeout and connection cap.
+// Both are overridable via env (SENTOW_SOCKET_TIMEOUT_SECS /
+// SENTOW_MAX_CONNECTIONS) so operators can tune without a rebuild, but a
+// parse failure always falls back to these safe defaults rather than an
+// unbounded value.
+const DEFAULT_SOCKET_TIMEOUT_SECS: u64 = 10;
+const DEFAULT_MAX_CONNECTIONS: usize = 64;
+
+// A2: baked into the release image at build time (see governance-spine/
+// Dockerfile) — a versioned release artifact, not runtime-mutable config.
+// Overridable via env only for test/dev flexibility; the fail-closed
+// startup gate applies identically regardless of where these point.
+fn constitution_json_path() -> String {
+    std::env::var("SENTOW_CONSTITUTION_PATH")
+        .unwrap_or_else(|_| "/app/constitution/constitution.json".to_string())
+}
+fn constitution_signature_path() -> String {
+    std::env::var("SENTOW_CONSTITUTION_SIGNATURE_PATH")
+        .unwrap_or_else(|_| "/app/constitution/constitution.json.sig".to_string())
+}
+
+// A3: the audit-signing key is provisioned offline (see
+// governance-spine/examples/generate_audit_signing_key.rs) and bind-mounted
+// read-only into the container — unlike A2's constitution, this key IS
+// held by the running process, since it must sign every governance event
+// under a stable identity across restarts. Env-overridable for test/dev
+// flexibility; the fail-closed startup gate applies regardless.
+fn audit_key_path() -> String {
+    std::env::var("SENTOW_AUDIT_KEY_PATH")
+        .unwrap_or_else(|_| "/app/audit-signing/audit-signing-ed25519.key".to_string())
+}
+
+/// Reads one line (through and including the terminating `\n`, if any),
+/// refusing to grow the buffer past `max_bytes`. Unlike `BufRead::read_line`,
+/// which will happily buffer an arbitrarily long unterminated line from a
+/// slow/adversarial peer, this bails out as soon as the cap is exceeded —
+/// bounding worst-case growth to one extra internal-buffer-sized chunk.
+/// Returns `None` on a read error, on EOF with no bytes read at all, or when
+/// the line exceeds `max_bytes`.
+pub(crate) fn read_line_bounded(
+    reader: &mut BufReader<&mut TcpStream>,
+    max_bytes: usize,
+) -> Option<String> {
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        let available = match reader.fill_buf() {
+            Ok(b) => b,
+            Err(_) => return None,
+        };
+        if available.is_empty() {
+            // Peer closed the connection (EOF).
+            return if buf.is_empty() { None } else { Some(String::from_utf8_lossy(&buf).to_string()) };
+        }
+        match available.iter().position(|&b| b == b'\n') {
+            Some(pos) => {
+                buf.extend_from_slice(&available[..=pos]);
+                reader.consume(pos + 1);
+                if buf.len() > max_bytes { return None; }
+                return Some(String::from_utf8_lossy(&buf).to_string());
+            }
+            None => {
+                buf.extend_from_slice(available);
+                let n = available.len();
+                reader.consume(n);
+                if buf.len() > max_bytes { return None; }
+            }
+        }
+    }
+}
+
+/// Parses request headers and body. Fails closed with a short error message
+/// (surfaced to the caller as HTTP 431) on an oversized/unterminated header
+/// line or too many header lines, instead of silently truncating or hanging.
+fn read_request(
+    reader: &mut BufReader<&mut TcpStream>,
+) -> Result<(HashMap<String, String>, String), &'static str> {
     let mut headers = HashMap::new();
-    let mut line = String::new();
 
     loop {
-        line.clear();
-        reader.read_line(&mut line).unwrap_or(0);
+        let line = match read_line_bounded(reader, MAX_HEADER_LINE_BYTES) {
+            Some(l) => l,
+            None => return Err("header line too long"),
+        };
         let t = line.trim();
         if t.is_empty() { break; }
+        if headers.len() >= MAX_HEADER_COUNT {
+            return Err("too many headers");
+        }
         if let Some(p) = t.find(':') {
             headers.insert(
                 t[..p].trim().to_lowercase(),
@@ -110,14 +194,14 @@ fn read_request(reader: &mut BufReader<&mut TcpStream>) -> (HashMap<String, Stri
         .unwrap_or(0);
 
     if declared_len > MAX_BODY_BYTES {
-        return (headers, String::new());
+        return Ok((headers, String::new()));
     }
 
     let mut body = vec![0u8; declared_len];
     use std::io::Read;
     reader.read_exact(&mut body).unwrap_or(());
 
-    (headers, String::from_utf8_lossy(&body).to_string())
+    Ok((headers, String::from_utf8_lossy(&body).to_string()))
 }
 
 fn token_digest(value: &str) -> [u8; 32] {
@@ -186,13 +270,18 @@ fn handle(
     service_token: &Arc<String>,
 ) {
     let mut reader = BufReader::new(stream as &mut TcpStream);
-    let mut req = String::new();
-    reader.read_line(&mut req).unwrap_or(0);
+    let req = match read_line_bounded(&mut reader, MAX_HEADER_LINE_BYTES) {
+        Some(l) => l,
+        None => return, // malformed/oversized/absent request line — silently drop, as before
+    };
     let parts: Vec<&str> = req.trim().split_whitespace().collect();
     if parts.len() < 2 { return; }
     let method = parts[0];
     let path   = parts[1];
-    let (headers, body) = read_request(&mut reader);
+    let (headers, body) = match read_request(&mut reader) {
+        Ok(v) => v,
+        Err(msg) => return write_response(reader, err_json(431, msg)),
+    };
 
     let response = if path != "/health" && !authorized(&headers, service_token.as_str()) {
         err_json(401, "service authentication required")
@@ -205,14 +294,22 @@ fn handle(
         )),
 
         ("POST", "/inspect") => {
-            let payload    = parse_json_field(&body, "payload").unwrap_or_default();
-            let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_default();
-            if payload.is_empty() {
-                err_json(400, "payload required")
-            } else if session_id.trim().is_empty() {
-                err_json(400, "session_id required")
-            } else {
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            let parsed = (|| -> Result<(String, String), String> {
+                let payload = required_json_string(&body_value, "payload")?;
+                let session_id = required_json_string(&body_value, "session_id")?;
+                Ok((payload, session_id))
+            })();
+
+            match parsed {
+                Err(error) => err_json(400, &error),
+                Ok((payload, session_id)) => {
                 let gov_tx_id = format!("GTX-{}", uuid::Uuid::new_v4().simple());
                 let result = pipeline.inbound(&payload, &session_id, &gov_tx_id);
 
@@ -251,20 +348,30 @@ fn handle(
                         json_response(200, value)
                     }
                 }
+                }
             }
         }
 
         ("POST", "/outbound") => {
-            let payload    = parse_json_field(&body, "payload").unwrap_or_default();
-            let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_default();
-            if payload.is_empty() {
-                err_json(400, "payload required")
-            } else if session_id.trim().is_empty() {
-                err_json(400, "session_id required")
-            } else {
-                let r = pipeline.outbound(&payload, &session_id);
-                ok_json(&verdict_json(&r, &session_id))
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            let parsed = (|| -> Result<(String, String), String> {
+                let payload = required_json_string(&body_value, "payload")?;
+                let session_id = required_json_string(&body_value, "session_id")?;
+                Ok((payload, session_id))
+            })();
+
+            match parsed {
+                Err(error) => err_json(400, &error),
+                Ok((payload, session_id)) => {
+                    let r = pipeline.outbound(&payload, &session_id);
+                    ok_json(&verdict_json(&r, &session_id))
+                }
             }
         }
 
@@ -409,28 +516,40 @@ fn handle(
         }
 
         ("POST", "/session/reset") => {
-            let sid   = parse_json_field(&body, "session_id").unwrap_or_default();
-            let token = parse_json_field(&body, "operator_token").unwrap_or_default();
-            if sid.trim().is_empty() {
-                err_json(400, "session_id required")
-            } else {
-            match pipeline.operator_reset(&sid, &token) {
-                Ok(_)  => ok_json(&format!(
-                    "{{\"ok\":true,\"session_id\":\"{}\",\"reset\":true}}", sid)),
-                Err(e) => err_json(403, e),
-            }
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            match required_json_string(&body_value, "session_id") {
+                Err(error) => err_json(400, &error),
+                Ok(sid) => {
+                    let token = optional_json_string(&body_value, "operator_token").unwrap_or_default();
+                    match pipeline.operator_reset(&sid, &token) {
+                        Ok(_)  => ok_json(&format!(
+                            "{{\"ok\":true,\"session_id\":\"{}\",\"reset\":true}}", sid)),
+                        Err(e) => err_json(403, e),
+                    }
+                }
             }
         }
 
         ("POST", "/session/start") => {
-            let actor_id   = parse_json_field(&body, "actor_id")
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            let actor_id = optional_json_string(&body_value, "actor_id")
                 .unwrap_or_else(|| "anonymous".into());
-            let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_default();
-
-            if session_id.trim().is_empty() {
-                return write_response(reader, err_json(400, "session_id required"));
-            }
+            let session_id = match required_json_string(&body_value, "session_id") {
+                Ok(v) => v,
+                Err(e) => return write_response(reader, err_json(400, &e)),
+            };
 
             // Return real session state from pipeline memory (not hardcoded "Clean")
             let state = pipeline.current_state(&session_id);
@@ -449,15 +568,22 @@ fn handle(
         }
 
         ("POST", "/session/end") => {
-            let actor_id   = parse_json_field(&body, "actor_id")
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            let actor_id = optional_json_string(&body_value, "actor_id")
                 .unwrap_or_else(|| "anonymous".into());
-            let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_default();
-            if session_id.trim().is_empty() {
-                return write_response(reader, err_json(400, "session_id required"));
-            }
-            let escalated  = parse_json_field(&body, "escalated")
-                .map(|v| v == "true").unwrap_or(false);
+            let session_id = match required_json_string(&body_value, "session_id") {
+                Ok(v) => v,
+                Err(e) => return write_response(reader, err_json(400, &e)),
+            };
+            let escalated = body_value.get("escalated")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             // GS-BUILD-01: report the real persistence outcome, decoupled into
             // two honest facts:
             //   persisted  — did THIS call durably write a session profile to
@@ -515,6 +641,20 @@ fn main() {
 
     let service_token = Arc::new(service_token);
 
+    // SENTINEL_OPERATOR_RESET_TOKEN authorizes destructive session reset and
+    // is a distinct credential from SENTINEL_SERVICE_TOKEN (HTTP caller
+    // authentication) — neither substitutes for the other. Loaded and
+    // validated once here, before the server accepts any connections.
+    let reset_authority = match OperatorResetAuthority::from_config(
+        std::env::var("SENTINEL_OPERATOR_RESET_TOKEN").ok()
+    ) {
+        Ok(authority) => authority,
+        Err(error) => {
+            eprintln!("[SECURITY ERROR] SENTINEL_OPERATOR_RESET_TOKEN invalid: {}", error);
+            std::process::exit(1);
+        }
+    };
+
     let addr = std::env::var("SENTOW_BIND")
         .unwrap_or_else(|_| "0.0.0.0:8080".into());
     let industry = std::env::var("SENTOW_INDUSTRY_PROFILE")
@@ -523,19 +663,115 @@ fn main() {
         "medical" => ArbiterConfig::medical(),
         _         => ArbiterConfig::default(),
     };
+    // A2: mandatory constitution load + signature verification, BEFORE the
+    // pipeline is constructed and BEFORE the listener binds — no request
+    // can be served until this succeeds. Refuses to start (matching the
+    // existing SENTINEL_SERVICE_TOKEN/SENTINEL_OPERATOR_RESET_TOKEN
+    // fail-closed pattern above) on: missing file, missing signature,
+    // malformed JSON, invalid signature, wrong signer, profile mismatch,
+    // missing constitution_id/policy_version, or an invalid validity
+    // window. The trusted key is the compiled-in pinned constant, never a
+    // key from the document itself or a runtime-mutable file.
+    let trusted_constitution_key = trusted_constitution_authority_key();
+    let constitution = match load_verified_from_paths(
+        std::path::Path::new(&constitution_json_path()),
+        std::path::Path::new(&constitution_signature_path()),
+        &trusted_constitution_key,
+        &industry,
+        Utc::now(),
+    ) {
+        Ok(c) => {
+            eprintln!(
+                "[CONSTITUTION] verified — id={} version={} profile={} signer_fingerprint={}",
+                c.constitution_id, c.policy_version, c.industry_profile,
+                public_key_fingerprint(&trusted_constitution_key),
+            );
+            c
+        }
+        Err(e) => {
+            eprintln!("[SECURITY ERROR] constitution verification failed: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    // A3: mandatory persistent audit-signing identity load, BEFORE the
+    // pipeline is constructed — fail-closed on the same terms as the
+    // constitution gate above. Loading the SAME key file on every startup
+    // (rather than generating a fresh one, as CryptoEngine::new() used to)
+    // is what lets an audit entry's signature still verify after a
+    // restart. This key is distinct from the A2 constitution-authoring key
+    // (which the running process never holds) and from
+    // SENTINEL_OPERATOR_RESET_TOKEN (a shared secret, not a signing key).
+    let audit_crypto = match CryptoEngine::from_persisted_key_file(
+        std::path::Path::new(&audit_key_path()),
+        "logos_governance_v1_seed",
+    ) {
+        Ok(c) => {
+            eprintln!("[CRYPTO] audit-signing identity loaded — fingerprint={}", c.verifying_key_fingerprint());
+            Arc::new(c)
+        }
+        Err(e) => {
+            eprintln!("[SECURITY ERROR] audit signing key load failed: {e}");
+            std::process::exit(1);
+        }
+    };
+
     let pipeline = Arc::new(
-        GovernancePipeline::new(arbiter_config, None)
+        GovernancePipeline::new(arbiter_config, Some(constitution), audit_crypto)
             .expect("Pipeline init failed")
     );
+    pipeline
+        .configure_operator_reset_authority(reset_authority)
+        .expect("operator reset authority configured exactly once at startup");
     eprintln!("[SENTINEL-SERVER] Listening on http://{}", addr);
     eprintln!("[SENTINEL-SERVER] SENTOW_MEMORY_PATH={}",
         std::env::var("SENTOW_MEMORY_PATH").unwrap_or_else(|_| "(in-memory only)".into()));
+
+    // C6: both overridable via env; a missing/unparseable value falls back
+    // to the safe default rather than an unbounded one.
+    let socket_timeout = Duration::from_secs(
+        std::env::var("SENTOW_SOCKET_TIMEOUT_SECS").ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_SOCKET_TIMEOUT_SECS)
+    );
+    let max_connections = std::env::var("SENTOW_MAX_CONNECTIONS").ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONNECTIONS);
+
     let listener = TcpListener::bind(&addr).expect("Failed to bind");
+    serve(listener, pipeline, service_token, max_connections, socket_timeout);
+}
+
+/// The accept loop: bounded connection concurrency, and a per-connection
+/// socket read/write timeout applied before any bytes are read (C6 —
+/// otherwise a single slow/silent client can hold a handler thread forever).
+/// Extracted from `main()` so tests can bind an ephemeral port and drive it
+/// with real sockets instead of only exercising library-level parsing.
+pub(crate) fn serve(
+    listener: TcpListener,
+    pipeline: Arc<GovernancePipeline>,
+    service_token: Arc<String>,
+    max_connections: usize,
+    socket_timeout: Duration,
+) {
+    let active_connections = Arc::new(AtomicUsize::new(0));
     for stream in listener.incoming() {
         if let Ok(mut s) = stream {
+            let in_flight = active_connections.fetch_add(1, Ordering::SeqCst) + 1;
+            if in_flight > max_connections {
+                active_connections.fetch_sub(1, Ordering::SeqCst);
+                let _ = s.write_all(err_json(503, "server at connection capacity").as_bytes());
+                continue;
+            }
+            let _ = s.set_read_timeout(Some(socket_timeout));
+            let _ = s.set_write_timeout(Some(socket_timeout));
             let p = pipeline.clone();
             let token = service_token.clone();
-            thread::spawn(move || handle(&mut s, &p, &token));
+            let counter = active_connections.clone();
+            thread::spawn(move || {
+                handle(&mut s, &p, &token);
+                counter.fetch_sub(1, Ordering::SeqCst);
+            });
         }
     }
 }

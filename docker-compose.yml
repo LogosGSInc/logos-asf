@@ -13,19 +13,28 @@ services:
       context: ./governance-spine
       dockerfile: Dockerfile
     container_name: asf-sentinel
+    init: true
     ports:
       - "127.0.0.1:${SENTINEL_HOST_PORT:-9091}:8080"
     env_file:
       - ./.abigail.env
     environment:
       - RUST_LOG=info
-      - SENTINEL_SERVICE_TOKEN=${SENTINEL_SERVICE_TOKEN}
       - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
       - SENTOW_HAAP_DRS_CEILING=${SENTOW_HAAP_DRS_CEILING:-60}
       - SENTOW_MEMORY_PATH=/app/audit/strategic_memory.json
+      - SENTINEL_OPERATOR_RESET_TOKEN=${SENTINEL_OPERATOR_RESET_TOKEN:?SENTINEL_OPERATOR_RESET_TOKEN is required}
     volumes:
-      - sentinel-audit:/app/audit
+      # A3: the persistent audit-signing key — provisioned offline via
+      # `cargo run --example generate_audit_signing_key` (never committed,
+      # never containerized/baked into an image layer), bind-mounted
+      # read-only from the operator's host path. Dedicated host-path mount
+      # for this one file specifically, not routed through sentinel-data —
+      # different lifecycle (a long-lived signing identity) from whatever
+      # else that volume holds.
+      - ~/.logosgs/audit-signing/audit-signing-ed25519.key:/app/audit-signing/audit-signing-ed25519.key:ro
       - sentinel-data:/data
+      - sentinel-audit:/app/audit
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -39,6 +48,7 @@ services:
       context: .
       dockerfile: abigail/Dockerfile
     container_name: asf-abby
+    init: true
     ports:
 
       # Host-side exposure is localhost-only (SEC01-L3-3); the container itself is the
@@ -47,14 +57,12 @@ services:
     env_file:
       - ./.abigail.env
     volumes:
-      - ./.abigail.env:/app/.abigail.env:ro
       - abigail-logs:/app/logs
     environment:
       # Model-agnostic: set ABIGAIL_BACKEND + the matching key in .abigail.env
       - ABIGAIL_BACKEND=${ABIGAIL_BACKEND:-groq}
       - ABIGAIL_HEADLESS=1
       - SENTINEL_URL=http://sentinel:8080
-      - SENTINEL_SERVICE_TOKEN=${SENTINEL_SERVICE_TOKEN}
       # SEC-02: inside a container the app must bind all interfaces so Docker's
       # (localhost-only) published port can reach it. Container = isolation boundary.
       - ABIGAIL_BIND_HOST=0.0.0.0
@@ -68,8 +76,6 @@ services:
       - ABIGAIL_TEST_GROQ_TIMEOUT_SECONDS=${ABIGAIL_TEST_GROQ_TIMEOUT_SECONDS:-0}
       # BYOAPIKEY — all providers, operator supplies the key they have
       # Auth tokens
-      - ABIGAIL_ADMIN_TOKEN=${ABIGAIL_ADMIN_TOKEN}
-      - ABIGAIL_DEMO_TOKEN=${ABIGAIL_DEMO_TOKEN}
       # Governance profile
       - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
       - SENTOW_HAAP_DRS_CEILING=${SENTOW_HAAP_DRS_CEILING:-60}
@@ -78,7 +84,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7070/api/status', timeout=5)"]
+      test:
+        - CMD-SHELL
+        - >-
+          python3 -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:7070/api/status', timeout=5)"
       interval: 30s
       timeout: 10s
       retries: 3

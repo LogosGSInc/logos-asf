@@ -90,6 +90,9 @@ def _neutralize(monkeypatch):
 
 def _client(monkeypatch):
     _budget(monkeypatch)
+    # A1: no real Sentinel reachable in tests — treat the session as already
+    # started (unrelated to what this file tests).
+    monkeypatch.setattr(A, "_ensure_session_started", lambda _session: True)
     ks = A.KillSwitch()
     sess = A.SessionState()
     app = A.build_web_app(sess, ks, ["groq"])

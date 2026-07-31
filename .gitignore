@@ -6,7 +6,7 @@
 
 # Audit logs (contain operational data)
 *.jsonl
-data/
+/data/
 
 # Rust build artifacts
 governance-spine/target/
@@ -27,9 +27,10 @@ Thumbs.db
 .env
 
 # AG-01 generated swarm job artifacts (local, do not commit)
-runtime/
+/runtime/
 .claude/worktrees/
 
 # Local merge/edit backups
 setup.sh.bak
 static/dashboard.html.pre-abigail-ui-backup
+.aider*
