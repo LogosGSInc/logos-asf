@@ -47,7 +47,6 @@ services:
     env_file:
       - ./.abigail.env
     volumes:
-      - ./.abigail.env:/app/.abigail.env:ro
       - abigail-logs:/app/logs
     environment:
       # Model-agnostic: set ABIGAIL_BACKEND + the matching key in .abigail.env

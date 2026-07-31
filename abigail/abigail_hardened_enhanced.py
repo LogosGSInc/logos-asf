@@ -2062,7 +2062,8 @@ def build_web_app(session, kill_switch, active_backend):
     server. Exposed separately so tests can exercise routes via a test client; run_web()
     handles bind-host resolution, the banner, and flask_app.run()."""
     try:
-        from flask import Flask, Response, jsonify, request
+        from flask import Flask, Response, jsonify, request, send_from_directory, abort
+        from werkzeug.utils import safe_join
     except ImportError:
         print("\033[31m[ERROR] Flask required: pip install flask\033[0m"); sys.exit(1)
 
@@ -2164,15 +2165,10 @@ def build_web_app(session, kill_switch, active_backend):
 
     @flask_app.route("/<path:filename>")
     def static_files(filename):
-        p = _os.path.join(STATIC_DIR, filename)
-        if _os.path.exists(p) and _os.path.isfile(p):
-            ext = filename.rsplit(".", 1)[-1].lower()
-            mime = {"html":"text/html","css":"text/css","js":"application/javascript",
-                    "json":"application/json","png":"image/png","svg":"image/svg+xml",
-                    "ico":"image/x-icon"}.get(ext, "text/plain")
-            return Response(open(p, "rb").read(), mimetype=mime)
-        from flask import abort
-        abort(404)
+        full = safe_join(STATIC_DIR, filename)
+        if full is None:
+            abort(404)
+        return send_from_directory(STATIC_DIR, filename)
 
     @flask_app.route("/api/status")
     def api_status():
