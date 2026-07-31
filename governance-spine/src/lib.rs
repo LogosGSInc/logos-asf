@@ -14,7 +14,7 @@ pub mod operator_reset;
 pub mod pipeline;
 
 pub use governance_signal::{GovernanceSignal, Severity, SignalSource, Direction};
-pub use crypto::{CryptoEngine, AuditEntry};
+pub use crypto::{CryptoEngine, AuditEntry, CryptoError};
 pub use constitution::{
     Constitution, ConstitutionalEvaluator, ConstitutionalVerdict, ConstitutionLoadError,
     load_verified_from_paths, trusted_constitution_authority_key, public_key_fingerprint,

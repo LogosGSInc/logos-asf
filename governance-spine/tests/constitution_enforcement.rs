@@ -13,9 +13,10 @@
 //! a committed test fixture key. Each test is fully self-contained.
 
 use ed25519_dalek::{Signer, SigningKey};
-use governance_spine::{ArbiterConfig, Constitution, ConstitutionLoadError, GovernancePipeline, SecurityState};
+use governance_spine::{ArbiterConfig, Constitution, ConstitutionLoadError, CryptoEngine, GovernancePipeline, SecurityState};
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::rngs::OsRng;
+use std::sync::Arc;
 
 fn test_keypair() -> SigningKey {
     SigningKey::generate(&mut OsRng)
@@ -253,8 +254,9 @@ fn corridor_constitutional_evaluation_actually_executes_when_wired_in() {
         json.as_bytes(), &sig, &key.verifying_key(), "consumer", Utc::now(),
     ).expect("fixture must load");
 
-    let pipeline_with = GovernancePipeline::new(ArbiterConfig::default(), Some(constitution))
-        .expect("pipeline init");
+    let pipeline_with = GovernancePipeline::new(
+        ArbiterConfig::default(), Some(constitution), Arc::new(CryptoEngine::new("a2-corridor-wired-test-seed")),
+    ).expect("pipeline init");
     let sid = "a2-corridor-wired-test";
     pipeline_with.inbound("please say the-secret-test-marker-phrase now", sid, "gtx-a2-1");
     assert!(
@@ -265,8 +267,9 @@ fn corridor_constitutional_evaluation_actually_executes_when_wired_in() {
     // Control: the SAME payload, but with no constitution wired in at all —
     // must NOT escalate, proving the escalation above came from the
     // constitution being active, not some other coincidental signal.
-    let pipeline_without = GovernancePipeline::new(ArbiterConfig::default(), None)
-        .expect("pipeline init");
+    let pipeline_without = GovernancePipeline::new(
+        ArbiterConfig::default(), None, Arc::new(CryptoEngine::new("a2-corridor-unwired-control-seed")),
+    ).expect("pipeline init");
     let sid2 = "a2-corridor-unwired-control";
     pipeline_without.inbound("please say the-secret-test-marker-phrase now", sid2, "gtx-a2-2");
     assert_eq!(

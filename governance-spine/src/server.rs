@@ -37,6 +37,7 @@ use governance_spine::{
     load_verified_from_paths,
     trusted_constitution_authority_key,
     public_key_fingerprint,
+    CryptoEngine,
 };
 use chrono::Utc;
 
@@ -111,6 +112,17 @@ fn constitution_json_path() -> String {
 fn constitution_signature_path() -> String {
     std::env::var("SENTOW_CONSTITUTION_SIGNATURE_PATH")
         .unwrap_or_else(|_| "/app/constitution/constitution.json.sig".to_string())
+}
+
+// A3: the audit-signing key is provisioned offline (see
+// governance-spine/examples/generate_audit_signing_key.rs) and bind-mounted
+// read-only into the container — unlike A2's constitution, this key IS
+// held by the running process, since it must sign every governance event
+// under a stable identity across restarts. Env-overridable for test/dev
+// flexibility; the fail-closed startup gate applies regardless.
+fn audit_key_path() -> String {
+    std::env::var("SENTOW_AUDIT_KEY_PATH")
+        .unwrap_or_else(|_| "/app/audit-signing/audit-signing-ed25519.key".to_string())
 }
 
 /// Reads one line (through and including the terminating `\n`, if any),
@@ -682,8 +694,30 @@ fn main() {
         }
     };
 
+    // A3: mandatory persistent audit-signing identity load, BEFORE the
+    // pipeline is constructed — fail-closed on the same terms as the
+    // constitution gate above. Loading the SAME key file on every startup
+    // (rather than generating a fresh one, as CryptoEngine::new() used to)
+    // is what lets an audit entry's signature still verify after a
+    // restart. This key is distinct from the A2 constitution-authoring key
+    // (which the running process never holds) and from
+    // SENTINEL_OPERATOR_RESET_TOKEN (a shared secret, not a signing key).
+    let audit_crypto = match CryptoEngine::from_persisted_key_file(
+        std::path::Path::new(&audit_key_path()),
+        "logos_governance_v1_seed",
+    ) {
+        Ok(c) => {
+            eprintln!("[CRYPTO] audit-signing identity loaded — fingerprint={}", c.verifying_key_fingerprint());
+            Arc::new(c)
+        }
+        Err(e) => {
+            eprintln!("[SECURITY ERROR] audit signing key load failed: {e}");
+            std::process::exit(1);
+        }
+    };
+
     let pipeline = Arc::new(
-        GovernancePipeline::new(arbiter_config, Some(constitution))
+        GovernancePipeline::new(arbiter_config, Some(constitution), audit_crypto)
             .expect("Pipeline init failed")
     );
     pipeline

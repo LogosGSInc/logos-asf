@@ -116,12 +116,16 @@ pub struct GovernancePipeline {
 }
 
 impl GovernancePipeline {
+    /// A3: `crypto` is constructed by the caller (server.rs::main() loads it
+    /// from the persisted audit-signing key, failing closed before this is
+    /// ever called; tests construct an ephemeral one) rather than being
+    /// built internally with a hardcoded seed — mirrors how `constitution`
+    /// is passed in already-verified rather than loaded here.
     pub fn new(
         arbiter_config: ArbiterConfig,
         constitution: Option<Constitution>,
+        crypto: Arc<CryptoEngine>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let crypto = Arc::new(CryptoEngine::new("logos_governance_v1_seed"));
-
         let sentinel = Sentinel::new(crypto.clone());
         let corridor = Corridor::new(crypto.clone());
 
@@ -188,15 +192,19 @@ impl GovernancePipeline {
         })
     }
 
-    /// Default pipeline — consumer profile, no constitution
+    /// Default pipeline — consumer profile, no constitution. Test/demo
+    /// convenience: an ephemeral audit-signing identity, not the persisted
+    /// A3 key — callers that need restart-durable signatures must go
+    /// through server.rs's fail-closed load and call `new` directly.
     pub fn default_pipeline() -> Result<Self, Box<dyn std::error::Error>> {
-        Self::new(ArbiterConfig::default(), None)
+        Self::new(ArbiterConfig::default(), None, Arc::new(CryptoEngine::new("logos_governance_v1_seed")))
     }
 
-    /// Medical-grade pipeline with sealed constitution
+    /// Medical-grade pipeline with sealed constitution. Same ephemeral-key
+    /// caveat as `default_pipeline`.
     pub fn medical_pipeline() -> Result<Self, Box<dyn std::error::Error>> {
         let constitution = Constitution::default_medical();
-        Self::new(ArbiterConfig::medical(), Some(constitution))
+        Self::new(ArbiterConfig::medical(), Some(constitution), Arc::new(CryptoEngine::new("logos_governance_v1_seed")))
     }
 
     /// INBOUND: Memory-aware pipeline
