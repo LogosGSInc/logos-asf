@@ -23,6 +23,7 @@ services:
       - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
       - SENTOW_HAAP_DRS_CEILING=${SENTOW_HAAP_DRS_CEILING:-60}
       - SENTOW_MEMORY_PATH=/app/audit/strategic_memory.json
+      - SENTINEL_OPERATOR_RESET_TOKEN=${SENTINEL_OPERATOR_RESET_TOKEN:?SENTINEL_OPERATOR_RESET_TOKEN is required}
     volumes:
       - sentinel-audit:/app/audit
       - sentinel-data:/data
