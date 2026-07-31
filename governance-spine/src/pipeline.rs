@@ -417,6 +417,14 @@ impl GovernancePipeline {
         };
         // Clean up session memory (fingerprint is now in strategic memory)
         self.session_memories.write().remove(session_id);
+        // A1: a conversation ending must forget ALL per-session state, not
+        // just session_memories — otherwise Arbiter/OverWatch entries would
+        // accumulate forever now that end_session() is actually invoked in
+        // production. Plain removal, same as operator_reset() already does
+        // for overwatch; does not touch operator_reset()'s own token-gated
+        // path (C3, unchanged).
+        self.arbiter.forget_session(session_id);
+        self.overwatch.write().reset_session(session_id);
         persisted
     }
 

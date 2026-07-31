@@ -43,6 +43,9 @@ class _Sess:
 
 def _no_net(monkeypatch):
     """Return a complete final-approved inbound receipt without network."""
+    # A1: no real Sentinel reachable in tests — treat the session as already
+    # started (unrelated to what this file tests).
+    monkeypatch.setattr(A, "_ensure_session_started", lambda _session: True)
     monkeypatch.setattr(
         A,
         "_sentinel_inspect",

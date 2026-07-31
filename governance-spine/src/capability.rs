@@ -482,6 +482,34 @@ mod tests {
         assert_eq!(s.consume(&b), ConsumeOutcome::SessionMismatch);
     }
 
+    // ── A1: a durable session_id (reused across many turns, not one-per-turn)
+    // must not degrade capability isolation — each turn's token is still
+    // scoped by its own gov_tx_id and remains independently single-use.
+    #[test] fn same_session_multiple_turns_each_capability_independent() {
+        let s = store();
+        let sid = "sess1"; // matches req()'s hardcoded session_id — one durable conversation
+        let c1 = { let did = s.record_decision(req("tx-turn-1")).expect("record"); match s.issue_after_authorization(&did) { IssueOutcome::Issued(c) => c, o => panic!("expected Issued, got {:?}", o) } };
+        let c2 = { let did = s.record_decision(req("tx-turn-2")).expect("record"); match s.issue_after_authorization(&did) { IssueOutcome::Issued(c) => c, o => panic!("expected Issued, got {:?}", o) } };
+        let c3 = { let did = s.record_decision(req("tx-turn-3")).expect("record"); match s.issue_after_authorization(&did) { IssueOutcome::Issued(c) => c, o => panic!("expected Issued, got {:?}", o) } };
+
+        // All three belong to the SAME session_id — proving durable reuse
+        // across turns doesn't require distinct sessions per token.
+        assert_eq!(c1.session_id, sid);
+        assert_eq!(c2.session_id, sid);
+        assert_eq!(c3.session_id, sid);
+
+        // Each is independently consumable exactly once, regardless of order
+        // or how many other turns share the same session_id.
+        assert_eq!(s.consume(&good_binding(&c2)), ConsumeOutcome::Authorized);
+        assert_eq!(s.consume(&good_binding(&c1)), ConsumeOutcome::Authorized);
+        assert_eq!(s.consume(&good_binding(&c3)), ConsumeOutcome::Authorized);
+
+        // Replaying an earlier turn's token after later turns have already
+        // been consumed must still be rejected as AlreadyConsumed, not
+        // silently accepted because the session_id is "still current."
+        assert_eq!(s.consume(&good_binding(&c1)), ConsumeOutcome::AlreadyConsumed);
+    }
+
     // ── NEW: principal mismatch (the capability-theft fix) ──
     #[test] fn principal_mismatch_rejected() {
         let s = store(); let c = cap(&s);

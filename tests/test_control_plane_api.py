@@ -22,6 +22,9 @@ _ADMIN = "control-plane-admin-token-9f86d081884c7d659a2feaa0c55"
 
 def _app(monkeypatch):
     monkeypatch.setenv("ABIGAIL_COST_GOVERNOR_ENABLED", "0")
+    # A1: no real Sentinel reachable in tests — treat the session as already
+    # started (unrelated to what this file actually tests).
+    monkeypatch.setattr(A, "_ensure_session_started", lambda _session: True)
     ks = A.KillSwitch()
     sess = A.SessionState()
     app = A.build_web_app(sess, ks, ["groq"])

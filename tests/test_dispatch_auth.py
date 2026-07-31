@@ -37,6 +37,10 @@ class _Recorder:
 def _app(monkeypatch):
     rec = _Recorder()
 
+    # A1: no real Sentinel reachable in tests — treat the session as already
+    # started (unrelated to what this file tests).
+    monkeypatch.setattr(A, "_ensure_session_started", lambda _session: True)
+
     # A resolvable agent, independent of on-disk YAML.
     monkeypatch.setattr(
         A,

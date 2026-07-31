@@ -450,6 +450,17 @@ impl Arbiter {
             .unwrap_or(false)
     }
 
+    /// A1: plain removal of this session's state entry, mirroring the
+    /// already-existing `OverWatch::reset_session`. Distinct from
+    /// `operator_reset_session` below — this is unauthenticated
+    /// process-internal cleanup triggered only by the pipeline's
+    /// `end_session()` (a conversation naturally ending), not a
+    /// token-gated operator action, and does not alter
+    /// `operator_reset_session`'s behavior or semantics (C3).
+    pub fn forget_session(&self, session_id: &str) {
+        self.session_states.write().remove(session_id);
+    }
+
     /// FIX: Session reset NEVER clears audit log.
     /// Resets security state only. Requires the configured operator-reset
     /// authority (SENTINEL_OPERATOR_RESET_TOKEN), verified in constant time.
