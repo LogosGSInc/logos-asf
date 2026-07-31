@@ -238,6 +238,22 @@ def resolve_bind_host():
     return "127.0.0.1"
 
 
+_DEFAULT_MAX_REQUEST_BYTES = 1_048_576  # 1 MiB
+
+
+def resolve_max_request_bytes():
+    """C6: request body size boundary. Werkzeug/Flask enforce this before any
+    route handler runs (413 Request Entity Too Large), so an oversized body
+    never reaches process_message()/agent dispatch/etc. Configurable via
+    ABIGAIL_MAX_REQUEST_BYTES; a missing, non-numeric, or non-positive value
+    falls back to the safe default rather than disabling the limit."""
+    try:
+        value = int(os.environ.get("ABIGAIL_MAX_REQUEST_BYTES", ""))
+    except (TypeError, ValueError):
+        value = 0
+    return value if value > 0 else _DEFAULT_MAX_REQUEST_BYTES
+
+
 def require_admin_token(req):
     """SEC-02 (L1-1) / C4: fail-closed admin authentication.
     Returns (ok, http_status, error). ok is True only when a server-side
@@ -438,7 +454,7 @@ def call_anthropic(messages, system, model=None):
     try:
         import anthropic
         model=model or os.environ.get("ABIGAIL_ANTHROPIC_MODEL","claude-sonnet-5")
-        r=anthropic.Anthropic(api_key=_require_env_key("ANTHROPIC_API_KEY")).messages.create(
+        r=anthropic.Anthropic(api_key=_require_env_key("ANTHROPIC_API_KEY"),timeout=GROQ_TIMEOUT).messages.create(
             model=model,max_tokens=2048,system=system,messages=messages)
         return r.content[0].text.strip()
     except ImportError: return "[anthropic not installed]"
@@ -2079,6 +2095,7 @@ def build_web_app(session, kill_switch, active_backend):
         print("[WARN] flask-cors not installed. pip install flask-cors")
 
     flask_app=Flask(__name__)
+    flask_app.config["MAX_CONTENT_LENGTH"] = resolve_max_request_bytes()  # C6: request body size boundary
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     def _request_authority():

@@ -16,8 +16,10 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
@@ -80,15 +82,76 @@ pub(crate) fn optional_json_string(value: &Value, key: &str) -> Option<String> {
 
 const MAX_BODY_BYTES: usize = 262_144; // 256 KB — prevents OOM on adversarial oversized payloads
 
-fn read_request(reader: &mut BufReader<&mut TcpStream>) -> (HashMap<String, String>, String) {
+// C6: an attacker can otherwise stream an unterminated line (no '\n') or an
+// unbounded number of header lines and grow server memory without limit,
+// even though MAX_BODY_BYTES already caps the declared request body.
+const MAX_HEADER_LINE_BYTES: usize = 8_192; // 8 KB — generous for any real header
+const MAX_HEADER_COUNT: usize = 100;
+
+// C6: default per-connection socket read/write timeout and connection cap.
+// Both are overridable via env (SENTOW_SOCKET_TIMEOUT_SECS /
+// SENTOW_MAX_CONNECTIONS) so operators can tune without a rebuild, but a
+// parse failure always falls back to these safe defaults rather than an
+// unbounded value.
+const DEFAULT_SOCKET_TIMEOUT_SECS: u64 = 10;
+const DEFAULT_MAX_CONNECTIONS: usize = 64;
+
+/// Reads one line (through and including the terminating `\n`, if any),
+/// refusing to grow the buffer past `max_bytes`. Unlike `BufRead::read_line`,
+/// which will happily buffer an arbitrarily long unterminated line from a
+/// slow/adversarial peer, this bails out as soon as the cap is exceeded —
+/// bounding worst-case growth to one extra internal-buffer-sized chunk.
+/// Returns `None` on a read error, on EOF with no bytes read at all, or when
+/// the line exceeds `max_bytes`.
+pub(crate) fn read_line_bounded(
+    reader: &mut BufReader<&mut TcpStream>,
+    max_bytes: usize,
+) -> Option<String> {
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        let available = match reader.fill_buf() {
+            Ok(b) => b,
+            Err(_) => return None,
+        };
+        if available.is_empty() {
+            // Peer closed the connection (EOF).
+            return if buf.is_empty() { None } else { Some(String::from_utf8_lossy(&buf).to_string()) };
+        }
+        match available.iter().position(|&b| b == b'\n') {
+            Some(pos) => {
+                buf.extend_from_slice(&available[..=pos]);
+                reader.consume(pos + 1);
+                if buf.len() > max_bytes { return None; }
+                return Some(String::from_utf8_lossy(&buf).to_string());
+            }
+            None => {
+                buf.extend_from_slice(available);
+                let n = available.len();
+                reader.consume(n);
+                if buf.len() > max_bytes { return None; }
+            }
+        }
+    }
+}
+
+/// Parses request headers and body. Fails closed with a short error message
+/// (surfaced to the caller as HTTP 431) on an oversized/unterminated header
+/// line or too many header lines, instead of silently truncating or hanging.
+fn read_request(
+    reader: &mut BufReader<&mut TcpStream>,
+) -> Result<(HashMap<String, String>, String), &'static str> {
     let mut headers = HashMap::new();
-    let mut line = String::new();
 
     loop {
-        line.clear();
-        reader.read_line(&mut line).unwrap_or(0);
+        let line = match read_line_bounded(reader, MAX_HEADER_LINE_BYTES) {
+            Some(l) => l,
+            None => return Err("header line too long"),
+        };
         let t = line.trim();
         if t.is_empty() { break; }
+        if headers.len() >= MAX_HEADER_COUNT {
+            return Err("too many headers");
+        }
         if let Some(p) = t.find(':') {
             headers.insert(
                 t[..p].trim().to_lowercase(),
@@ -102,14 +165,14 @@ fn read_request(reader: &mut BufReader<&mut TcpStream>) -> (HashMap<String, Stri
         .unwrap_or(0);
 
     if declared_len > MAX_BODY_BYTES {
-        return (headers, String::new());
+        return Ok((headers, String::new()));
     }
 
     let mut body = vec![0u8; declared_len];
     use std::io::Read;
     reader.read_exact(&mut body).unwrap_or(());
 
-    (headers, String::from_utf8_lossy(&body).to_string())
+    Ok((headers, String::from_utf8_lossy(&body).to_string()))
 }
 
 fn token_digest(value: &str) -> [u8; 32] {
@@ -178,13 +241,18 @@ fn handle(
     service_token: &Arc<String>,
 ) {
     let mut reader = BufReader::new(stream as &mut TcpStream);
-    let mut req = String::new();
-    reader.read_line(&mut req).unwrap_or(0);
+    let req = match read_line_bounded(&mut reader, MAX_HEADER_LINE_BYTES) {
+        Some(l) => l,
+        None => return, // malformed/oversized/absent request line — silently drop, as before
+    };
     let parts: Vec<&str> = req.trim().split_whitespace().collect();
     if parts.len() < 2 { return; }
     let method = parts[0];
     let path   = parts[1];
-    let (headers, body) = read_request(&mut reader);
+    let (headers, body) = match read_request(&mut reader) {
+        Ok(v) => v,
+        Err(msg) => return write_response(reader, err_json(431, msg)),
+    };
 
     let response = if path != "/health" && !authorized(&headers, service_token.as_str()) {
         err_json(401, "service authentication required")
@@ -576,12 +644,52 @@ fn main() {
     eprintln!("[SENTINEL-SERVER] Listening on http://{}", addr);
     eprintln!("[SENTINEL-SERVER] SENTOW_MEMORY_PATH={}",
         std::env::var("SENTOW_MEMORY_PATH").unwrap_or_else(|_| "(in-memory only)".into()));
+
+    // C6: both overridable via env; a missing/unparseable value falls back
+    // to the safe default rather than an unbounded one.
+    let socket_timeout = Duration::from_secs(
+        std::env::var("SENTOW_SOCKET_TIMEOUT_SECS").ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_SOCKET_TIMEOUT_SECS)
+    );
+    let max_connections = std::env::var("SENTOW_MAX_CONNECTIONS").ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_CONNECTIONS);
+
     let listener = TcpListener::bind(&addr).expect("Failed to bind");
+    serve(listener, pipeline, service_token, max_connections, socket_timeout);
+}
+
+/// The accept loop: bounded connection concurrency, and a per-connection
+/// socket read/write timeout applied before any bytes are read (C6 —
+/// otherwise a single slow/silent client can hold a handler thread forever).
+/// Extracted from `main()` so tests can bind an ephemeral port and drive it
+/// with real sockets instead of only exercising library-level parsing.
+pub(crate) fn serve(
+    listener: TcpListener,
+    pipeline: Arc<GovernancePipeline>,
+    service_token: Arc<String>,
+    max_connections: usize,
+    socket_timeout: Duration,
+) {
+    let active_connections = Arc::new(AtomicUsize::new(0));
     for stream in listener.incoming() {
         if let Ok(mut s) = stream {
+            let in_flight = active_connections.fetch_add(1, Ordering::SeqCst) + 1;
+            if in_flight > max_connections {
+                active_connections.fetch_sub(1, Ordering::SeqCst);
+                let _ = s.write_all(err_json(503, "server at connection capacity").as_bytes());
+                continue;
+            }
+            let _ = s.set_read_timeout(Some(socket_timeout));
+            let _ = s.set_write_timeout(Some(socket_timeout));
             let p = pipeline.clone();
             let token = service_token.clone();
-            thread::spawn(move || handle(&mut s, &p, &token));
+            let counter = active_connections.clone();
+            thread::spawn(move || {
+                handle(&mut s, &p, &token);
+                counter.fetch_sub(1, Ordering::SeqCst);
+            });
         }
     }
 }
