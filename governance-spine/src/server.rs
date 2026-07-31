@@ -34,7 +34,11 @@ use governance_spine::{
     EnforcementResult,
     ArbiterConfig,
     OperatorResetAuthority,
+    load_verified_from_paths,
+    trusted_constitution_authority_key,
+    public_key_fingerprint,
 };
+use chrono::Utc;
 
 fn ok_json(body: &str) -> String {
     format!(
@@ -95,6 +99,19 @@ const MAX_HEADER_COUNT: usize = 100;
 // unbounded value.
 const DEFAULT_SOCKET_TIMEOUT_SECS: u64 = 10;
 const DEFAULT_MAX_CONNECTIONS: usize = 64;
+
+// A2: baked into the release image at build time (see governance-spine/
+// Dockerfile) — a versioned release artifact, not runtime-mutable config.
+// Overridable via env only for test/dev flexibility; the fail-closed
+// startup gate applies identically regardless of where these point.
+fn constitution_json_path() -> String {
+    std::env::var("SENTOW_CONSTITUTION_PATH")
+        .unwrap_or_else(|_| "/app/constitution/constitution.json".to_string())
+}
+fn constitution_signature_path() -> String {
+    std::env::var("SENTOW_CONSTITUTION_SIGNATURE_PATH")
+        .unwrap_or_else(|_| "/app/constitution/constitution.json.sig".to_string())
+}
 
 /// Reads one line (through and including the terminating `\n`, if any),
 /// refusing to grow the buffer past `max_bytes`. Unlike `BufRead::read_line`,
@@ -634,8 +651,39 @@ fn main() {
         "medical" => ArbiterConfig::medical(),
         _         => ArbiterConfig::default(),
     };
+    // A2: mandatory constitution load + signature verification, BEFORE the
+    // pipeline is constructed and BEFORE the listener binds — no request
+    // can be served until this succeeds. Refuses to start (matching the
+    // existing SENTINEL_SERVICE_TOKEN/SENTINEL_OPERATOR_RESET_TOKEN
+    // fail-closed pattern above) on: missing file, missing signature,
+    // malformed JSON, invalid signature, wrong signer, profile mismatch,
+    // missing constitution_id/policy_version, or an invalid validity
+    // window. The trusted key is the compiled-in pinned constant, never a
+    // key from the document itself or a runtime-mutable file.
+    let trusted_constitution_key = trusted_constitution_authority_key();
+    let constitution = match load_verified_from_paths(
+        std::path::Path::new(&constitution_json_path()),
+        std::path::Path::new(&constitution_signature_path()),
+        &trusted_constitution_key,
+        &industry,
+        Utc::now(),
+    ) {
+        Ok(c) => {
+            eprintln!(
+                "[CONSTITUTION] verified — id={} version={} profile={} signer_fingerprint={}",
+                c.constitution_id, c.policy_version, c.industry_profile,
+                public_key_fingerprint(&trusted_constitution_key),
+            );
+            c
+        }
+        Err(e) => {
+            eprintln!("[SECURITY ERROR] constitution verification failed: {e}");
+            std::process::exit(1);
+        }
+    };
+
     let pipeline = Arc::new(
-        GovernancePipeline::new(arbiter_config, None)
+        GovernancePipeline::new(arbiter_config, Some(constitution))
             .expect("Pipeline init failed")
     );
     pipeline

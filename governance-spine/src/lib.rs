@@ -15,7 +15,11 @@ pub mod pipeline;
 
 pub use governance_signal::{GovernanceSignal, Severity, SignalSource, Direction};
 pub use crypto::{CryptoEngine, AuditEntry};
-pub use constitution::{Constitution, ConstitutionalEvaluator, ConstitutionalVerdict};
+pub use constitution::{
+    Constitution, ConstitutionalEvaluator, ConstitutionalVerdict, ConstitutionLoadError,
+    load_verified_from_paths, trusted_constitution_authority_key, public_key_fingerprint,
+    TRUSTED_CONSTITUTION_AUTHORITY_PUBLIC_KEY_HEX,
+};
 pub use sentinel::Sentinel;
 pub use corridor::Corridor;
 pub use overwatch::{OverWatch, OverWatchConfig};
