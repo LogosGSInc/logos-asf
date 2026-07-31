@@ -12,10 +12,10 @@ services:
     build:
       context: ./governance-spine
       dockerfile: Dockerfile
-    container_name: asf-sentinel
+    container_name: asf-sentinel-podman-verify
     init: true
     ports:
-      - "127.0.0.1:${SENTINEL_HOST_PORT:-9091}:8080"
+      - "127.0.0.1:${SENTINEL_HOST_PORT:-19091}:8080"
     env_file:
       - ./.abigail.env
     environment:
@@ -38,13 +38,12 @@ services:
     build:
       context: .
       dockerfile: abigail/Dockerfile
-    container_name: asf-abby
+    container_name: asf-abby-podman-verify
     init: true
     ports:
-
       # Host-side exposure is localhost-only (SEC01-L3-3); the container itself is the
       # isolation boundary, so the app binds 0.0.0.0 *inside* the container (below). origin/sprint/full-doctrine-mode
-      - "127.0.0.1:7070:7070"
+      - "127.0.0.1:17070:7070"
     env_file:
       - ./.abigail.env
     volumes:
@@ -65,8 +64,7 @@ services:
       # through an explicit operator-controlled Compose environment override.
       - ABIGAIL_ENABLE_TEST_FAULTS=${ABIGAIL_ENABLE_TEST_FAULTS:-0}
       - ABIGAIL_TEST_GROQ_TIMEOUT_SECONDS=${ABIGAIL_TEST_GROQ_TIMEOUT_SECONDS:-0}
-      # BYOAPIKEY — all providers, operator supplies the key they have
-      # Auth tokens
+      # Secrets and provider credentials are loaded exclusively through env_file.
       # Governance profile
       - SENTOW_INDUSTRY_PROFILE=${SENTOW_INDUSTRY_PROFILE:-consumer}
       - SENTOW_HAAP_DRS_CEILING=${SENTOW_HAAP_DRS_CEILING:-60}
@@ -75,11 +73,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          python3 -c "import urllib.request;
-          urllib.request.urlopen('http://127.0.0.1:7070/api/status', timeout=5)"
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7070/api/status', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
