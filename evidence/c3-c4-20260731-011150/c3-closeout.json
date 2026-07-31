@@ -1,0 +1,40 @@
+{
+  "control": "C3",
+  "description": "Sentinel operator reset authority",
+  "status": "closed",
+  "branch": "sec/f1-boundary-closure",
+  "source_revision": "a1c878fdb42ac28cc81d23ad297d739825f9db04",
+  "sentinel_image_id": "ef275cb7a1f15594d995bc07e73ee6096d3993cf984967acf72f5ed5161aabc9",
+  "sentinel_image_revision": "a1c878fdb42ac28cc81d23ad297d739825f9db04",
+  "abby_image_id": "0616e670a39485b83c49ef4989aba39ac645e3170aef1c38076c3cbe3ea9738d",
+  "reset_authority": {
+    "credential_injected": true,
+    "credential_value_recorded": false,
+    "distinct_from_service_token": true,
+    "constant_time_comparison": "subtle::ConstantTimeEq",
+    "fail_closed_startup_validation": true
+  },
+  "verification": {
+    "targeted_operator_reset_tests": 15,
+    "targeted_operator_reset_tests_passed": 15,
+    "rust_tests": 54,
+    "rust_tests_passed": 54,
+    "python_tests": 1627,
+    "python_tests_passed": 1627,
+    "sentinel_http": 200,
+    "abby_http": 200,
+    "sentinel_healthcheck_exit": 0,
+    "abby_healthcheck_exit": 0
+  },
+  "security_properties": {
+    "empty_token_rejected": true,
+    "placeholder_rejected": true,
+    "wrong_strong_token_rejected": true,
+    "service_token_substitution_rejected": true,
+    "failed_reset_preserves_hard_lock": true,
+    "failed_reset_preserves_overwatch_state": true,
+    "credential_absent_from_audit": true,
+    "credential_hash_absent_from_audit": true
+  },
+  "verified_at": "2026-07-31T13:37:19.787671+00:00"
+}
