@@ -18,6 +18,15 @@ use std::sync::Arc;
 use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 
+/// A1 fast-follow: durable session_id (A1) makes long-lived conversations
+/// the norm rather than the exception, so unbounded per-turn history here
+/// goes from theoretical to load-bearing. Mirrors the same default as
+/// Python's ABIGAIL_SESSION_HISTORY_WINDOW (abigail_hardened_enhanced.py) —
+/// a bounded recent window, oldest dropped first, not a new mechanism.
+/// turn_count (the cumulative counter used for velocity) is NOT affected —
+/// only the retained TurnRecord detail is windowed.
+const MAX_RETAINED_TURNS: usize = 20;
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  TIER 1 — SESSION MEMORY (Sentinel Gate — Tactical)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -158,6 +167,10 @@ impl SessionMemory {
             violation_class: signal.violation_class.clone(),
         };
         self.turns.push(record);
+        if self.turns.len() > MAX_RETAINED_TURNS {
+            let overflow = self.turns.len() - MAX_RETAINED_TURNS;
+            self.turns.drain(0..overflow);
+        }
 
         // Update pattern counters
         match &classification {
@@ -711,4 +724,63 @@ pub fn classify_payload(payload: &str) -> RequestClassification {
     }
 
     RequestClassification::Benign
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::governance_signal::{Direction, SignalBuilder, SignalSource};
+
+    fn signal(session_id: &str, i: usize) -> GovernanceSignal {
+        SignalBuilder::new(SignalSource::Sentinel, Direction::Inbound, session_id)
+            .severity(Severity::Low, 0.3 + (i as f32 * 0.001))
+            .build()
+    }
+
+    // A1 fast-follow: durable session_id (A1) makes long conversations the
+    // norm, so unbounded turn history goes from theoretical to load-bearing.
+    #[test]
+    fn turn_history_is_capped_not_unbounded() {
+        let mut mem = SessionMemory::new("conv-bounded-growth-test");
+        let config = MemoryConfig::default();
+
+        for i in 0..(MAX_RETAINED_TURNS * 2) {
+            mem.ingest_signal(&signal("conv-bounded-growth-test", i), RequestClassification::Benign, &config);
+        }
+
+        assert_eq!(
+            mem.turns.len(), MAX_RETAINED_TURNS,
+            "retained turn history must be capped at {MAX_RETAINED_TURNS}, not grow with every turn forever"
+        );
+        // The cumulative counter is NOT windowed — only the retained detail is.
+        assert_eq!(mem.turn_count as usize, MAX_RETAINED_TURNS * 2);
+    }
+
+    #[test]
+    fn oldest_turns_are_dropped_first() {
+        let mut mem = SessionMemory::new("conv-oldest-dropped-test");
+        let config = MemoryConfig::default();
+
+        for i in 0..(MAX_RETAINED_TURNS + 5) {
+            mem.ingest_signal(&signal("conv-oldest-dropped-test", i), RequestClassification::Benign, &config);
+        }
+
+        // Turn numbers are 1-indexed and assigned in ingest order; after
+        // dropping the oldest 5, the retained window must start at turn 6.
+        let first_retained = mem.turns.first().expect("at least one retained turn").turn;
+        assert_eq!(first_retained, 6, "oldest turns must be dropped first, not newest");
+    }
+
+    #[test]
+    fn trajectory_still_computes_correctly_after_capping() {
+        let mut mem = SessionMemory::new("conv-trajectory-after-cap-test");
+        let config = MemoryConfig::default();
+
+        for i in 0..(MAX_RETAINED_TURNS * 3) {
+            let verdict = mem.ingest_signal(&signal("conv-trajectory-after-cap-test", i), RequestClassification::Benign, &config);
+            // Must never panic and must always produce a finite trajectory,
+            // even once history is being continuously trimmed.
+            assert!(verdict.trajectory.is_finite());
+        }
+    }
 }

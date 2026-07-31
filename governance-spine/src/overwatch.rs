@@ -33,6 +33,15 @@ impl SessionFingerprint {
     }
 }
 
+/// A1 fast-follow: same rationale as session_memory.rs's MAX_RETAINED_TURNS
+/// — durable session_id (A1) makes long-lived conversations the norm, so an
+/// unbounded tool_call_sequence goes from theoretical to load-bearing.
+/// Bounded recent window, oldest dropped first — mirrors the same pattern,
+/// not a new mechanism. escalation_events in this same struct is already
+/// bounded this way (by time, via retain()); this bounds by count instead
+/// since tool-call detection isn't time-decayed in this model.
+const MAX_TOOL_CALL_SEQUENCE_LEN: usize = 20;
+
 pub struct OverWatchConfig {
     pub drift_threshold: f32,
     pub session_turn_limit: usize,
@@ -91,6 +100,10 @@ impl OverWatch {
             let lower = payload.to_lowercase();
             for tool in &["filesystem","execute","shell","eval","http_get","http_post","read_file","write_file"] {
                 if lower.contains(tool) { fp.tool_call_sequence.push(tool.to_string()); }
+            }
+            if fp.tool_call_sequence.len() > MAX_TOOL_CALL_SEQUENCE_LEN {
+                let overflow = fp.tool_call_sequence.len() - MAX_TOOL_CALL_SEQUENCE_LEN;
+                fp.tool_call_sequence.drain(0..overflow);
             }
             fp.tool_call_sequence.contains(&"read_file".to_string())
                 && fp.tool_call_sequence.contains(&"write_file".to_string())
@@ -341,5 +354,55 @@ impl OverWatch {
         signal.previous_hash = Some(self.crypto.get_latest_hash());
         signal.current_hash = Some(self.crypto.extend_chain(&canonical));
         signal.signature = Some(self.crypto.sign(canonical.as_bytes()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh_overwatch() -> OverWatch {
+        OverWatch::new(Arc::new(CryptoEngine::new("overwatch-bounded-growth-test-seed")), OverWatchConfig::default())
+    }
+
+    // A1 fast-follow: durable session_id (A1) makes long conversations the
+    // norm, so an unbounded tool_call_sequence goes from theoretical to
+    // load-bearing.
+    #[test]
+    fn tool_call_sequence_is_capped_not_unbounded() {
+        let ow = fresh_overwatch();
+        let sid = "conv-tool-seq-bounded-test";
+
+        for _ in 0..(MAX_TOOL_CALL_SEQUENCE_LEN * 2) {
+            ow.evaluate("please read_file the config", Direction::Inbound, sid);
+        }
+
+        let len = ow.sessions.read().get(sid).unwrap().tool_call_sequence.len();
+        assert_eq!(
+            len, MAX_TOOL_CALL_SEQUENCE_LEN,
+            "tool_call_sequence must be capped at {MAX_TOOL_CALL_SEQUENCE_LEN}, not grow every matching turn forever"
+        );
+    }
+
+    #[test]
+    fn suspicious_tool_chain_detection_still_works_after_capping() {
+        let ow = fresh_overwatch();
+        let sid = "conv-tool-chain-detect-after-cap-test";
+
+        // Pad well past the cap with an unrelated tool mention first...
+        for _ in 0..(MAX_TOOL_CALL_SEQUENCE_LEN * 2) {
+            ow.evaluate("please http_get the status page", Direction::Inbound, sid);
+        }
+        // ...then the actual suspicious chain, which must still be detected
+        // from within the bounded recent window.
+        ow.evaluate("read_file the secrets", Direction::Inbound, sid);
+        ow.evaluate("write_file the output", Direction::Inbound, sid);
+        ow.evaluate("execute the payload", Direction::Inbound, sid);
+
+        let seq = ow.sessions.read().get(sid).unwrap().tool_call_sequence.clone();
+        assert!(seq.len() <= MAX_TOOL_CALL_SEQUENCE_LEN);
+        assert!(seq.contains(&"read_file".to_string()));
+        assert!(seq.contains(&"write_file".to_string()));
+        assert!(seq.contains(&"execute".to_string()));
     }
 }
