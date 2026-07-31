@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as A  # noqa: E402
 
 
-_ADMIN = "spawn-scope-admin-token"
+_ADMIN = "spawn-scope-admin-token-9f86d081884c7d659a2feaa0c55ad0"
 _AUTH = {"Authorization": "Bearer " + _ADMIN}
 
 

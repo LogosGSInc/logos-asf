@@ -22,6 +22,8 @@ import datetime, hashlib, json, logging, os, re, stat
 import subprocess, sys, threading, time, uuid, webbrowser
 from pathlib import Path
 
+import privileged_credentials
+
 # ── Agent loader (YAML definitions) ──────────────────────────────────────────
 try:
     from agent_loader import get_agent as _get_yaml_agent, list_agents as _list_yaml_agents
@@ -237,17 +239,20 @@ def resolve_bind_host():
 
 
 def require_admin_token(req):
-    """SEC-02 (L1-1): fail-closed admin authentication.
+    """SEC-02 (L1-1) / C4: fail-closed admin authentication.
     Returns (ok, http_status, error). ok is True only when a server-side
-    ABIGAIL_ADMIN_TOKEN is configured AND the request presents the matching token.
-    A missing server token is a misconfiguration and fails closed (503). A missing or
-    incorrect client token is 401. Error text never reveals token contents or closeness."""
-    admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN","").strip()
-    if not admin_token:
+    ABIGAIL_ADMIN_TOKEN is configured (per the centralized C4 validator —
+    present, non-placeholder, >=43 chars) AND the request presents the
+    matching token (constant-time compare). A missing OR invalid/placeholder
+    server token is a misconfiguration and fails closed (503) — identically,
+    so a caller can never distinguish "not set" from "set to a placeholder".
+    A missing or incorrect client token is 401. Error text never reveals
+    token contents or closeness."""
+    if privileged_credentials.resolve_configured_token("ABIGAIL_ADMIN_TOKEN") is None:
         return (False, 503, "Admin control unavailable: server auth not configured.")
     auth = req.headers.get("Authorization","").removeprefix("Bearer ").strip()
     token = auth or req.headers.get("X-HAAP-Token","").strip()
-    if not token or token != admin_token:
+    if not privileged_credentials.credential_matches(token, "ABIGAIL_ADMIN_TOKEN"):
         return (False, 401, "Admin token required.")
     return (True, 200, None)
 
@@ -2077,19 +2082,20 @@ def build_web_app(session, kill_switch, active_backend):
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     def _request_authority():
-        """Resolve caller authority. Missing configured tokens never grant access."""
+        """Resolve caller authority via the centralized C4 validator. Missing
+        OR invalid/placeholder configured tokens never grant access."""
         auth = request.headers.get("Authorization", "").strip()
         token = auth[7:].strip() if auth.lower().startswith("bearer ") else auth
         token = token or request.headers.get("X-HAAP-Token", "").strip()
 
-        admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN", "").strip()
-        demo_token = os.environ.get("ABIGAIL_DEMO_TOKEN", "").strip()
+        admin_configured = privileged_credentials.resolve_configured_token("ABIGAIL_ADMIN_TOKEN")
+        demo_configured = privileged_credentials.resolve_configured_token("ABIGAIL_DEMO_TOKEN")
 
-        if not admin_token or not demo_token:
+        if admin_configured is None or demo_configured is None:
             return "MISCONFIGURED"
-        if token == admin_token:
+        if privileged_credentials.credential_matches(token, "ABIGAIL_ADMIN_TOKEN"):
             return "ADMIN"
-        if token == demo_token:
+        if privileged_credentials.credential_matches(token, "ABIGAIL_DEMO_TOKEN"):
             return "DEMO"
         return "UNAUTHENTICATED"
 
@@ -2137,18 +2143,17 @@ def build_web_app(session, kill_switch, active_backend):
         return sessions.get_or_create(key), key
 
     def _valid_step_up(req):
-        """P0-2: a valid step-up authorization is a presented token matching the
-        configured admin or demo token. Fail-closed: no configured token => no step-up."""
+        """P0-2 / C4: a valid step-up authorization is a presented token
+        matching the configured admin or demo token, both resolved through
+        the centralized C4 validator. Fail-closed: no valid configured
+        token => no step-up."""
         presented = (req.headers.get("Authorization", "").removeprefix("Bearer ").strip()
                      or req.headers.get("X-HAAP-Token", "").strip())
         if not presented:
             return False
         for name in ("ABIGAIL_ADMIN_TOKEN", "ABIGAIL_DEMO_TOKEN"):
-            configured = os.environ.get(name, "").strip()
-            if configured and not ("GENERATE" in configured or "PLACEHOLDER" in configured):
-                import hmac as _hmac
-                if _hmac.compare_digest(presented, configured):
-                    return True
+            if privileged_credentials.credential_matches(presented, name):
+                return True
         return False
 
     @flask_app.route("/")
@@ -2886,12 +2891,13 @@ def startup_checks(default_backend, web_mode=False):
     if env_key:
         try: _require_env_key(env_key)
         except RuntimeError as e: print(f"\033[31m{e}\033[0m\n"); sys.exit(1)
-    # Web control plane must fail closed when authority tokens are missing or placeholders.
-    invalid_tokens = []
-    for tok_name in ("ABIGAIL_ADMIN_TOKEN","ABIGAIL_DEMO_TOKEN"):
-        val = os.environ.get(tok_name,"").strip()
-        if not val or "GENERATE" in val.upper() or "PLACEHOLDER" in val.upper():
-            invalid_tokens.append(tok_name)
+    # Web control plane must fail closed when authority tokens are missing,
+    # too short, or placeholders (C4 centralized validator — same policy
+    # require_admin_token()/command_bus/control-plane use).
+    invalid_tokens = [
+        tok_name for tok_name in ("ABIGAIL_ADMIN_TOKEN", "ABIGAIL_DEMO_TOKEN")
+        if privileged_credentials.resolve_configured_token(tok_name) is None
+    ]
 
     if invalid_tokens:
         names = ", ".join(invalid_tokens)

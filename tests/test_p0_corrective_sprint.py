@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as A  # noqa: E402
 
 
-def _app(monkeypatch, admin_token="p0-admin-token"):
+def _app(monkeypatch, admin_token="p0-admin-token-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b"):
     monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", admin_token)
     app = A.build_web_app(A.SessionState(), A.KillSwitch(), ["groq"])
     app.testing = True

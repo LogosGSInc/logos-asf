@@ -197,8 +197,8 @@ def test_ipv6_loopback_allowed_with_env_guard():
 def test_admin_token_trusted_operator():
     result, _ = _run(
         "status", remote_addr="10.0.0.1",
-        auth="Bearer test_admin_token_abc",
-        env={"ABIGAIL_ADMIN_TOKEN": "test_admin_token_abc"}
+        auth="Bearer test_admin_token_abc_9f86d081884c7d659a2feaa0c55ad015a",
+        env={"ABIGAIL_ADMIN_TOKEN": "test_admin_token_abc_9f86d081884c7d659a2feaa0c55ad015a"}
     )
     assert result["ok"] is True
     assert result["mode"] == "OPERATOR_CMD"

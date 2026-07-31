@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as A  # noqa: E402
 
 
-ADMIN = "dispatch-governance-admin"
+ADMIN = "dispatch-governance-admin-9f86d081884c7d659a2feaa0c55"
 BODY = {
     "agent_id": "EN-01",
     "task": "summarize the governed release status",

@@ -81,22 +81,22 @@ def test_admin_fail_closed_when_server_token_unset(monkeypatch):
 
 
 def test_admin_rejects_missing_client_token(monkeypatch):
-    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "server-side-admin-token")
+    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "server-side-admin-token-9f86d081884c7d659a2feaa0c55ad0")
     ok, st, err = A.require_admin_token(_mkreq())
     assert ok is False and st == 401
 
 
 def test_admin_rejects_wrong_token_without_leaking(monkeypatch):
-    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "server-side-admin-token")
+    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "server-side-admin-token-9f86d081884c7d659a2feaa0c55ad0")
     ok, st, err = A.require_admin_token(_mkreq({"X-HAAP-Token": "nope"}))
     assert ok is False and st == 401
-    assert "server-side-admin-token" not in (err or "")
+    assert "server-side-admin-token-9f86d081884c7d659a2feaa0c55ad0" not in (err or "")
 
 
 def test_admin_accepts_correct_token(monkeypatch):
-    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "server-side-admin-token")
+    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "server-side-admin-token-9f86d081884c7d659a2feaa0c55ad0")
     ok, st, err = A.require_admin_token(
-        _mkreq({"Authorization": "Bearer server-side-admin-token"}))
+        _mkreq({"Authorization": "Bearer server-side-admin-token-9f86d081884c7d659a2feaa0c55ad0"}))
     assert ok is True and st == 200 and err is None
 
 
@@ -109,19 +109,19 @@ def test_audit_tail_fail_closed_when_unset(monkeypatch):
 
 
 def test_audit_tail_rejects_wrong_token(monkeypatch):
-    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "the-real-admin-token")
+    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "the-real-admin-token-9f86d081884c7d659a2feaa0c55ad015a")
     c, _ = _app(monkeypatch)
     r = c.get("/api/audit/tail", headers={"X-HAAP-Token": "wrong"})
     assert r.status_code == 401
-    assert "the-real-admin-token" not in r.get_data(as_text=True)
+    assert "the-real-admin-token-9f86d081884c7d659a2feaa0c55ad015a" not in r.get_data(as_text=True)
 
 
 def test_audit_tail_accepts_correct_token(monkeypatch):
-    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "the-real-admin-token")
+    monkeypatch.setenv("ABIGAIL_ADMIN_TOKEN", "the-real-admin-token-9f86d081884c7d659a2feaa0c55ad015a")
     c, _ = _app(monkeypatch)
-    r = c.get("/api/audit/tail", headers={"Authorization": "Bearer the-real-admin-token"})
+    r = c.get("/api/audit/tail", headers={"Authorization": "Bearer the-real-admin-token-9f86d081884c7d659a2feaa0c55ad015a"})
     assert r.status_code == 200
-    assert "the-real-admin-token" not in r.get_data(as_text=True)
+    assert "the-real-admin-token-9f86d081884c7d659a2feaa0c55ad015a" not in r.get_data(as_text=True)
 
 
 def test_dept_kill_fail_closed_when_unset(monkeypatch):

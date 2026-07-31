@@ -31,6 +31,21 @@ import os
 from .schemas import VALID_RISK_LEVELS
 from .capabilities import all_capability_profiles
 
+try:
+    # Normal case: the "abigail" directory (parent of this package) is
+    # already on sys.path, as it is for the running application and most
+    # test modules that import via `import abigail_hardened_enhanced`.
+    import privileged_credentials
+except ImportError:
+    # This module is also imported as `abigail.orchestration.control_plane_registry`
+    # (namespace package rooted at the repo root) by tests that only add the
+    # repo root to sys.path. Make the import self-sufficient either way
+    # instead of depending on some other module having mutated sys.path first.
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+    import privileged_credentials
+
 
 # ── Governed descriptive enumerations (metadata only — never authority) ────────
 
@@ -207,9 +222,13 @@ class ControlPlaneRegistry:
 
     # -- authenticated reading (post-seal only) --------------------------------
     def _server_token(self) -> str:
+        # ABIGAIL_CONTROL_PLANE_TOKEN is a distinct, narrower-scoped credential
+        # (not one of the two C4 covers) and is read as-is. The ABIGAIL_ADMIN_TOKEN
+        # fallback goes through the centralized C4 validator: a missing, too-short,
+        # or placeholder-looking admin token is never treated as configured here.
         return (
             os.environ.get("ABIGAIL_CONTROL_PLANE_TOKEN", "").strip()
-            or os.environ.get("ABIGAIL_ADMIN_TOKEN", "").strip()
+            or (privileged_credentials.resolve_configured_token("ABIGAIL_ADMIN_TOKEN") or "")
             or (self._access_token or "")
         )
 

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as A  # noqa: E402
 
 
-_ADMIN = "control-plane-admin-token"
+_ADMIN = "control-plane-admin-token-9f86d081884c7d659a2feaa0c55"
 
 
 def _app(monkeypatch):

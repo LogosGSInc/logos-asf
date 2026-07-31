@@ -10,6 +10,8 @@ import os
 import re
 import unicodedata
 
+import privileged_credentials
+
 COMMAND_BUS_VERSION = "1.0.0"
 
 OPERATOR_COMMAND_ALLOWLIST: frozenset = frozenset({
@@ -36,15 +38,17 @@ def _normalize_for_classification(raw: str) -> str:
 
 
 def _resolve_surface(remote_addr: str, auth_header: str) -> tuple:
-    """Gate 4 — returns (surface_class, token)."""
-    admin_token = os.environ.get("ABIGAIL_ADMIN_TOKEN", "").strip()
-    demo_token  = os.environ.get("ABIGAIL_DEMO_TOKEN", "").strip()
+    """Gate 4 — returns (surface_class, token). Admin/demo tokens are
+    resolved and compared through the centralized C4 validator
+    (privileged_credentials): a missing, too-short, or placeholder-looking
+    configured token never grants TRUSTED_* status, and comparison is
+    constant-time."""
     token = (auth_header or "").strip()
     if token.lower().startswith("bearer "):
         token = token[7:].strip()
-    if admin_token and token == admin_token:
+    if privileged_credentials.credential_matches(token, "ABIGAIL_ADMIN_TOKEN"):
         return ("TRUSTED_OPERATOR", token)
-    if demo_token and token == demo_token:
+    if privileged_credentials.credential_matches(token, "ABIGAIL_DEMO_TOKEN"):
         return ("TRUSTED_READONLY", token)
     if (remote_addr or "").strip() in _LOOPBACK:
         # Dev-only: LOCAL_UNAUTH is NOT a production authority model.

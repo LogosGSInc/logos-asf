@@ -192,8 +192,7 @@ echo -e "  ${BOLD}Sentinel OverWatch:${RESET}  http://localhost:9091/health"
 echo -e "  ${BOLD}Dashboard         :${RESET}  http://localhost:7070"
 echo ""
 
-ADMIN_TOKEN=$(grep "^ABIGAIL_ADMIN_TOKEN=" .abigail.env | cut -d= -f2)
-echo -e "  ${BOLD}Admin token       :${RESET}  $ADMIN_TOKEN"
+echo -e "  ${BOLD}Admin token       :${RESET}  Admin token generated and stored in .abigail.env"
 echo ""
 echo -e "  ${BOLD}Quick tests:${RESET}"
 echo "    make test-public    — unauthenticated chat"
