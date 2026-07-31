@@ -69,21 +69,12 @@ pub(crate) fn required_json_string(value: &Value, key: &str) -> Result<String, S
     }
 }
 
-pub(crate) fn parse_json_field(json: &str, key: &str) -> Option<String> {
-    let search = format!("\"{}\"", key);
-    let pos = json.find(&search)?;
-    let after = &json[pos + search.len()..];
-    let colon = after.find(':')? + 1;
-    let val = after[colon..].trim_start();
-    if val.starts_with('"') {
-        let inner = &val[1..];
-        let end = inner.find('"')?;
-        Some(inner[..end].to_string())
-    } else {
-        let end = val.find(|c: char| c == ',' || c == '}' || c == '\n')
-            .unwrap_or(val.len());
-        Some(val[..end].trim().to_string())
-    }
+pub(crate) fn optional_json_string(value: &Value, key: &str) -> Option<String> {
+    value.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 const MAX_BODY_BYTES: usize = 262_144; // 256 KB — prevents OOM on adversarial oversized payloads
@@ -205,14 +196,22 @@ fn handle(
         )),
 
         ("POST", "/inspect") => {
-            let payload    = parse_json_field(&body, "payload").unwrap_or_default();
-            let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_default();
-            if payload.is_empty() {
-                err_json(400, "payload required")
-            } else if session_id.trim().is_empty() {
-                err_json(400, "session_id required")
-            } else {
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            let parsed = (|| -> Result<(String, String), String> {
+                let payload = required_json_string(&body_value, "payload")?;
+                let session_id = required_json_string(&body_value, "session_id")?;
+                Ok((payload, session_id))
+            })();
+
+            match parsed {
+                Err(error) => err_json(400, &error),
+                Ok((payload, session_id)) => {
                 let gov_tx_id = format!("GTX-{}", uuid::Uuid::new_v4().simple());
                 let result = pipeline.inbound(&payload, &session_id, &gov_tx_id);
 
@@ -251,20 +250,30 @@ fn handle(
                         json_response(200, value)
                     }
                 }
+                }
             }
         }
 
         ("POST", "/outbound") => {
-            let payload    = parse_json_field(&body, "payload").unwrap_or_default();
-            let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_default();
-            if payload.is_empty() {
-                err_json(400, "payload required")
-            } else if session_id.trim().is_empty() {
-                err_json(400, "session_id required")
-            } else {
-                let r = pipeline.outbound(&payload, &session_id);
-                ok_json(&verdict_json(&r, &session_id))
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            let parsed = (|| -> Result<(String, String), String> {
+                let payload = required_json_string(&body_value, "payload")?;
+                let session_id = required_json_string(&body_value, "session_id")?;
+                Ok((payload, session_id))
+            })();
+
+            match parsed {
+                Err(error) => err_json(400, &error),
+                Ok((payload, session_id)) => {
+                    let r = pipeline.outbound(&payload, &session_id);
+                    ok_json(&verdict_json(&r, &session_id))
+                }
             }
         }
 
@@ -409,28 +418,40 @@ fn handle(
         }
 
         ("POST", "/session/reset") => {
-            let sid   = parse_json_field(&body, "session_id").unwrap_or_default();
-            let token = parse_json_field(&body, "operator_token").unwrap_or_default();
-            if sid.trim().is_empty() {
-                err_json(400, "session_id required")
-            } else {
-            match pipeline.operator_reset(&sid, &token) {
-                Ok(_)  => ok_json(&format!(
-                    "{{\"ok\":true,\"session_id\":\"{}\",\"reset\":true}}", sid)),
-                Err(e) => err_json(403, e),
-            }
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            match required_json_string(&body_value, "session_id") {
+                Err(error) => err_json(400, &error),
+                Ok(sid) => {
+                    let token = optional_json_string(&body_value, "operator_token").unwrap_or_default();
+                    match pipeline.operator_reset(&sid, &token) {
+                        Ok(_)  => ok_json(&format!(
+                            "{{\"ok\":true,\"session_id\":\"{}\",\"reset\":true}}", sid)),
+                        Err(e) => err_json(403, e),
+                    }
+                }
             }
         }
 
         ("POST", "/session/start") => {
-            let actor_id   = parse_json_field(&body, "actor_id")
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            let actor_id = optional_json_string(&body_value, "actor_id")
                 .unwrap_or_else(|| "anonymous".into());
-            let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_default();
-
-            if session_id.trim().is_empty() {
-                return write_response(reader, err_json(400, "session_id required"));
-            }
+            let session_id = match required_json_string(&body_value, "session_id") {
+                Ok(v) => v,
+                Err(e) => return write_response(reader, err_json(400, &e)),
+            };
 
             // Return real session state from pipeline memory (not hardcoded "Clean")
             let state = pipeline.current_state(&session_id);
@@ -449,15 +470,22 @@ fn handle(
         }
 
         ("POST", "/session/end") => {
-            let actor_id   = parse_json_field(&body, "actor_id")
+            let body_value: Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({"ok": false, "error": "valid JSON body required"}))
+                ),
+            };
+            let actor_id = optional_json_string(&body_value, "actor_id")
                 .unwrap_or_else(|| "anonymous".into());
-            let session_id = parse_json_field(&body, "session_id")
-                .unwrap_or_default();
-            if session_id.trim().is_empty() {
-                return write_response(reader, err_json(400, "session_id required"));
-            }
-            let escalated  = parse_json_field(&body, "escalated")
-                .map(|v| v == "true").unwrap_or(false);
+            let session_id = match required_json_string(&body_value, "session_id") {
+                Ok(v) => v,
+                Err(e) => return write_response(reader, err_json(400, &e)),
+            };
+            let escalated = body_value.get("escalated")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             // GS-BUILD-01: report the real persistence outcome, decoupled into
             // two honest facts:
             //   persisted  — did THIS call durably write a session profile to
