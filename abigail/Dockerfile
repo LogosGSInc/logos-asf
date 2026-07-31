@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+ARG VCS_REF
+LABEL org.opencontainers.image.revision=$VCS_REF
+
 WORKDIR /app
 
 COPY abigail/abigail_hardened_enhanced.py /app/abigail_hardened_enhanced.py

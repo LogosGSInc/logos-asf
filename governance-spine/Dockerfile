@@ -5,6 +5,8 @@ COPY src/ ./src/
 RUN cargo build --release --bin governance_spine_server 2>&1
 
 FROM debian:bookworm-slim AS runtime
+ARG VCS_REF
+LABEL org.opencontainers.image.revision=$VCS_REF
 RUN apt-get update && apt-get install -y \
     ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
