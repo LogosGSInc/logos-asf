@@ -31,6 +31,7 @@ use governance_spine::{
     GovernancePipeline,
     EnforcementResult,
     ArbiterConfig,
+    OperatorResetAuthority,
 };
 
 fn ok_json(body: &str) -> String {
@@ -543,6 +544,20 @@ fn main() {
 
     let service_token = Arc::new(service_token);
 
+    // SENTINEL_OPERATOR_RESET_TOKEN authorizes destructive session reset and
+    // is a distinct credential from SENTINEL_SERVICE_TOKEN (HTTP caller
+    // authentication) — neither substitutes for the other. Loaded and
+    // validated once here, before the server accepts any connections.
+    let reset_authority = match OperatorResetAuthority::from_config(
+        std::env::var("SENTINEL_OPERATOR_RESET_TOKEN").ok()
+    ) {
+        Ok(authority) => authority,
+        Err(error) => {
+            eprintln!("[SECURITY ERROR] SENTINEL_OPERATOR_RESET_TOKEN invalid: {}", error);
+            std::process::exit(1);
+        }
+    };
+
     let addr = std::env::var("SENTOW_BIND")
         .unwrap_or_else(|_| "0.0.0.0:8080".into());
     let industry = std::env::var("SENTOW_INDUSTRY_PROFILE")
@@ -555,6 +570,9 @@ fn main() {
         GovernancePipeline::new(arbiter_config, None)
             .expect("Pipeline init failed")
     );
+    pipeline
+        .configure_operator_reset_authority(reset_authority)
+        .expect("operator reset authority configured exactly once at startup");
     eprintln!("[SENTINEL-SERVER] Listening on http://{}", addr);
     eprintln!("[SENTINEL-SERVER] SENTOW_MEMORY_PATH={}",
         std::env::var("SENTOW_MEMORY_PATH").unwrap_or_else(|_| "(in-memory only)".into()));

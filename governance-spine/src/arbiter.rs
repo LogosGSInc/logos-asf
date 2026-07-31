@@ -1,11 +1,13 @@
 use crate::{
     governance_signal::{GovernanceSignal, Severity, SignalBuilder, SignalSource},
     crypto::{CryptoEngine, AuditEntry},
+    operator_reset::OperatorResetAuthority,
     session_memory::MemoryState,
 };
 use parking_lot::RwLock;
 use std::sync::Arc;
 use chrono::{DateTime, Utc, Duration};
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -109,6 +111,13 @@ pub struct Arbiter {
     /// Immutable audit log — NEVER cleared on reset
     /// FIX: reset_session() cannot touch this
     audit_log: Arc<RwLock<Vec<AuditEntry>>>,
+    /// Operator reset authority — loaded once at startup from
+    /// SENTINEL_OPERATOR_RESET_TOKEN and injected via
+    /// `configure_operator_reset_authority`. Distinct from
+    /// SENTINEL_SERVICE_TOKEN (HTTP caller authentication); neither
+    /// credential substitutes for the other. Unset means reset is
+    /// unconditionally denied (fail closed).
+    reset_authority: OnceCell<OperatorResetAuthority>,
 }
 
 impl Arbiter {
@@ -118,7 +127,20 @@ impl Arbiter {
             crypto,
             session_states: Arc::new(RwLock::new(std::collections::HashMap::new())),
             audit_log: Arc::new(RwLock::new(Vec::new())),
+            reset_authority: OnceCell::new(),
         }
+    }
+
+    /// Inject the validated operator-reset authority. Intended to be called
+    /// exactly once, at process startup. Returns an error (without
+    /// overwriting the existing authority) if already configured.
+    pub fn configure_operator_reset_authority(
+        &self,
+        authority: OperatorResetAuthority,
+    ) -> Result<(), &'static str> {
+        self.reset_authority
+            .set(authority)
+            .map_err(|_| "Operator reset authority already configured")
     }
 
     pub fn memory_floor(state: &MemoryState) -> Option<SecurityState> {
@@ -429,34 +451,30 @@ impl Arbiter {
     }
 
     /// FIX: Session reset NEVER clears audit log.
-    /// Resets security state only. Requires operator authorization token.
-    /// In production this token is a signed human-operator credential.
+    /// Resets security state only. Requires the configured operator-reset
+    /// authority (SENTINEL_OPERATOR_RESET_TOKEN), verified in constant time.
+    ///
+    /// Authority is checked before any state is touched. A failed
+    /// authorization leaves session state untouched and is recorded as a
+    /// denied action — never with the submitted credential or a hash of it.
     pub fn operator_reset_session(
         &self,
         session_id: &str,
         operator_token: &str,
     ) -> Result<(), &'static str> {
-        // Validate operator token (simplified — production uses Ed25519 signed token)
-        if operator_token.is_empty() {
-            return Err("Operator token required for session reset");
+        let authority = self.reset_authority.get()
+            .ok_or("Operator reset authority not configured")?;
+
+        if !authority.verify(operator_token) {
+            self.write_reset_audit_entry(session_id, "OPERATOR_RESET_DENIED", "ARB-RESET-DENIED-001");
+            return Err("Operator reset denied: invalid credential");
         }
 
-        // Log the reset as an audit event — resets are always audited
-        let reset_signal = SignalBuilder::new(
-                SignalSource::Arbiter,
-                crate::governance_signal::Direction::Inbound,
-                session_id,
-            )
-            .violation("OPERATOR_RESET", "ARB-RESET-001")
-            .severity(Severity::None, 1.0)
-            .payload_hash(&CryptoEngine::compute_hash(operator_token))
-            .constitutional_ref("arbiter/operator_reset")
-            .build();
-        // Record reset in audit log — state before reset recorded
-        let state_before = self.current_state(session_id);
-        self.write_audit_entry(session_id, &state_before, &SecurityState::S1, &reset_signal);
+        // Authorized — record the reset (state before/after only; the
+        // credential itself is never part of the audit payload) and then
+        // reset state.
+        self.write_reset_audit_entry(session_id, "OPERATOR_RESET", "ARB-RESET-001");
 
-        // Reset state only
         let mut states = self.session_states.write();
         if let Some(session) = states.get_mut(session_id) {
             session.current = SecurityState::S1;
@@ -464,6 +482,28 @@ impl Arbiter {
         }
 
         Ok(())
+    }
+
+    /// Audit a reset attempt (authorized or denied) using only non-secret
+    /// metadata: session id, event type, policy reference, timestamp. The
+    /// submitted credential is never included, hashed, or otherwise derived
+    /// from.
+    fn write_reset_audit_entry(&self, session_id: &str, violation_class: &str, rule_id: &str) {
+        let state = self.current_state(session_id);
+        let target = if violation_class == "OPERATOR_RESET" { SecurityState::S1 } else { state.clone() };
+
+        let reset_signal = SignalBuilder::new(
+                SignalSource::Arbiter,
+                crate::governance_signal::Direction::Inbound,
+                session_id,
+            )
+            .violation(violation_class, rule_id)
+            .severity(Severity::None, 1.0)
+            .payload_hash(&CryptoEngine::compute_hash("sentinel/operator_reset"))
+            .constitutional_ref("arbiter/operator_reset")
+            .build();
+
+        self.write_audit_entry(session_id, &state, &target, &reset_signal);
     }
 
     /// Export audit log for SIEM / compliance review.

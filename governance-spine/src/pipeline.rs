@@ -19,6 +19,7 @@ use crate::{
     },
     govmem::{GovMem, GovMemMode, MessageDirection},
     haap::{HaapGate, HaapConfig, HaapVerdict, AgencyLevel},
+    operator_reset::OperatorResetAuthority,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -427,6 +428,10 @@ impl GovernancePipeline {
     }
 
     /// Operator-authorized session reset.
+    ///
+    /// Authority is verified inside the Arbiter before anything here runs;
+    /// on denial, `operator_reset_session` returns `Err` and OverWatch /
+    /// session memory are never touched.
     pub fn operator_reset(
         &self,
         session_id: &str,
@@ -437,6 +442,22 @@ impl GovernancePipeline {
         // Reset session memory but keep strategic memory intact
         self.session_memories.write().remove(session_id);
         Ok(())
+    }
+
+    /// Inject the validated Sentinel operator-reset authority
+    /// (SENTINEL_OPERATOR_RESET_TOKEN). Call exactly once, at process
+    /// startup, before serving requests.
+    pub fn configure_operator_reset_authority(
+        &self,
+        authority: OperatorResetAuthority,
+    ) -> Result<(), &'static str> {
+        self.arbiter.configure_operator_reset_authority(authority)
+    }
+
+    /// Diagnostic accessor for OverWatch's per-session drift score. Used to
+    /// prove a failed operator reset never touches OverWatch state.
+    pub fn session_overwatch_drift(&self, session_id: &str) -> f32 {
+        self.overwatch.read().session_drift_score(session_id)
     }
 
     // ── MEMORY HELPER METHODS ──────────────────────────────────────────
