@@ -25,8 +25,16 @@ services:
       - SENTOW_MEMORY_PATH=/app/audit/strategic_memory.json
       - SENTINEL_OPERATOR_RESET_TOKEN=${SENTINEL_OPERATOR_RESET_TOKEN:?SENTINEL_OPERATOR_RESET_TOKEN is required}
     volumes:
-      - sentinel-audit:/app/audit
+      # A3: the persistent audit-signing key — provisioned offline via
+      # `cargo run --example generate_audit_signing_key` (never committed,
+      # never containerized/baked into an image layer), bind-mounted
+      # read-only from the operator's host path. Dedicated host-path mount
+      # for this one file specifically, not routed through sentinel-data —
+      # different lifecycle (a long-lived signing identity) from whatever
+      # else that volume holds.
+      - ~/.logosgs/audit-signing/audit-signing-ed25519.key:/app/audit-signing/audit-signing-ed25519.key:ro
       - sentinel-data:/data
+      - sentinel-audit:/app/audit
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
