@@ -280,7 +280,9 @@ single source of truth.
   assumed going into this gate, but a mislabeled one.
 - EXE and SC were absent from `ASF_DEPARTMENTS` (enumeration drift, not
   policy) — these are the only two active departments with no prior
-  `agency_level` value anywhere to carry forward.
+  `agency_level` value anywhere to carry forward. `agency_level: 1` for
+  both is now confirmed (OD-6 for EXE, OD-7 for SC), no longer an open
+  question.
 - REV and QA were assumed absent from `ASF_DEPARTMENTS` going into this
   gate; both were actually already present with established
   `agency_level` values (2 and 2), which this gate preserved rather than
@@ -323,3 +325,50 @@ un-reconciled source (a private `_AGENCY_LEVELS` dict in
 - Inactive stubs: 1 (TKR)
 - Removed ghosts: 1 (HR)
 - Runtime department count: 14
+
+## DEPT_THRESHOLD_CLIENT_SELECTABLE
+
+**Status:** Open — introduced in Gate 2, documented at introduction
+**Severity:** High
+**Related:** SESSION_ID_CLIENT_CONTROLLED (Gate 0)
+
+**What it is:**
+After Gate 2, the drift-blocking threshold applied to a session is a function
+of the `department_id` field on the inbound request. Thresholds vary materially
+by department (LGL: 0.8 — most lenient; SEC/SC/GRC: 0.5 — most strict).
+
+**Why it is a bypass surface:**
+Abigail is the only Sentinel client, authenticated by one shared
+SENTINEL_SERVICE_TOKEN bearer token. Nothing distinguishes "this request
+genuinely originates from LGL" from "this request claims to be LGL."
+A caller with token access can supply `department_id: "LGL"` on any request
+and receive the most lenient threshold regardless of actual department context,
+defeating per-department escalation policy.
+
+**Why Gate 2 proceeds anyway:**
+The alternative — keeping `should_block(session_id, None)` — means the
+threshold is always `unwrap_or(0.7)` for every department, forever, with no
+path to per-department enforcement. That is also a bypass: a permanent one,
+invisible in the audit log, with no finding attached to it.
+
+Gate 2 makes the bypass *visible and named* rather than *structural and silent*.
+A named, logged bypass with a documented remediation path is a better posture
+than an undocumented structural one.
+
+**Remediation path (not in Gate 2 scope):**
+Per-department authentication at the Sentinel boundary. Options:
+1. Per-department signing tokens replacing the shared SENTINEL_SERVICE_TOKEN
+2. Server-side department resolution from authenticated session context,
+   never from the request body
+3. Threshold selection moved entirely server-side, keyed off actor profile
+   rather than claimed department
+
+Any of these requires auth infrastructure changes outside the GovMem scope.
+Track as a post-Gate-4 security item.
+
+**Prior comment at pipeline.rs:162-163:**
+"Runtime identity metadata — populated from env vars, metadata only.
+Do not pass these into should_block(); threshold behavior must not change."
+This comment was correct at the time it was written. Gate 2 intentionally
+supersedes it. The comment is removed as part of Gate 2's implementation;
+its constraint no longer holds and leaving it would mislead future readers.

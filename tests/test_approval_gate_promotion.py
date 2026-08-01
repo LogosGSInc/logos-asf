@@ -34,7 +34,7 @@ def _neutralize(monkeypatch):
     monkeypatch.setattr(
         A,
         "_sentinel_inspect",
-        lambda _payload, session_id: {
+        lambda _payload, session_id, **_kw: {
             "ok": True,
             "verdict": "APPROVED",
             "approved": True,
@@ -70,7 +70,7 @@ def _neutralize(monkeypatch):
     monkeypatch.setattr(
         A,
         "_sentinel_outbound",
-        lambda _payload, session_id: {
+        lambda _payload, session_id, **_kw: {
             "ok": True,
             "verdict": "APPROVED",
             "session_id": session_id,

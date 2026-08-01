@@ -32,7 +32,7 @@ import abigail_hardened_enhanced as A  # noqa: E402
 _STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
-def _approved_inspect(_task_or_payload, session_id):
+def _approved_inspect(_task_or_payload, session_id, **_kw):
     return {
         "ok": True, "verdict": "APPROVED", "session_id": session_id,
         "gov_tx_id": "GTX-G0-TEST", "verdict_id": "SV-G0-TEST",
@@ -48,7 +48,7 @@ def test_same_remote_addr_distinct_session_id_headers_isolated(monkeypatch):
     monkeypatch.setattr(A, "_ensure_session_started", lambda _s: True)
     seen_ids = []
 
-    def _inspect(_raw, session_id):
+    def _inspect(_raw, session_id, **_kw):
         seen_ids.append(session_id)
         return _approved_inspect(_raw, session_id)
 

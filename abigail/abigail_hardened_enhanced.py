@@ -923,7 +923,7 @@ def _moe_dispatch(
 
 # ── Shared dispatch ───────────────────────────────────────────────────────────
 def process_message(raw, session, kill_switch, active_backend, approval_meta=None,
-                    step_up_ok=False):
+                    step_up_ok=False, department_id=None, agent_id=None):
     try: kill_switch.check()
     except HAAPViolation as e:
         return {"ok":False,"text":str(e),"drs":0,"mode":"KILL_SWITCH","crsv":session.crsv()}
@@ -966,7 +966,7 @@ def process_message(raw, session, kill_switch, active_backend, approval_meta=Non
     sentinel_session_id = getattr(
         session, "sentinel_session_id", None
     ) or f"session_{session.turn_count}_{uuid.uuid4().hex[:12]}"
-    s_result = _sentinel_inspect(raw, sentinel_session_id)
+    s_result = _sentinel_inspect(raw, sentinel_session_id, department_id=department_id, agent_id=agent_id)
     s_verdict = s_result.get("verdict", "unknown")
     s_verdict_norm = str(s_verdict).strip().lower()
     s_gov_tx_id = str(s_result.get("gov_tx_id") or "").strip()
@@ -1423,18 +1423,29 @@ def _sentinel_health():
         return {"ok":True,"status":r.json()}
     except Exception as e: return {"ok":False,"error":str(e)}
 
-def _sentinel_inspect(payload:str, session_id:str) -> dict:
-    """Route inbound message through Rust Sentinel /inspect before Python DRS."""
+def _sentinel_inspect(payload:str, session_id:str, department_id:str=None, agent_id:str=None) -> dict:
+    """Route inbound message through Rust Sentinel /inspect before Python DRS.
+
+    Gate 2 (F-GM-005): department_id/agent_id, when present, must already be
+    validated against the active registry (see _resolve_dept_for_spine) — this
+    function sends whatever it's given as-is. department_id now selects
+    Sentinel's per-department drift threshold; see FINDINGS.md:
+    DEPT_THRESHOLD_CLIENT_SELECTABLE for why that's a known, tracked bypass
+    surface rather than an authenticated guarantee.
+    """
     if not SENTINEL_SERVICE_TOKEN:
         log_event("SENTINEL_AUTH_MISCONFIGURED", {"endpoint":"/inspect"})
         return {"ok":False,"verdict":"sentinel_auth_missing",
                 "approved":False,"error":"Sentinel service token missing"}
     try:
         import httpx
+        _body = {"payload":payload,"session_id":session_id}
+        if department_id: _body["department_id"] = department_id
+        if agent_id: _body["agent_id"] = agent_id
         r=httpx.post(
             f"{SENTINEL_URL}/inspect",
             headers={"Authorization":f"Bearer {SENTINEL_SERVICE_TOKEN}"},
-            json={"payload":payload,"session_id":session_id},
+            json=_body,
             timeout=5)
         if r.status_code != 200:
             log_event("SENTINEL_INSPECT_REJECTED",
@@ -2117,11 +2128,11 @@ def _active_departments():
 
 # Agency levels are not yet tracked in departments/registry.json (see FINDINGS.md).
 # Values below are carried over from the pre-Gate-1 ASF_DEPARTMENTS literal for
-# departments that already had one. EXE and SC are genuinely new to this list and
-# have no prior value — flagged in the Gate 1 PR body for operator confirmation.
+# departments that already had one. EXE and SC had no prior value; their
+# agency_level of 1 is confirmed per OD-6 (EXE) and OD-7 (SC).
 _AGENCY_LEVELS = {
-    "EXE": 1,   # new — needs operator confirmation
-    "SC":  1,   # new — needs operator confirmation
+    "EXE": 1,   # OD-6
+    "SC":  1,   # OD-7
     "SEC": 2,
     "QA":  2,
     "OPS": 3,
@@ -2142,6 +2153,18 @@ ASF_DEPARTMENTS = [
 ]
 
 VALID_DEPTS = frozenset(d["code"] for d in _active_departments())
+
+def _resolve_dept_for_spine(raw_dept_id):
+    """Resolve and validate department identity for Sentinel propagation (Gate 2, F-GM-005).
+
+    Returns the validated code, or None if raw_dept_id is absent/invalid.
+    Unknown department: fail closed — the caller must reject the request,
+    never silently default to any fallback.
+    """
+    if not raw_dept_id:
+        return None
+    code = str(raw_dept_id).strip().upper()
+    return code if code in VALID_DEPTS else None
 
 
 # ── Web HTML ──────────────────────────────────────────────────────────────────
@@ -2364,6 +2387,20 @@ def build_web_app(session, kill_switch, active_backend):
         _sess, _skey = _resolve_chat_session(_body.get("session_id"))
         # P0-2: is a valid step-up authorization present (used only if Sentinel RESTRICTs)?
         _step_up_ok = _valid_step_up(request)
+        # Gate 2 (F-GM-005): per-request department identity for Sentinel, not a
+        # process-fixed env var. Absent is allowed (no department attribution,
+        # same as every request before this gate); present-but-unknown is not —
+        # fail closed rather than silently drop or default it.
+        _raw_dept = _body.get("department_id")
+        if _raw_dept:
+            _dept_id = _resolve_dept_for_spine(_raw_dept)
+            if _dept_id is None:
+                return jsonify({"ok": False,
+                                "text": f"Unknown department: {_raw_dept!r}",
+                                "drs": 0, "mode": "DEPT_REJECTED", "crsv": _sess.crsv()}), 400
+        else:
+            _dept_id = None
+        _agent_id = (_body.get("agent_id") or "").strip() or None
         # Governed command bus — classify before LLM inference (CB-01)
         if _COMMAND_BUS_OK:
             _auth = (request.headers.get("Authorization","") or
@@ -2394,7 +2431,8 @@ def build_web_app(session, kill_switch, active_backend):
             if _orch_ctx is not None:
                 _approval_meta = _orch_ctx.response_metadata  # MM-03: enforced downstream
         result = process_message(msg, _sess, kill_switch, active_backend,
-                                 approval_meta=_approval_meta, step_up_ok=_step_up_ok)
+                                 approval_meta=_approval_meta, step_up_ok=_step_up_ok,
+                                 department_id=_dept_id, agent_id=_agent_id)
         if _orch_ctx is not None:
             result["orchestration"] = _orch_ctx.response_metadata
         result.setdefault("cost", _cost_meta)
