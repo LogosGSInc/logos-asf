@@ -241,6 +241,13 @@ impl Sentinel {
             .and_then(|bytes| String::from_utf8(bytes).ok())
     }
 
+    // Each arg is an independent, meaningful piece of the signal (direction,
+    // session, violation class+rule, severity+confidence, payload hash,
+    // constitutional ref) — already delegates to SignalBuilder below, which
+    // exists specifically to bundle these; this wrapper is called as a
+    // one-liner at 8 sites in this file, so pushing the builder up to each
+    // call site would make every one of them more verbose, not less.
+    #[allow(clippy::too_many_arguments)]
     fn build(&self, direction: Direction, session_id: &str, violation: &str, rule_id: &str,
              severity: Severity, confidence: f32, payload_hash: &str, const_ref: &str) -> GovernanceSignal {
         let mut sig = SignalBuilder::new(SignalSource::Sentinel, direction, session_id)

@@ -152,6 +152,12 @@ impl Corridor {
         }
         None
     }
+    // Same rationale as sentinel.rs's build(): already delegates to
+    // SignalBuilder (built for exactly this), args are independent signal
+    // fields not a bag of flags, and this wrapper is a one-liner at 7 call
+    // sites in this file — exposing the builder to each would be more
+    // verbose per call site, not less.
+    #[allow(clippy::too_many_arguments)]
     fn build(
         &self, direction: &Direction, session_id: &str,
         violation: &str, rule_id: &str,

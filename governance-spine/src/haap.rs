@@ -434,6 +434,10 @@ impl HaapGate {
         HaapVerdict::TokenVerified { token_id, agency: agency.clone(), uses_remaining, signal: sig }
     }
 
+    // Same rationale as sentinel.rs's build()/corridor.rs's build(): already
+    // delegates to SignalBuilder, args are independent signal fields, and
+    // this wrapper is called as a one-liner at 9 sites in this file.
+    #[allow(clippy::too_many_arguments)]
     fn build_signal(
         &self,
         session_id: &str,
