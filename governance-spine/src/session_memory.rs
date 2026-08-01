@@ -1,20 +1,18 @@
-/// LOGOS Sentinel OverWatch — Persistent Session Memory (Anti-Alzheimer's Layer)
-///
-/// Two-tier threat accumulation:
-///   Tier 1 — SessionMemory: Per-session tactical accumulator (Sentinel gate)
-///   Tier 2 — StrategicMemory: Cross-session actor profiling (Abigail meta-cognition)
-///
-/// Closes the 3-6% gap where multi-turn drift campaigns bypass
-/// single-prompt evaluation by accumulating individually-benign messages
-/// toward a malicious culmination.
-///
-/// LOGOS Governance Systems Inc. // US Provisional Patent No. 63/953,447
+//! LOGOS Sentinel OverWatch — Persistent Session Memory (Anti-Alzheimer's Layer)
+//!
+//! Two-tier threat accumulation:
+//!   Tier 1 — SessionMemory: Per-session tactical accumulator (Sentinel gate)
+//!   Tier 2 — StrategicMemory: Cross-session actor profiling (Abigail meta-cognition)
+//!
+//! Closes the 3-6% gap where multi-turn drift campaigns bypass
+//! single-prompt evaluation by accumulating individually-benign messages
+//! toward a malicious culmination.
+//!
+//! LOGOS Governance Systems Inc. // US Provisional Patent No. 63/953,447
 
 use crate::governance_signal::{GovernanceSignal, Severity};
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 
@@ -425,6 +423,12 @@ pub struct StrategicMemory {
     /// snapshotted to disk and the map is reloaded from disk on construction,
     /// so cross-session actor profiles survive a process restart.
     memory_path: Option<PathBuf>,
+}
+
+impl Default for StrategicMemory {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StrategicMemory {

@@ -1,24 +1,24 @@
-/// LOGOS Governance Systems Inc.
-/// Human-AI Authorization Protocol (HAAP) v2.0
-/// US Provisional Patent No. 63/953,447
-///
-/// HAAP is the human-in-the-loop gate between OverWatch (L4) and OIM.
-/// It intercepts actions above a configured DRS ceiling and requires
-/// an operator-issued Intent Token before execution can proceed.
-///
-/// Design principles (from LOGOS-PLY-001):
-///   - Model decides judgment. HAAP decides authorization.
-///   - Agents cannot self-elevate. Authority flows from the Human Principal only.
-///   - Ambiguity defaults to HALT, not interpretation.
-///   - Every HAAP gate event is audited and chain-linked.
-///
-/// Agency levels (ascending authority required):
-///   ANALYZE          → read-only, no gate
-///   DRAFT_ACTIONS    → proposes only, no gate
-///   MODIFY_CONFIG    → gate at DRS > 40
-///   EXECUTE_ACTIONS  → gate at DRS > 60  (default production ceiling)
-///   FINANCIAL_OPS    → gate always
-///   ROOT_AUTHORITY   → gate always + dual sign-off required
+//! LOGOS Governance Systems Inc.
+//! Human-AI Authorization Protocol (HAAP) v2.0
+//! US Provisional Patent No. 63/953,447
+//!
+//! HAAP is the human-in-the-loop gate between OverWatch (L4) and OIM.
+//! It intercepts actions above a configured DRS ceiling and requires
+//! an operator-issued Intent Token before execution can proceed.
+//!
+//! Design principles (from LOGOS-PLY-001):
+//!   - Model decides judgment. HAAP decides authorization.
+//!   - Agents cannot self-elevate. Authority flows from the Human Principal only.
+//!   - Ambiguity defaults to HALT, not interpretation.
+//!   - Every HAAP gate event is audited and chain-linked.
+//!
+//! Agency levels (ascending authority required):
+//!   ANALYZE          → read-only, no gate
+//!   DRAFT_ACTIONS    → proposes only, no gate
+//!   MODIFY_CONFIG    → gate at DRS > 40
+//!   EXECUTE_ACTIONS  → gate at DRS > 60  (default production ceiling)
+//!   FINANCIAL_OPS    → gate always
+//!   ROOT_AUTHORITY   → gate always + dual sign-off required
 
 use crate::{
     crypto::CryptoEngine,
@@ -210,13 +210,16 @@ impl Default for HaapConfig {
     }
 }
 
+/// session_id → list of (action_class, expiry) pre-authorizations.
+type PreauthMap = Arc<RwLock<HashMap<String, Vec<(String, DateTime<Utc>)>>>>;
+
 pub struct HaapGate {
     config: HaapConfig,
     crypto: Arc<CryptoEngine>,
     /// Active tokens by token_id
     tokens: Arc<RwLock<HashMap<String, IntentToken>>>,
     /// Pre-authorized action classes by session_id → (action_class, expiry)
-    preauth: Arc<RwLock<HashMap<String, Vec<(String, DateTime<Utc>)>>>>,
+    preauth: PreauthMap,
 }
 
 impl HaapGate {
@@ -431,6 +434,10 @@ impl HaapGate {
         HaapVerdict::TokenVerified { token_id, agency: agency.clone(), uses_remaining, signal: sig }
     }
 
+    // Same rationale as sentinel.rs's build()/corridor.rs's build(): already
+    // delegates to SignalBuilder, args are independent signal fields, and
+    // this wrapper is called as a one-liner at 9 sites in this file.
+    #[allow(clippy::too_many_arguments)]
     fn build_signal(
         &self,
         session_id: &str,

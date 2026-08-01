@@ -97,7 +97,7 @@ impl Corridor {
         session_id: &str, payload_hash: &str,
     ) -> Option<GovernanceSignal> {
         let trimmed = payload.trim();
-        if trimmed.len() < 64 || trimmed.len() % 4 != 0 {
+        if trimmed.len() < 64 || !trimmed.len().is_multiple_of(4) {
             return None;
         }
         if let Ok(decoded) = STANDARD.decode(trimmed) {
@@ -122,8 +122,6 @@ impl Corridor {
         }
         None
     }
-
-    #[allow(clippy::too_many_arguments, clippy::nonminimal_bool)]
 
     fn classify_governance_surface(&self, text: &str) -> Option<(&'static str, &'static str)> {
         let t = text.to_ascii_lowercase();
@@ -154,6 +152,12 @@ impl Corridor {
         }
         None
     }
+    // Same rationale as sentinel.rs's build(): already delegates to
+    // SignalBuilder (built for exactly this), args are independent signal
+    // fields not a bag of flags, and this wrapper is a one-liner at 7 call
+    // sites in this file — exposing the builder to each would be more
+    // verbose per call site, not less.
+    #[allow(clippy::too_many_arguments)]
     fn build(
         &self, direction: &Direction, session_id: &str,
         violation: &str, rule_id: &str,

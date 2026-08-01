@@ -70,7 +70,7 @@ fn different_persisted_keys_do_not_cross_verify() {
 
     let message = b"some audit content";
     let sig_from_a = engine_a.sign(message);
-    assert_eq!(engine_b.verify(message, &sig_from_a).unwrap_or(false), false);
+    assert!(!engine_b.verify(message, &sig_from_a).unwrap_or(false));
 
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -1,16 +1,16 @@
-/// LOGOS GovMem V2 — RL-Enhanced Multi-Turn Attack Detection
-///
-/// Extends GovMem V1 (session_memory.rs) with:
-/// - Semantic embeddings for drift detection
-/// - Memory Policy Agent (RL model)
-/// - 12-department tracking
-/// - Cross-layer signal aggregation
-///
-/// LOGOS Governance Systems Inc. // US Provisional Patent No. 63/953,447
+//! LOGOS GovMem V2 — RL-Enhanced Multi-Turn Attack Detection
+//!
+//! Extends GovMem V1 (session_memory.rs) with:
+//! - Semantic embeddings for drift detection
+//! - Memory Policy Agent (RL model)
+//! - 12-department tracking
+//! - Cross-layer signal aggregation
+//!
+//! LOGOS Governance Systems Inc. // US Provisional Patent No. 63/953,447
 
 use crate::{
     governance_signal::{GovernanceSignal, Severity},
-    session_memory::{SessionMemory, MemoryState, RequestClassification},
+    session_memory::SessionMemory,
 };
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -24,21 +24,27 @@ use chrono::{DateTime, Utc};
 
 pub struct GovMem {
     // V1 compatibility layer
+    #[allow(dead_code)] // Tracked gap — see FINDINGS.md:
+                         // GOVMEM_V2_SCAFFOLDING_NOT_WIRED
     v1_sessions: Arc<RwLock<HashMap<String, SessionMemory>>>,
-    
+
     // V2 enhancements
     v2_sessions: Arc<RwLock<HashMap<String, GovMemSession>>>,
-    
+
     // Department configs (12-dept structure)
     department_configs: HashMap<String, DepartmentConfig>,
-    
+
     // Mode flag
     mode: GovMemMode,
-    
+
     // Embedding model (lazy-loaded)
+    #[allow(dead_code)] // Tracked gap — see FINDINGS.md:
+                         // GOVMEM_V2_SCAFFOLDING_NOT_WIRED
     embedding_model: Option<Arc<SentenceEmbedder>>,
-    
+
     // MPA (lazy-loaded)
+    #[allow(dead_code)] // Tracked gap — see FINDINGS.md:
+                         // GOVMEM_V2_SCAFFOLDING_NOT_WIRED
     mpa: Option<Arc<MemoryPolicyAgent>>,
 }
 
