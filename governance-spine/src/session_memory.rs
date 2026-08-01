@@ -11,10 +11,8 @@
 /// LOGOS Governance Systems Inc. // US Provisional Patent No. 63/953,447
 
 use crate::governance_signal::{GovernanceSignal, Severity};
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 
