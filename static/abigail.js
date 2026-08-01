@@ -50,6 +50,26 @@
   function adminHeaders() { var t = adminToken(); return t ? { Authorization: "Bearer " + t } : {}; }
   function operatorName() { try { return localStorage.getItem("abigail.operator") || "Operator"; } catch (e) { return "Operator"; } }
 
+  // ── chat session id (P0-3 client side; Gate 0 of GovMem convergence) ────
+  // The backend already isolates governance state (Sentinel/GovMem drift,
+  // lock state) per X-Session-ID header instead of per remote_addr — see
+  // abigail_hardened_enhanced.py's _resolve_chat_session(). Without a client
+  // emitting this header, every request instead falls back to remote_addr,
+  // so multiple users behind one NAT (or one browser, two tabs) would share
+  // governance accumulation. Minted once per page load — in-memory only,
+  // never localStorage/sessionStorage, so it does not outlive this tab's
+  // conversation and cannot be replayed from a stored value.
+  var CHAT_SESSION_ID = (function () {
+    try {
+      return crypto.randomUUID();
+    } catch (e) {
+      // crypto.randomUUID() requires a secure context; extremely old browsers
+      // or plain-http dev hosts fall back to a non-crypto random id rather
+      // than sending no session id at all.
+      return "sess-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+    }
+  })();
+
   // ── fetch helper (never throws to caller) ────────────────────────────
   async function fetchJSON(path, opts) {
     try {
@@ -625,7 +645,7 @@
 
     var r = await fetchJSON("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Session-ID": CHAT_SESSION_ID },
       body: JSON.stringify({ message: msg })
     });
 

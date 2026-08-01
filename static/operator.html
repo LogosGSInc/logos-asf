@@ -707,6 +707,17 @@ function abigailApiBase() {
 }
 function apiUrl(path) { return `${abigailApiBase()}${path}`; }
 
+// Per-conversation session id (Gate 0, GovMem convergence). Backend keys
+// governance accumulation off X-Session-ID, falling back to remote_addr
+// when absent. In-memory only — not persisted across reloads.
+const CHAT_SESSION_ID = (function () {
+  try {
+    return crypto.randomUUID();
+  } catch (e) {
+    return "sess-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+  }
+})();
+
 /* ── SECURITY: HTML escape ── */
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c =>
@@ -984,7 +995,7 @@ async function sendChat(text) {
     setStreamState('receiving');
     const r = await fetch(apiUrl('/api/chat'), {
       method: 'POST',
-      headers: { 'Content-Type':'application/json', 'Accept':'application/json' },
+      headers: { 'Content-Type':'application/json', 'Accept':'application/json', 'X-Session-ID': CHAT_SESSION_ID },
       body: JSON.stringify({ message: text, mode: ck.mode })
     });
     if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
