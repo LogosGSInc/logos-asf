@@ -1,24 +1,24 @@
-/// LOGOS Governance Systems Inc.
-/// Human-AI Authorization Protocol (HAAP) v2.0
-/// US Provisional Patent No. 63/953,447
-///
-/// HAAP is the human-in-the-loop gate between OverWatch (L4) and OIM.
-/// It intercepts actions above a configured DRS ceiling and requires
-/// an operator-issued Intent Token before execution can proceed.
-///
-/// Design principles (from LOGOS-PLY-001):
-///   - Model decides judgment. HAAP decides authorization.
-///   - Agents cannot self-elevate. Authority flows from the Human Principal only.
-///   - Ambiguity defaults to HALT, not interpretation.
-///   - Every HAAP gate event is audited and chain-linked.
-///
-/// Agency levels (ascending authority required):
-///   ANALYZE          → read-only, no gate
-///   DRAFT_ACTIONS    → proposes only, no gate
-///   MODIFY_CONFIG    → gate at DRS > 40
-///   EXECUTE_ACTIONS  → gate at DRS > 60  (default production ceiling)
-///   FINANCIAL_OPS    → gate always
-///   ROOT_AUTHORITY   → gate always + dual sign-off required
+//! LOGOS Governance Systems Inc.
+//! Human-AI Authorization Protocol (HAAP) v2.0
+//! US Provisional Patent No. 63/953,447
+//!
+//! HAAP is the human-in-the-loop gate between OverWatch (L4) and OIM.
+//! It intercepts actions above a configured DRS ceiling and requires
+//! an operator-issued Intent Token before execution can proceed.
+//!
+//! Design principles (from LOGOS-PLY-001):
+//!   - Model decides judgment. HAAP decides authorization.
+//!   - Agents cannot self-elevate. Authority flows from the Human Principal only.
+//!   - Ambiguity defaults to HALT, not interpretation.
+//!   - Every HAAP gate event is audited and chain-linked.
+//!
+//! Agency levels (ascending authority required):
+//!   ANALYZE          → read-only, no gate
+//!   DRAFT_ACTIONS    → proposes only, no gate
+//!   MODIFY_CONFIG    → gate at DRS > 40
+//!   EXECUTE_ACTIONS  → gate at DRS > 60  (default production ceiling)
+//!   FINANCIAL_OPS    → gate always
+//!   ROOT_AUTHORITY   → gate always + dual sign-off required
 
 use crate::{
     crypto::CryptoEngine,

@@ -1,14 +1,14 @@
-/// LOGOS Sentinel OverWatch — Persistent Session Memory (Anti-Alzheimer's Layer)
-///
-/// Two-tier threat accumulation:
-///   Tier 1 — SessionMemory: Per-session tactical accumulator (Sentinel gate)
-///   Tier 2 — StrategicMemory: Cross-session actor profiling (Abigail meta-cognition)
-///
-/// Closes the 3-6% gap where multi-turn drift campaigns bypass
-/// single-prompt evaluation by accumulating individually-benign messages
-/// toward a malicious culmination.
-///
-/// LOGOS Governance Systems Inc. // US Provisional Patent No. 63/953,447
+//! LOGOS Sentinel OverWatch — Persistent Session Memory (Anti-Alzheimer's Layer)
+//!
+//! Two-tier threat accumulation:
+//!   Tier 1 — SessionMemory: Per-session tactical accumulator (Sentinel gate)
+//!   Tier 2 — StrategicMemory: Cross-session actor profiling (Abigail meta-cognition)
+//!
+//! Closes the 3-6% gap where multi-turn drift campaigns bypass
+//! single-prompt evaluation by accumulating individually-benign messages
+//! toward a malicious culmination.
+//!
+//! LOGOS Governance Systems Inc. // US Provisional Patent No. 63/953,447
 
 use crate::governance_signal::{GovernanceSignal, Severity};
 use serde::{Deserialize, Serialize};

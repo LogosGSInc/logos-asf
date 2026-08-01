@@ -1,12 +1,12 @@
-/// LOGOS GovMem V2 — RL-Enhanced Multi-Turn Attack Detection
-///
-/// Extends GovMem V1 (session_memory.rs) with:
-/// - Semantic embeddings for drift detection
-/// - Memory Policy Agent (RL model)
-/// - 12-department tracking
-/// - Cross-layer signal aggregation
-///
-/// LOGOS Governance Systems Inc. // US Provisional Patent No. 63/953,447
+//! LOGOS GovMem V2 — RL-Enhanced Multi-Turn Attack Detection
+//!
+//! Extends GovMem V1 (session_memory.rs) with:
+//! - Semantic embeddings for drift detection
+//! - Memory Policy Agent (RL model)
+//! - 12-department tracking
+//! - Cross-layer signal aggregation
+//!
+//! LOGOS Governance Systems Inc. // US Provisional Patent No. 63/953,447
 
 use crate::{
     governance_signal::{GovernanceSignal, Severity},

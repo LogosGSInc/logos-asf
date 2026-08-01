@@ -123,8 +123,6 @@ impl Corridor {
         None
     }
 
-    #[allow(clippy::too_many_arguments, clippy::nonminimal_bool)]
-
     fn classify_governance_surface(&self, text: &str) -> Option<(&'static str, &'static str)> {
         let t = text.to_ascii_lowercase();
         if t.contains("cp-00 has authorized")
