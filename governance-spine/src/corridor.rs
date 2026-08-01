@@ -97,7 +97,7 @@ impl Corridor {
         session_id: &str, payload_hash: &str,
     ) -> Option<GovernanceSignal> {
         let trimmed = payload.trim();
-        if trimmed.len() < 64 || trimmed.len() % 4 != 0 {
+        if trimmed.len() < 64 || !trimmed.len().is_multiple_of(4) {
             return None;
         }
         if let Ok(decoded) = STANDARD.decode(trimmed) {

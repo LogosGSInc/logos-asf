@@ -210,13 +210,16 @@ impl Default for HaapConfig {
     }
 }
 
+/// session_id → list of (action_class, expiry) pre-authorizations.
+type PreauthMap = Arc<RwLock<HashMap<String, Vec<(String, DateTime<Utc>)>>>>;
+
 pub struct HaapGate {
     config: HaapConfig,
     crypto: Arc<CryptoEngine>,
     /// Active tokens by token_id
     tokens: Arc<RwLock<HashMap<String, IntentToken>>>,
     /// Pre-authorized action classes by session_id → (action_class, expiry)
-    preauth: Arc<RwLock<HashMap<String, Vec<(String, DateTime<Utc>)>>>>,
+    preauth: PreauthMap,
 }
 
 impl HaapGate {

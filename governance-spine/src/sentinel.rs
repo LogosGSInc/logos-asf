@@ -183,23 +183,18 @@ impl Sentinel {
     }
 
     fn normalize_unicode(&self, input: &str) -> String {
-        // Strip interpunct/middle dot characters
-        let mut result = input
-            .replace('\u{00B7}', "")  // Middle dot
-            .replace('\u{2022}', "")  // Bullet
-            .replace('\u{2219}', "")  // Bullet operator
-            .replace('\u{22C5}', "")  // Dot operator
-            .replace('\u{2027}', "")  // Hyphenation point
-            .replace('\u{FF65}', ""); // Halfwidth katakana middle dot
-        
+        // Strip interpunct/middle dot characters: middle dot, bullet, bullet
+        // operator, dot operator, hyphenation point, halfwidth katakana middle dot.
+        let mut result = input.replace(
+            ['\u{00B7}', '\u{2022}', '\u{2219}', '\u{22C5}', '\u{2027}', '\u{FF65}'],
+            "",
+        );
+
         // Strip zero-width characters (already in detect_zero_width, but also here)
-        result = result
-            .replace('\u{200B}', "")
-            .replace('\u{200C}', "")
-            .replace('\u{200D}', "")
-            .replace('\u{2060}', "")
-            .replace('\u{FEFF}', "")
-            .replace('\u{00AD}', "");
+        result = result.replace(
+            ['\u{200B}', '\u{200C}', '\u{200D}', '\u{2060}', '\u{FEFF}', '\u{00AD}'],
+            "",
+        );
         
         result
     }
@@ -213,7 +208,7 @@ impl Sentinel {
         let has_ascii = payload.chars().any(|c| c.is_ascii_alphabetic());
         let has_cyrillic = payload.chars().any(|c| matches!(c as u32, 0x0400..=0x04FF));
         let has_greek = payload.chars().any(|c| matches!(c as u32, 0x0370..=0x03FF));
-        (has_ascii && has_cyrillic) || (has_ascii && has_greek)
+        (has_greek || has_cyrillic) && has_ascii
     }
 
     fn normalize_l33t(&self, input: &str) -> String {
