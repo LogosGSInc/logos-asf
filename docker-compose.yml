@@ -33,6 +33,11 @@ services:
       # different lifecycle (a long-lived signing identity) from whatever
       # else that volume holds.
       - ~/.logosgs/audit-signing/audit-signing-ed25519.key:/app/audit-signing/audit-signing-ed25519.key:ro
+      # Gate 1: single source of truth for department enumeration — see
+      # departments/registry.json and FINDINGS.md: DEPARTMENT_LIST_DIVERGENCE.
+      # Outside this service's build context (context: ./governance-spine
+      # above), so it's bind-mounted rather than baked into the image.
+      - ./departments/registry.json:/app/departments/registry.json:ro
       - sentinel-data:/data
       - sentinel-audit:/app/audit
     restart: unless-stopped

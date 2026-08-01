@@ -70,7 +70,6 @@ DEMO_DEPARTMENT_TASKS = {
     "OPS": "Create launch checklist, owner map, handoff process, and delivery sequence.",
     "ENG": "Prepare local build/demo artifact plan, static landing-page stub, or implementation notes.",
     "DAT": "Define funnel metrics, telemetry requirements, and success criteria.",
-    "HR": "Define operator roles, approval responsibilities, and internal SOP language for outreach.",
 }
 
 # 1:1 department -> artifact (uses every content filename in the AG-01 spec).
@@ -86,10 +85,9 @@ DEMO_ARTIFACTS = {
     "OPS": "operations_checklist.md",
     "ENG": "landing_page_copy.md",
     "DAT": "metrics_plan.md",
-    "HR": "outreach_email_drafts.md",
 }
 
-DEMO_DEPARTMENTS = ["EXE", "PRD", "MKT", "REV", "LGL", "FIN", "SEC", "GRC", "OPS", "ENG", "DAT", "HR"]
+DEMO_DEPARTMENTS = ["EXE", "PRD", "MKT", "REV", "LGL", "FIN", "SEC", "GRC", "OPS", "ENG", "DAT"]
 
 
 def build_demo_job(workspace_root="runtime/jobs", mode="active_sandboxed_local"):

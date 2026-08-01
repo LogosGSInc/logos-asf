@@ -261,3 +261,65 @@ itself (GovMem V2 as inert scaffolding rather than live capability) is
 real, documented, unresolved architecture — not lint noise to be cleaned
 up. Closing this finding means either wiring these fields to something
 real or removing them outright, not suppressing the warning.
+
+## DEPARTMENT_LIST_DIVERGENCE
+
+**Status:** Resolved — Gate 1
+
+**Root cause:** Five independent hardcoded department enumerations
+across `VALID_DEPTS`, `ASF_DEPARTMENTS`, `govmem.rs`'s `dept_ids`,
+`static/dashboard.html`'s `doctrine` array, and the `agents/` filesystem,
+using three incompatible ID formats (`EXE`, `EX-01`, `lgl01`) with no
+single source of truth.
+
+**Findings:**
+- QA (full staff, 7 agents) was absent from `VALID_DEPTS` and `govmem.rs`.
+- RI (Research Intelligence) was absent from `VALID_DEPTS` and
+  `govmem.rs`; `ASF_DEPARTMENTS` did carry it, but under the wrong id
+  `DEPT-RES` instead of `DEPT-RI` — not a missing entry as originally
+  assumed going into this gate, but a mislabeled one.
+- EXE and SC were absent from `ASF_DEPARTMENTS` (enumeration drift, not
+  policy) — these are the only two active departments with no prior
+  `agency_level` value anywhere to carry forward.
+- REV and QA were assumed absent from `ASF_DEPARTMENTS` going into this
+  gate; both were actually already present with established
+  `agency_level` values (2 and 2), which this gate preserved rather than
+  overwrote.
+- HR was present in `VALID_DEPTS` and `govmem.rs` with no YAML, folder,
+  or agents ever defined for it — removed everywhere (`abigail/swarm/job_spec.py`'s
+  demo job spec, `static/dashboard.html`'s doctrine array, both hardcoded
+  lists too).
+- SC-01 and SEC-01 are distinct departments sharing one folder (tracked
+  separately as `DEPT_FOLDER_AMBIGUITY`, see `departments/registry.json`
+  → `open_remediation_items`).
+- Neither `governance-spine/Dockerfile` (build context `./governance-spine`)
+  nor `abigail/Dockerfile` (build context `.`, but the Python file is
+  copied flat to `/app/abigail_hardened_enhanced.py`, breaking the
+  local-dev-relative registry-path derivation) could reach
+  `departments/registry.json` at its default path without changes — both
+  were fixed as part of this gate (bind mount + `GOVMEM_REGISTRY_PATH`
+  for sentinel; `COPY` + `ABIGAIL_DEPT_REGISTRY_PATH` for abby). Without
+  this, the fail-closed startup assertion in `GovMem::new()` would have
+  panicked in the actual deployed container on the very first Gate 1
+  release.
+
+**Resolution:** Single source of truth at `departments/registry.json`.
+`VALID_DEPTS` and `ASF_DEPARTMENTS` (`abigail/abigail_hardened_enhanced.py`)
+and `govmem.rs`'s department configs all load from it at runtime; no
+hardcoded department list survives in any of the three. `govmem.rs` also
+now parses each department's `govmem_escalation_policy` from the registry
+instead of hardcoding `ThreeStrike` for all of them (today they're all
+`ThreeStrike` in practice, but the old code would have silently ignored a
+future per-department override).
+
+`departments/registry.json` has no `agency_level` field, so
+`ASF_DEPARTMENTS`'s per-department agency levels are still a second,
+un-reconciled source (a private `_AGENCY_LEVELS` dict in
+`abigail_hardened_enhanced.py`, carried over from the pre-Gate-1 literal)
+— not eliminated by this gate, only kept from silently drifting further.
+
+**Canonical counts post-reconciliation:**
+- Active departments: 14
+- Inactive stubs: 1 (TKR)
+- Removed ghosts: 1 (HR)
+- Runtime department count: 14

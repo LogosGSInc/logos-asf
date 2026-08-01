@@ -34,6 +34,11 @@ EXPOSE 8080
 ENV RUST_LOG=info
 ENV SENTOW_BIND=0.0.0.0:8080
 ENV SENTOW_MEMORY_PATH=/data/strategic_memory.json
+# Gate 1: departments/registry.json lives at the repo root, outside this
+# image's build context (context: ./governance-spine — see docker-compose.yml),
+# so it can't be COPY'd in at build time. Bind-mounted read-only at this path
+# instead; GovMem::new() fails closed at startup if it's missing.
+ENV GOVMEM_REGISTRY_PATH=/app/departments/registry.json
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
     CMD curl -f http://localhost:8080/health || exit 1
 CMD ["./governance_spine_server"]

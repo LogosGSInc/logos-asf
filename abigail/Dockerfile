@@ -24,6 +24,10 @@ COPY abigail/entrypoint.sh /app/entrypoint.sh
 # Static UI (index.html, dashboard.html, intake.html)
 COPY static /app/static
 
+# Gate 1: single source of truth for department enumeration — see
+# departments/registry.json and FINDINGS.md: DEPARTMENT_LIST_DIVERGENCE.
+COPY departments/registry.json /app/departments/registry.json
+
 COPY abigail/requirements.txt .
 RUN python -m pip install --no-cache-dir -r requirements.txt \
  && chmod +x /app/entrypoint.sh
@@ -35,6 +39,9 @@ EXPOSE 7070
 
 # ABIGAIL_HEADLESS=1 suppresses browser open in container mode
 ENV ABIGAIL_HEADLESS=1
+# This file is copied flat above (not under repo_root/abigail/), so the
+# local-dev-relative registry path derivation doesn't apply here — override it.
+ENV ABIGAIL_DEPT_REGISTRY_PATH=/app/departments/registry.json
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:7070/api/status', timeout=5)" || exit 1

@@ -2096,20 +2096,52 @@ def public_intent_answer(message, session):
     }
 
 # ── ASF Department Registry ───────────────────────────────────────────────────
+# Gate 1 (GovMem convergence): single source of truth is departments/registry.json.
+# VALID_DEPTS and ASF_DEPARTMENTS both derive from it — no hardcoded department
+# enumeration survives here. See FINDINGS.md: DEPARTMENT_LIST_DIVERGENCE.
+def _department_registry_path():
+    # In the container image (abigail/Dockerfile) this file is copied flat to
+    # /app/abigail_hardened_enhanced.py, not repo_root/abigail/, so the local-dev
+    # derivation below (two parents up) would resolve wrong there. The Dockerfile
+    # sets ABIGAIL_DEPT_REGISTRY_PATH explicitly to override it.
+    override = os.environ.get("ABIGAIL_DEPT_REGISTRY_PATH")
+    if override:
+        return Path(override)
+    return Path(__file__).parent.parent / "departments" / "registry.json"
+
+def _load_department_registry():
+    return json.loads(_department_registry_path().read_text())
+
+def _active_departments():
+    return [d for d in _load_department_registry()["departments"] if d["status"] == "active"]
+
+# Agency levels are not yet tracked in departments/registry.json (see FINDINGS.md).
+# Values below are carried over from the pre-Gate-1 ASF_DEPARTMENTS literal for
+# departments that already had one. EXE and SC are genuinely new to this list and
+# have no prior value — flagged in the Gate 1 PR body for operator confirmation.
+_AGENCY_LEVELS = {
+    "EXE": 1,   # new — needs operator confirmation
+    "SC":  1,   # new — needs operator confirmation
+    "SEC": 2,
+    "QA":  2,
+    "OPS": 3,
+    "GRC": 2,
+    "REV": 2,
+    "FIN": 2,
+    "LGL": 1,
+    "PRD": 2,
+    "MKT": 2,
+    "DAT": 2,
+    "ENG": 3,
+    "RI":  2,   # carried over from the old "DEPT-RES" entry
+}
+
 ASF_DEPARTMENTS = [
-    {"id":"DEPT-ENG","name":"Engineering","agency_level":3},
-    {"id":"DEPT-SEC","name":"Security Governance","agency_level":2},
-    {"id":"DEPT-QA","name":"Quality Assurance","agency_level":2},
-    {"id":"DEPT-OPS","name":"Operations","agency_level":3},
-    {"id":"DEPT-GRC","name":"Governance Risk Compliance","agency_level":2},
-    {"id":"DEPT-REV","name":"Revenue","agency_level":2},
-    {"id":"DEPT-FIN","name":"Finance","agency_level":2},
-    {"id":"DEPT-LGL","name":"Legal","agency_level":1},
-    {"id":"DEPT-PRD","name":"Product","agency_level":2},
-    {"id":"DEPT-MKT","name":"Marketing","agency_level":2},
-    {"id":"DEPT-DAT","name":"Data","agency_level":2},
-    {"id":"DEPT-RES","name":"Research Intelligence","agency_level":2},
+    {"id": d["code"], "name": d["name"], "agency_level": _AGENCY_LEVELS.get(d["code"], 2)}
+    for d in _active_departments()
 ]
+
+VALID_DEPTS = frozenset(d["code"] for d in _active_departments())
 
 
 # ── Web HTML ──────────────────────────────────────────────────────────────────
@@ -2909,7 +2941,8 @@ def build_web_app(session, kill_switch, active_backend):
     _DEPT_LOCK  = _threading.Lock()
     _DEPT_STATE = {}
 
-    VALID_DEPTS = {"EXE","ENG","PRD","SEC","LGL","FIN","OPS","REV","MKT","HR","DAT","GRC"}
+    # VALID_DEPTS is module-level (registry-driven) — see definition near
+    # ASF_DEPARTMENTS above. Nested functions below resolve it via global lookup.
 
     def _normalize_dept(dept):
         d = (dept or "").strip().upper()

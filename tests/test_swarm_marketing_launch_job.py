@@ -28,9 +28,9 @@ def ran_job(tmp_path):
     return job, results, merge, ex
 
 
-def test_all_twelve_departments_contribute(ran_job):
+def test_all_departments_contribute(ran_job):
     job, results, _, _ = ran_job
-    assert len(results) == 12
+    assert len(results) == len(job.departments)
     assert {r.department for r in results} == set(job.departments)
     for r in results:
         assert r.status == "complete"
@@ -66,8 +66,8 @@ def test_audit_summary_is_complete(ran_job):
     assert a["supervisor"] == "abigail"
     assert a["supervisor_decision"] == SupervisorDecision.APPROVED_FOR_DEMO_ONLY
     assert a["external_actions_performed"] is False
-    assert len(a["manifest_ids"]) == 12
-    assert len(a["handoff_ids"]) == 12
+    assert len(a["manifest_ids"]) == len(job.departments)
+    assert len(a["handoff_ids"]) == len(job.departments)
     assert set(a["departments"]) == set(job.departments)
     assert "containment_events" in a and "dispatch_events" in a
 
