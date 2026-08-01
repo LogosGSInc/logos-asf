@@ -35,7 +35,7 @@ class _Sess:
 
 def _mock_sentinel(monkeypatch, verdict):
     """Mock the Rust Sentinel /inspect call with authoritative approval evidence."""
-    def _result(_payload, session_id):
+    def _result(_payload, session_id, **_kw):
         result = {
             "ok": verdict == "APPROVED",
             "verdict": verdict,

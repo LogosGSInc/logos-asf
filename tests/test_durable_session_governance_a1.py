@@ -31,7 +31,7 @@ import abigail_hardened_enhanced as A  # noqa: E402
 ADMIN = "durable-session-governance-admin-9f86d081884c7d659a2fea"
 
 
-def _approved_inspect(_task_or_payload, session_id):
+def _approved_inspect(_task_or_payload, session_id, **_kw):
     return {
         "ok": True, "verdict": "APPROVED", "session_id": session_id,
         "gov_tx_id": "GTX-A1-TEST", "verdict_id": "SV-A1-TEST",
@@ -40,7 +40,7 @@ def _approved_inspect(_task_or_payload, session_id):
 
 
 def _fake_pm_recording(calls):
-    def _pm(msg, session, ks, ab, approval_meta=None, step_up_ok=False):
+    def _pm(msg, session, ks, ab, approval_meta=None, step_up_ok=False, **_kw):
         calls.append(msg)
         return {"ok": True, "text": "stub", "drs": 0, "mode": "SILENT_AUTONOMY", "crsv": 0.0}
     return _pm
@@ -53,7 +53,7 @@ def test_session_id_stable_across_chat_turns(monkeypatch):
     monkeypatch.setattr(A, "_ensure_session_started", lambda _s: True)
     seen_ids = []
 
-    def _inspect(_raw, session_id):
+    def _inspect(_raw, session_id, **_kw):
         seen_ids.append(session_id)
         return _approved_inspect(_raw, session_id)
 
@@ -132,7 +132,7 @@ def test_session_start_failure_blocks_current_turn_fail_closed(monkeypatch):
         lambda *_a, **_k: (False, {"error": "connection refused"}),
     )
     inspect_calls = []
-    monkeypatch.setattr(A, "_sentinel_inspect", lambda *a: inspect_calls.append(a) or _approved_inspect(*a))
+    monkeypatch.setattr(A, "_sentinel_inspect", lambda *a, **k: inspect_calls.append(a) or _approved_inspect(*a, **k))
     pm_calls = []
     monkeypatch.setattr(A, "_governed_provider_execute", lambda **k: pm_calls.append(k))
 

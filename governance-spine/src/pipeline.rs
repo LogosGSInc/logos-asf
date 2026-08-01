@@ -106,9 +106,6 @@ pub struct GovernancePipeline {
     /// GovMem V2: RL-enhanced multi-turn detection
     govmem: Arc<GovMem>,
 
-    // GovMem V2: runtime identity metadata (populated from env vars, metadata only)
-    govmem_agent_id: String,
-    govmem_department_id: String,
     verdict_ledger: SentinelVerdictLedger,
 
     // Decision-bound, signed, single-use provider execution authority.
@@ -159,13 +156,6 @@ impl GovernancePipeline {
         };
         let govmem = Arc::new(GovMem::new(mode));
 
-        // Runtime identity metadata — populated from env vars, metadata only.
-        // Do not pass these into should_block(); threshold behavior must not change.
-        let govmem_agent_id = std::env::var("GOVMEM_AGENT_ID")
-            .unwrap_or_else(|_| "abigail".to_string());
-        let govmem_department_id = std::env::var("GOVMEM_DEPARTMENT_ID")
-            .unwrap_or_else(|_| "governance".to_string());
-
         Ok(Self {
             sentinel,
             corridor,
@@ -185,8 +175,6 @@ impl GovernancePipeline {
             ))),
             memory_config: MemoryConfig::default(),
             govmem,
-            govmem_agent_id,
-            govmem_department_id,
             verdict_ledger: SentinelVerdictLedger::new(),
             capability_store,
         })
@@ -217,7 +205,28 @@ impl GovernancePipeline {
     ///   OIM: observe → Arbiter
     ///   [SessionMemory] ingest highest-severity signal → accumulate
     ///   if memory.force_checkpoint → override to at least S2
+    ///
+    /// Gate 2 (F-GM-005): department_id/agent_id are no longer process-fixed
+    /// (previously read once from GOVMEM_DEPARTMENT_ID/GOVMEM_AGENT_ID env
+    /// vars at construction). Existing callers that don't have a per-request
+    /// identity keep calling this — it forwards None/None, preserving the
+    /// exact behavior every non-HTTP caller (tests, main.rs demo) already had.
     pub fn inbound(&self, user_input: &str, session_id: &str, gov_tx_id: &str) -> EnforcementResult {
+        self.inbound_with_identity(user_input, session_id, gov_tx_id, None, None)
+    }
+
+    /// Gate 2: the department_id-aware entry point. `department_id` is
+    /// client-supplied and unauthenticated (see FINDINGS.md:
+    /// DEPT_THRESHOLD_CLIENT_SELECTABLE) — it now drives should_block's
+    /// per-department drift threshold, not just session metadata.
+    pub fn inbound_with_identity(
+        &self,
+        user_input: &str,
+        session_id: &str,
+        gov_tx_id: &str,
+        department_id: Option<&str>,
+        agent_id: Option<&str>,
+    ) -> EnforcementResult {
         // ── STEP 0: Initialize session memory if new ───────────────
         let threshold_modifier = self.init_session_memory(session_id);
 
@@ -236,8 +245,8 @@ impl GovernancePipeline {
             user_input,
             MessageDirection::UserToSystem,
             s_signal.severity >= Severity::High,
-            Some(&self.govmem_department_id), // department_id — metadata only
-            Some(&self.govmem_agent_id),      // agent_id — metadata only
+            department_id,
+            agent_id,
         );
         self.govmem.record_layer_signal(session_id, "sentinel", &s_signal);
         self.track_highest(&s_signal, &mut highest_signal);
@@ -267,8 +276,9 @@ impl GovernancePipeline {
         };
         self.govmem.record_layer_signal(session_id, "overwatch", &ow_signal);
 
-        // GovMem V2: Check drift (multi-turn detection)
-        if self.govmem.should_block(session_id, None) {
+        // GovMem V2: Check drift (multi-turn detection). department_id selects
+        // the per-department threshold — see FINDINGS.md: DEPT_THRESHOLD_CLIENT_SELECTABLE.
+        if self.govmem.should_block(session_id, department_id) {
             self.ingest_to_memory(session_id, &highest_signal, &classification);
             return EnforcementResult::Quarantined("GOVMEM-DRIFT-DETECTED".to_string());
         }

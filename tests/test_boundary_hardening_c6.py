@@ -78,7 +78,7 @@ def test_small_request_body_still_accepted(monkeypatch):
     monkeypatch.delenv("ABIGAIL_MAX_REQUEST_BYTES", raising=False)
     monkeypatch.setenv("ABIGAIL_COST_GOVERNOR_ENABLED", "0")
 
-    def _fake_pm(msg, session, ks, ab, approval_meta=None, step_up_ok=False):
+    def _fake_pm(msg, session, ks, ab, approval_meta=None, step_up_ok=False, **_kw):
         return {"ok": True, "text": "stub", "drs": 0, "mode": "SILENT_AUTONOMY", "crsv": 0.0}
 
     monkeypatch.setattr(A, "process_message", _fake_pm)

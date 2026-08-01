@@ -58,7 +58,7 @@ def test_p0_3_sessions_do_not_bleed(monkeypatch):
     """Two distinct session ids get isolated SessionState — turn counts and message
     history do not cross-contaminate."""
     # Stub the pipeline so we exercise the registry wiring without provider/sentinel.
-    def _fake_pm(msg, session, ks, ab, approval_meta=None, step_up_ok=False):
+    def _fake_pm(msg, session, ks, ab, approval_meta=None, step_up_ok=False, **_kw):
         session.record_turn(msg, 0, [])
         session.append_message("user", msg)
         return {"ok": True, "text": "ok", "drs": 0, "mode": "SILENT_AUTONOMY",

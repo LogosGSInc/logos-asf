@@ -419,4 +419,50 @@ mod registry_tests {
         let govmem = GovMem::new(GovMemMode::V1);
         assert_eq!(govmem.department_configs.len(), 14);
     }
+
+    /// Gate 2 (F-GM-005): should_block's department_id parameter must
+    /// actually select a real per-department threshold — see FINDINGS.md:
+    /// DEPT_THRESHOLD_CLIENT_SELECTABLE for why this is deliberately a new
+    /// bypass surface, not an oversight.
+    #[test]
+    fn should_block_threshold_is_department_selectable() {
+        let govmem = GovMem::new(GovMemMode::V2);
+        let session_id = "dept-threshold-test";
+
+        // LGL's threshold is 0.8 (most lenient); SEC's is 0.5 (most strict).
+        // Seed a drift score in between so the two departments disagree.
+        {
+            let mut sessions = govmem.v2_sessions.write();
+            sessions.insert(
+                session_id.to_string(),
+                GovMemSession {
+                    session_id: session_id.to_string(),
+                    created_at: Utc::now(),
+                    department_id: None,
+                    agent_id: None,
+                    messages: vec![],
+                    embedding_trajectory: vec![],
+                    layer_signals: vec![],
+                    v1_session: SessionMemory::new(session_id),
+                    semantic_drift_score: 0.65,
+                    mpa_anomaly_score: 0.0,
+                    flagged_for_review: false,
+                    human_label: None,
+                },
+            );
+        }
+
+        assert!(
+            !govmem.should_block(session_id, Some("LGL")),
+            "0.65 is below LGL's 0.8 threshold — must not block"
+        );
+        assert!(
+            govmem.should_block(session_id, Some("SEC")),
+            "0.65 is above SEC's 0.5 threshold — must block"
+        );
+        assert!(
+            !govmem.should_block(session_id, None),
+            "absent department_id falls back to the 0.7 default — 0.65 must not block"
+        );
+    }
 }

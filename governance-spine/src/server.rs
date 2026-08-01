@@ -306,12 +306,20 @@ fn handle(
                 let session_id = required_json_string(&body_value, "session_id")?;
                 Ok((payload, session_id))
             })();
+            // Gate 2 (F-GM-005): per-request department/agent identity, not a
+            // process-fixed env var. Optional — a request naming neither still
+            // routes through the same should_block/record_turn path with None.
+            let department_id = optional_json_string(&body_value, "department_id");
+            let agent_id = optional_json_string(&body_value, "agent_id");
 
             match parsed {
                 Err(error) => err_json(400, &error),
                 Ok((payload, session_id)) => {
                 let gov_tx_id = format!("GTX-{}", uuid::Uuid::new_v4().simple());
-                let result = pipeline.inbound(&payload, &session_id, &gov_tx_id);
+                let result = pipeline.inbound_with_identity(
+                    &payload, &session_id, &gov_tx_id,
+                    department_id.as_deref(), agent_id.as_deref(),
+                );
 
                 match &result {
                     EnforcementResult::Approved(_) => {
