@@ -61,8 +61,8 @@ pub struct GovMemSession {
     pub session_id: String,
     pub created_at: DateTime<Utc>,
     
-    // Department tracking (12-dept integration)
-    pub department_id: Option<String>,  // EXE, ENG, PRD, SEC, LGL, FIN, OPS, REV, MKT, HR, DAT, GRC
+    // Department tracking (registry-driven — see departments/registry.json)
+    pub department_id: Option<String>,
     pub agent_id: Option<String>,       // EXE-01, ENG-02, etc.
     
     // Message history
@@ -137,29 +137,87 @@ pub enum HumanLabel {
 //  GOVMEM IMPLEMENTATION
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Resolves departments/registry.json — the single source of truth for the
+/// active department set (see FINDINGS.md: DEPARTMENT_LIST_DIVERGENCE).
+///
+/// `GOVMEM_REGISTRY_PATH` overrides this for container deployment (the
+/// registry lives outside the governance-spine Cargo package root, so it
+/// isn't baked into the build image — see docker-compose.yml). The default
+/// is anchored to the crate's own manifest directory so `cargo test`/`cargo
+/// run` resolve it correctly regardless of the process's working directory.
+fn govmem_registry_path() -> std::path::PathBuf {
+    std::env::var("GOVMEM_REGISTRY_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../departments/registry.json")
+        })
+}
+
+fn parse_escalation_policy(code: &str, raw: Option<&str>) -> EscalationPolicy {
+    match raw {
+        Some("Immediate") => EscalationPolicy::Immediate,
+        Some("ThreeStrike") => EscalationPolicy::ThreeStrike,
+        Some("AccumulativeRisk") => EscalationPolicy::AccumulativeRisk,
+        other => panic!(
+            "departments/registry.json: department {code} has unrecognized \
+             govmem_escalation_policy {other:?}"
+        ),
+    }
+}
+
+/// Loads department configs for every `active` department in the registry.
+/// Fails closed — a missing, malformed, or incomplete registry panics at
+/// startup rather than silently running with a stale/partial department set.
+fn load_dept_configs_from_registry() -> HashMap<String, DepartmentConfig> {
+    let registry_path = govmem_registry_path();
+    let raw = std::fs::read_to_string(&registry_path).unwrap_or_else(|e| {
+        panic!(
+            "departments/registry.json must exist at startup (looked for it at {}): {e}",
+            registry_path.display()
+        )
+    });
+    let registry: serde_json::Value = serde_json::from_str(&raw)
+        .unwrap_or_else(|e| panic!("departments/registry.json must be valid JSON: {e}"));
+
+    let depts = registry["departments"]
+        .as_array()
+        .expect("departments/registry.json must have a top-level \"departments\" array");
+
+    let mut department_configs = HashMap::new();
+    for dept in depts {
+        if dept["status"].as_str() != Some("active") {
+            continue;
+        }
+        let code = dept["code"]
+            .as_str()
+            .expect("departments/registry.json: active department missing \"code\"")
+            .to_string();
+        let drift_threshold = dept["govmem_drift_threshold"].as_f64().unwrap_or_else(|| {
+            panic!("departments/registry.json: {code} missing govmem_drift_threshold")
+        }) as f32;
+        let data_retention_days = dept["govmem_data_retention_days"].as_u64().unwrap_or_else(|| {
+            panic!("departments/registry.json: {code} missing govmem_data_retention_days")
+        }) as u32;
+        let escalation_policy =
+            parse_escalation_policy(&code, dept["govmem_escalation_policy"].as_str());
+
+        department_configs.insert(
+            code.clone(),
+            DepartmentConfig {
+                department_id: code,
+                drift_threshold,
+                escalation_policy,
+                data_retention_days,
+            },
+        );
+    }
+    department_configs
+}
+
 impl GovMem {
     pub fn new(mode: GovMemMode) -> Self {
-        let mut department_configs = HashMap::new();
-        
-        // Default configs for 12 departments
-        let dept_ids = vec![
-            ("EXE", 0.6), ("ENG", 0.7), ("PRD", 0.7), ("SEC", 0.5),
-            ("LGL", 0.8), ("FIN", 0.7), ("OPS", 0.6), ("REV", 0.7),
-            ("MKT", 0.7), ("HR", 0.7), ("DAT", 0.6), ("GRC", 0.5),
-        ];
-        
-        for (dept_id, threshold) in dept_ids {
-            department_configs.insert(
-                dept_id.to_string(),
-                DepartmentConfig {
-                    department_id: dept_id.to_string(),
-                    drift_threshold: threshold,
-                    escalation_policy: EscalationPolicy::ThreeStrike,
-                    data_retention_days: 90,
-                },
-            );
-        }
-        
+        let department_configs = load_dept_configs_from_registry();
+
         Self {
             v1_sessions: Arc::new(RwLock::new(HashMap::new())),
             v2_sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -319,5 +377,46 @@ impl MemoryPolicyAgent {
     pub fn predict(&self, _session: &GovMemSession) -> f32 {
         // TODO: Actual MPA inference
         0.0
+    }
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn active_registry_codes() -> HashSet<String> {
+        let raw = std::fs::read_to_string(govmem_registry_path())
+            .expect("departments/registry.json must exist for this test");
+        let registry: serde_json::Value =
+            serde_json::from_str(&raw).expect("departments/registry.json must be valid JSON");
+        registry["departments"]
+            .as_array()
+            .expect("departments/registry.json must have a \"departments\" array")
+            .iter()
+            .filter(|d| d["status"].as_str() == Some("active"))
+            .map(|d| d["code"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn department_configs_match_active_registry_codes() {
+        let configs = load_dept_configs_from_registry();
+        let got: HashSet<String> = configs.keys().cloned().collect();
+        assert_eq!(got, active_registry_codes());
+    }
+
+    #[test]
+    fn hr_is_absent_and_sc_sec_both_present() {
+        let configs = load_dept_configs_from_registry();
+        assert!(!configs.contains_key("HR"), "HR is a removed ghost department");
+        assert!(configs.contains_key("SC"), "SC (Security and Governance) must be active");
+        assert!(configs.contains_key("SEC"), "SEC (Security Governance) must be active");
+    }
+
+    #[test]
+    fn govmem_new_loads_fourteen_active_departments() {
+        let govmem = GovMem::new(GovMemMode::V1);
+        assert_eq!(govmem.department_configs.len(), 14);
     }
 }
