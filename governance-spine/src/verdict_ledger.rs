@@ -35,6 +35,12 @@ pub struct SentinelVerdictLedger {
     approved_by_tx: Arc<RwLock<HashMap<String, String>>>,
 }
 
+impl Default for SentinelVerdictLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SentinelVerdictLedger {
     pub fn new() -> Self {
         Self {

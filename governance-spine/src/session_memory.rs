@@ -425,6 +425,12 @@ pub struct StrategicMemory {
     memory_path: Option<PathBuf>,
 }
 
+impl Default for StrategicMemory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StrategicMemory {
     /// In-memory-only store (no durability). Retained for tests and for the
     /// no-path deployment case; prefer `with_path` in production.
