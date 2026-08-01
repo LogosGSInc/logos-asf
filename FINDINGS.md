@@ -231,3 +231,33 @@ Open questions this bears on, both unresolved by design (see brief §6):
   `:499` uses `session_id` directly where `actor_id` was clearly intended
   (the parameter is literally named `actor_id`). Both paths are broken,
   independently, in different directions.
+
+## GOVMEM_V2_SCAFFOLDING_NOT_WIRED
+
+`governance-spine/src/govmem.rs`'s `GovMem` struct carries three fields —
+`v1_sessions`, `embedding_model`, `mpa` — that are initialized in `new()`
+but never read anywhere in the module. This was independently confirmed
+by both the Rust compiler's dead-code lint and a full ground-truth survey
+of the codebase (`ABIGAIL_DEFINITION.md` §3.1):
+
+- `v1_sessions` is never touched by `record_turn`'s V1 branch, which is
+  itself a documented no-op (its comment says "delegate to
+  session_memory.rs — not implemented here").
+- `embedding_model` and `mpa` are hardcoded to `None` at construction and
+  no code path ever loads them. Their backing types (`SentenceEmbedder`,
+  `MemoryPolicyAgent`) are explicitly labeled
+  `// PLACEHOLDER TYPES (To be implemented in Phase 2)`.
+- `GovMemMode` defaults to `V1` (`pipeline.rs`, reads `GOVMEM_MODE`, not
+  set anywhere in `docker-compose.yml`/`.abigail.env`), so even the V2
+  code path these fields exist for is not exercised in the real
+  deployment today.
+
+This is left as a **tracked, intentionally unsuppressed** compiler
+signal, not silenced — see the field-level `#[allow(dead_code)]`
+annotations in `govmem.rs`, each with a comment pointing back to this
+entry. A blanket module- or struct-level allow was deliberately rejected:
+it would make the compiler stop corroborating this gap, and the gap
+itself (GovMem V2 as inert scaffolding rather than live capability) is
+real, documented, unresolved architecture — not lint noise to be cleaned
+up. Closing this finding means either wiring these fields to something
+real or removing them outright, not suppressing the warning.

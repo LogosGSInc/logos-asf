@@ -101,9 +101,10 @@ fn silent_client_is_dropped_by_socket_timeout_not_held_forever() {
     // Either the server closed the connection (Ok(0) = EOF) or the OS
     // surfaced the reset/timeout as an error — both prove the server did
     // not hold the connection open indefinitely.
-    match result {
-        Ok(n) => assert_eq!(n, 0, "expected EOF (server closed idle connection), got {n} bytes"),
-        Err(_) => {} // connection reset/aborted by server-side timeout — also acceptable
+    // Err(_) case (connection reset/aborted by server-side timeout) is also
+    // acceptable and intentionally not asserted on here.
+    if let Ok(n) = result {
+        assert_eq!(n, 0, "expected EOF (server closed idle connection), got {n} bytes");
     }
     assert!(
         elapsed < Duration::from_secs(4),

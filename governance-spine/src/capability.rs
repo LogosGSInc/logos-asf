@@ -114,6 +114,12 @@ pub struct Decision {
     pub issued: bool,
 }
 
+// Boxing Issued(CapabilityToken) would shave the enum's stack size but
+// changes IssueOutcome's shape at every construction/match site — this is
+// the decision-bound signed capability-token type this sprint's work
+// centers on, not a local edit to apply on a size hint alone. Deferred for
+// a deliberate call, not silently fixed or silently ignored.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IssueOutcome {
     Issued(CapabilityToken),

@@ -1,17 +1,17 @@
-/// LOGOS Governance Systems Inc.
-/// Sentinel OverWatch HTTP Server
-///
-/// Endpoints:
-///   GET  /health
-///   POST /inspect
-///   POST /outbound
-///   POST /provider/authorize
-///   POST /provider/consume
-///   GET  /session/{id}/state
-///   POST /session/reset
-///   POST /session/start
-///   POST /session/end
-///   GET  /audit
+//! LOGOS Governance Systems Inc.
+//! Sentinel OverWatch HTTP Server
+//!
+//! Endpoints:
+//!   GET  /health
+//!   POST /inspect
+//!   POST /outbound
+//!   POST /provider/authorize
+//!   POST /provider/consume
+//!   GET  /session/{id}/state
+//!   POST /session/reset
+//!   POST /session/start
+//!   POST /session/end
+//!   GET  /audit
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -274,7 +274,7 @@ fn handle(
         Some(l) => l,
         None => return, // malformed/oversized/absent request line — silently drop, as before
     };
-    let parts: Vec<&str> = req.trim().split_whitespace().collect();
+    let parts: Vec<&str> = req.split_whitespace().collect();
     if parts.len() < 2 { return; }
     let method = parts[0];
     let path   = parts[1];
@@ -755,23 +755,21 @@ pub(crate) fn serve(
     socket_timeout: Duration,
 ) {
     let active_connections = Arc::new(AtomicUsize::new(0));
-    for stream in listener.incoming() {
-        if let Ok(mut s) = stream {
-            let in_flight = active_connections.fetch_add(1, Ordering::SeqCst) + 1;
-            if in_flight > max_connections {
-                active_connections.fetch_sub(1, Ordering::SeqCst);
-                let _ = s.write_all(err_json(503, "server at connection capacity").as_bytes());
-                continue;
-            }
-            let _ = s.set_read_timeout(Some(socket_timeout));
-            let _ = s.set_write_timeout(Some(socket_timeout));
-            let p = pipeline.clone();
-            let token = service_token.clone();
-            let counter = active_connections.clone();
-            thread::spawn(move || {
-                handle(&mut s, &p, &token);
-                counter.fetch_sub(1, Ordering::SeqCst);
-            });
+    for mut s in listener.incoming().flatten() {
+        let in_flight = active_connections.fetch_add(1, Ordering::SeqCst) + 1;
+        if in_flight > max_connections {
+            active_connections.fetch_sub(1, Ordering::SeqCst);
+            let _ = s.write_all(err_json(503, "server at connection capacity").as_bytes());
+            continue;
         }
+        let _ = s.set_read_timeout(Some(socket_timeout));
+        let _ = s.set_write_timeout(Some(socket_timeout));
+        let p = pipeline.clone();
+        let token = service_token.clone();
+        let counter = active_connections.clone();
+        thread::spawn(move || {
+            handle(&mut s, &p, &token);
+            counter.fetch_sub(1, Ordering::SeqCst);
+        });
     }
 }

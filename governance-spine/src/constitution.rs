@@ -140,6 +140,7 @@ impl Constitution {
     ///      defeated by an attacker signing their own tampered copy);
     ///   2. JSON parsing;
     ///   3. schema/temporal-validity/profile checks.
+    ///
     /// Any failure returns Err — this function never partially trusts a
     /// document. `seal()`/`verify_integrity()` (the pre-A2 self-referential
     /// hash) is NOT part of this trust boundary and is not called here —
