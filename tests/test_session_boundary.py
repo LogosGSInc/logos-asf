@@ -4,11 +4,22 @@ tests/test_session_boundary.py — Gate 0 (GovMem convergence): session
 isolation must key off X-Session-ID, not remote_addr.
 
 GovMem accumulates drift/threat/lock state per Sentinel session_id
-(governance-spine/src/govmem.rs). Before this test existed, nothing asserted
-that two distinct conversations sharing one client IP (e.g. behind one NAT,
-or two tabs from the same browser) get distinct Sentinel sessions. If they
-collapsed onto one session, one user's accumulated drift would silently
-gate another user's requests.
+(governance-spine/src/govmem.rs). The tests below against the backend
+(_resolve_chat_session / SessionRegistry) pass against the code as it was
+BEFORE Gate 0's client-side change too — that backend resolution already
+preferred the header over remote_addr. They're kept as a regression lock on
+real, load-bearing behavior, not as evidence Gate 0 fixed something there.
+
+The actual pre-Gate-0 gap was that no client ever sent the header, so real
+traffic always fell back to remote_addr. `test_client_surfaces_emit_session_header`
+below locks the fix that closes THAT gap — the one thing this gate actually
+changed. Without it, a future refactor could drop the header from the JS and
+every suite here would stay green.
+
+See FINDINGS.md SESSION_ID_CLIENT_CONTROLLED: moving the session key to a
+client-supplied value fixes NAT bleed but makes drift accumulation resettable
+by any adversary willing to mint a fresh id per request. Not addressed here —
+tracked as Q-08/Q-03 follow-up.
 
 No network, no real provider calls, no secrets.
 """
@@ -17,6 +28,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "abigail"))
 import abigail_hardened_enhanced as A  # noqa: E402
+
+_STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
 def _approved_inspect(_task_or_payload, session_id):
@@ -79,3 +92,33 @@ def test_session_registry_holds_distinct_state_per_session_id(monkeypatch):
 
     assert a is not b
     assert a.sentinel_session_id != b.sentinel_session_id
+
+
+def test_client_surfaces_emit_session_header():
+    """The actual Gate 0 gap: no HTML/JS surface sent X-Session-ID, so real
+    traffic always fell back to remote_addr regardless of backend support.
+    Locks that every /api/chat-calling surface attaches the header — a
+    source-grep guard, matching this repo's existing store1_apply pattern
+    (training/tests/test_review_queue.py::test_no_store1_apply_in_source),
+    so a refactor that silently drops the header fails CI instead of prod."""
+    checked = 0
+    for name in ("abigail.js", "dashboard.html", "operator.html"):
+        src = (_STATIC_DIR / name).read_text()
+        # Every /api/chat call site in these files must be accompanied by
+        # the header somewhere in the same request construction — checked
+        # loosely (header string present at all in a file that calls
+        # /api/chat) since each surface wires it through differently
+        # (inline header dict, extraHeaders param, etc).
+        if "/api/chat" in src:
+            assert "X-Session-ID" in src, (
+                f"{name} calls /api/chat but never sends X-Session-ID — "
+                "this silently reverts that surface's users to sharing "
+                "governance state by remote_addr"
+            )
+            checked += 1
+    assert checked == 3, (
+        "expected all three known /api/chat-calling surfaces "
+        "(abigail.js, dashboard.html, operator.html) to still exist and "
+        "still call /api/chat; update this test if a surface was added, "
+        "removed, or renamed"
+    )
