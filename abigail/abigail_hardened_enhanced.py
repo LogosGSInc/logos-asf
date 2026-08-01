@@ -2275,6 +2275,9 @@ def build_web_app(session, kill_switch, active_backend):
     flask_app._session_registry = sessions
 
     def _resolve_chat_session(explicit_key=None):
+        # TODO(Q-03): absent X-Session-ID currently falls back to remote_addr,
+        # which collapses NAT-shared users onto one session. Operator decision
+        # pending: fail closed vs. server-side mint.
         key = (explicit_key
                or request.headers.get("X-Session-ID", "").strip()
                or (request.remote_addr or "default"))

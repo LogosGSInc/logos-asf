@@ -417,6 +417,12 @@ impl GovernancePipeline {
         let persisted = match fingerprint {
             // A real durable write happened only when there was a fingerprint to
             // persist AND the store wrote it to disk.
+            // TODO(Q-08): `actor_id` here is read from the HTTP /session/end
+            // body (server.rs), which production never populates — it is
+            // always the constant "abigail" (abigail_hardened_enhanced.py's
+            // _sentinel_session_end default). Every user's strategic profile
+            // is currently ingested under one shared key. See FINDINGS.md
+            // SESSION_ID_CLIENT_CONTROLLED — not fixed here, design question.
             Some(fp) => self.strategic_memory.write().ingest_session(actor_id, fp),
             // No session state to persist this call — nothing was written, so we
             // must NOT claim persistence (the store may still be disk-backed; that
@@ -496,6 +502,12 @@ impl GovernancePipeline {
 
         // New session — get Abigail's advice before acquiring write lock
         // (strategic_memory.read() must never be held inside session_memories.write())
+        // TODO(Q-08): advise_session_start()'s parameter is named `actor_id`
+        // (session_memory.rs) but `session_id` is passed here. Since
+        // ingest_session() writes under a constant actor_id in production
+        // (see the TODO at end_session() above), this lookup structurally
+        // never hits — StrategicMemory currently gives zero live advisory
+        // value on the inbound path. See FINDINGS.md SESSION_ID_CLIENT_CONTROLLED.
         let advice = self.strategic_memory.read().advise_session_start(session_id);
 
         if let Some(advisory) = &advice.advisory {

@@ -140,6 +140,98 @@ write completes before the process dies is a separate, deeper concern
 hash-chaining and signing-key persistence fixes (A2/A3), not the Podman
 migration branch.
 
+## SESSION_ID_CLIENT_CONTROLLED
+
+Gate 0 of the GovMem convergence effort (PR #9) fixed a real bug: the
+browser never sent `X-Session-ID`, so every request fell back to
+`remote_addr`, and users sharing one NAT shared one Sentinel/GovMem session
+(cross-user drift bleed). The fix — `crypto.randomUUID()`, minted
+client-side, sent as `X-Session-ID` — closes that gap correctly. It also
+changes the threat model in a direction neither the original design doc nor
+the PR noticed at the time:
+
+| | Before (`remote_addr`) | After (`X-Session-ID`) |
+|---|---|---|
+| Cross-user bleed (shared NAT) | Broken | Fixed |
+| Evasion by key rotation | Hard (shared infra IP) | Trivial (mint a new id per request) |
+
+GovMem's entire premise (`governance-spine/src/govmem.rs`, `SessionMemory`)
+is per-session accumulation of drift/threat across turns. The session key
+now used for that accumulation is chosen entirely by the client with no
+authentication behind it. An adversary running a multi-turn attack
+(TAX2/BD1A-style) defeats accumulation-based detection by sending a fresh
+`X-Session-ID` on every request — one HTTP header, no exploit required.
+
+**The hoped-for mitigation does not currently work.** `StrategicMemory`
+(`governance-spine/src/session_memory.rs`) is cross-session, keyed by
+`actor_id` rather than `session_id` — in principle exactly the layer that
+should survive a rotating session key. Tracing the actual wiring
+(`governance-spine/src/pipeline.rs`):
+
+- **Write path** — `end_session()` (`pipeline.rs:412`) calls
+  `strategic_memory.ingest_session(actor_id, fingerprint)`
+  (`pipeline.rs:420`) with an `actor_id` read from the HTTP `/session/end`
+  body (`server.rs:576-577`, defaulting to `"anonymous"` if absent). In
+  production this endpoint is only ever called from
+  `_sentinel_session_end()` (`abigail_hardened_enhanced.py:1473`), which is
+  itself only ever invoked with the `session_id` argument
+  (`abigail_hardened_enhanced.py:752`, `:3047`) — `actor_id` is never
+  passed, so the function's default fires every time:
+  `actor_id: str = "abigail"`. Every real user, in every session, is
+  currently ingested into `StrategicMemory` under the single literal
+  key `"abigail"`.
+- **Read path** — the actual advisory lookup on the hot inbound path,
+  `init_session_memory()` → `advise_session_start()`
+  (`pipeline.rs:499`), is called as
+  `self.strategic_memory.read().advise_session_start(session_id)` —
+  passing `session_id`, not `actor_id`, into a parameter the function
+  itself names `actor_id` (`session_memory.rs:563`,
+  `self.actors.get(actor_id)`). `session_id` is never the literal string
+  `"abigail"`, so this lookup misses every single time in production.
+
+Net effect: independent of the session-rotation question, **Tier 2
+(`StrategicMemory`) provides zero live cross-session protection today.**
+The read and write paths use disjoint key spaces that structurally cannot
+intersect, so `advise_session_start` always falls through to the default
+`SessionStartAdvice` (`Clear`, threshold ×1.0, no advisory) regardless of
+an actor's history. This is not merely "evadable by rotating the header" —
+it does not function even for a single non-adversarial user who never
+rotates anything. Naively fixing only the key mismatch (thread the real
+`session_id`'s owning actor through to both calls) would not be safe
+either: since the write side is currently a hardcoded constant, every
+distinct human user in the system would collapse onto one shared
+`"abigail"` actor profile — indiscriminate aggregation across all users,
+the opposite failure mode from evasion.
+
+No fix applied here — this is a design question (what should `actor_id`
+be bound to for an anonymous, unauthenticated caller?) belonging to
+whichever gate takes up cross-session governance identity, not a
+one-line wiring correction. `governance-spine/tests/durable_memory.rs`
+does not catch this because its tests call `ingest_session` and read back
+under the same, consistently-chosen key — the mismatch is in the
+integration wiring (`pipeline.rs`), not in `StrategicMemory` itself, so
+unit-level tests of `StrategicMemory` in isolation cannot see it.
+
+Open questions this bears on, both unresolved by design (see brief §6):
+
+- **Q-03** — no longer just "fail closed vs. server-side mint" for an
+  absent header. The real question is what session/actor identity is
+  *bound to* and whether that binding is authenticated. For an
+  authenticated caller, bind to the account. For an anonymous one, a
+  client-supplied id is a convenience identifier for UX continuity, not a
+  security boundary, and should not be trusted as the sole key for
+  accumulation-based governance.
+- **Q-08** (new) — *"What does `actor_id` derive from at
+  `pipeline.rs:420` and `:499`? If it derives from `session_id`,
+  `StrategicMemory` inherits the evasion and Tier 2 provides no
+  cross-session protection against an adversary who rotates the
+  header."* Answered by the trace above: `:420`'s `actor_id` does *not*
+  derive from `session_id` — it derives from an HTTP body field that
+  production never populates, so it is always the constant `"abigail"`.
+  `:499` uses `session_id` directly where `actor_id` was clearly intended
+  (the parameter is literally named `actor_id`). Both paths are broken,
+  independently, in different directions.
+
 ## GOVMEM_V2_SCAFFOLDING_NOT_WIRED
 
 `governance-spine/src/govmem.rs`'s `GovMem` struct carries three fields —

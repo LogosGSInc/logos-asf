@@ -307,6 +307,18 @@ function abigailApiUrl(path) {
   return `${abigailApiBase()}${path}`;
 }
 
+// Per-conversation session id (Gate 0, GovMem convergence). Backend keys
+// governance accumulation off X-Session-ID, falling back to remote_addr
+// when absent — without this header, multiple dashboard users behind one
+// NAT would share Sentinel/GovMem session state. In-memory only.
+const CHAT_SESSION_ID = (function () {
+  try {
+    return crypto.randomUUID();
+  } catch (e) {
+    return "sess-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+  }
+})();
+
 
 function resolveApiUrl(url) {
   if (typeof url !== "string") return url;
@@ -893,7 +905,8 @@ async function handleSend() {
   renderChat();
 
   try {
-    const result = await postJSON(abigailApiUrl("/api/chat"), { message: text });
+    const result = await postJSON(abigailApiUrl("/api/chat"), { message: text },
+      { "X-Session-ID": CHAT_SESSION_ID });
     state.chatBusy = false;
     if (result.ok) {
       pushChat("agent", result.text,
