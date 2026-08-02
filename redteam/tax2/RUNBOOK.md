@@ -23,7 +23,7 @@ All of the following must be satisfied before running the harness:
 - [ ] No secrets, credentials, or API keys are in scope
 - [ ] Explicit operator approval is recorded before run begins
 - [ ] Output directories (`haap_audits/`, `govmem_ingest/`) exist and are local only
-- [ ] Python dependency `requests` is installed (`pip install requests`)
+- [ ] Python dependencies installed (`pip install -r redteam/tax2/requirements.txt`)
 
 ---
 
