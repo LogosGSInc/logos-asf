@@ -372,3 +372,36 @@ Do not pass these into should_block(); threshold behavior must not change."
 This comment was correct at the time it was written. Gate 2 intentionally
 supersedes it. The comment is removed as part of Gate 2's implementation;
 its constraint no longer holds and leaving it would mislead future readers.
+
+## TAX2_REQUESTS_UNDECLARED
+
+**Status:** Open — follow-on, not fixed here
+**Severity:** Low (works today; breaks on a clean environment)
+
+`redteam/tax2/harness/fasdtest_dark_psych_v2_1.py` imports `requests`
+(lines 27, 371, 375, 467) but no installable dependency manifest in the
+repo declares it — it isn't in any `requirements*.txt`. The harness works
+in any environment that happens to already have `requests` installed
+(true of every environment this has been run in so far), but a genuinely
+clean environment would fail with `ModuleNotFoundError` at import time.
+
+**Fix (not done here):** add `requests` to whichever manifest governs the
+TAX2 harness's dependencies (a `requirements.txt` alongside the harness,
+or the repo-root one if TAX2 is meant to share it).
+
+## UTC_TIMESTAMP_DEPRECATED
+
+**Status:** Open — follow-on, not fixed here
+**Severity:** Low (non-blocking deprecation warning, not a correctness bug)
+
+`datetime.datetime.utcnow()` is deprecated as of Python 3.12 (confirmed
+via `DeprecationWarning` in the pytest run). Five call sites in
+`abigail/abigail_hardened_enhanced.py`: lines 200, 687, 1342, 3006, 3021 —
+all audit/state-timestamp writes (`log_event`, kill-switch state,
+provider-execution issuance, department kill/restart state).
+
+**Fix (not done here):** replace each with
+`datetime.datetime.now(datetime.UTC).isoformat()`. Track as one cleanup
+pass across all audit-writing boundaries rather than fixing piecemeal —
+only touch these lines incidentally if a future gate already has a reason
+to edit the same boundary.
