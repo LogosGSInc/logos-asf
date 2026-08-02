@@ -74,8 +74,9 @@ def test_govmem_rs_matches_registry():
         "load_dept_configs_from_registry must filter on status == \"active\""
     assert "let dept_ids = vec![" not in src, \
         "hardcoded dept_ids vec must be gone"
-    assert re.search(r'pub fn new\(mode: GovMemMode\) -> Self \{\s*let department_configs = load_dept_configs_from_registry\(\);', src), \
-        "GovMem::new() must build department_configs via load_dept_configs_from_registry()"
+    assert re.search(r'department_configs:\s*load_dept_configs_from_registry\(\)', src), \
+        "GovMem's constructor must build department_configs via load_dept_configs_from_registry() " \
+        "(Gate 3: GovMem::new() delegates to new_with_sessions(), which is where this now lives)"
 
 def test_asf_departments_matches_registry():
     """ASF_DEPARTMENTS in abigail_hardened_enhanced.py must equal active registry codes.

@@ -234,14 +234,16 @@ Open questions this bears on, both unresolved by design (see brief §6):
 
 ## GOVMEM_V2_SCAFFOLDING_NOT_WIRED
 
-`governance-spine/src/govmem.rs`'s `GovMem` struct carries three fields —
-`v1_sessions`, `embedding_model`, `mpa` — that are initialized in `new()`
-but never read anywhere in the module. This was independently confirmed
-by both the Rust compiler's dead-code lint and a full ground-truth survey
-of the codebase (`ABIGAIL_DEFINITION.md` §3.1):
+**Status:** Partially resolved — Gate 3 (`v1_sessions`/`should_block`); `embedding_model`/`mpa` remain open
 
-- `v1_sessions` is never touched by `record_turn`'s V1 branch, which is
-  itself a documented no-op (its comment says "delegate to
+`governance-spine/src/govmem.rs`'s `GovMem` struct originally carried
+three fields — `v1_sessions`, `embedding_model`, `mpa` — that were
+initialized in `new()` but never read anywhere in the module. This was
+independently confirmed by both the Rust compiler's dead-code lint and a
+full ground-truth survey of the codebase (`ABIGAIL_DEFINITION.md` §3.1):
+
+- `v1_sessions` was never touched by `record_turn`'s V1 branch, which was
+  itself a documented no-op (its comment said "delegate to
   session_memory.rs — not implemented here").
 - `embedding_model` and `mpa` are hardcoded to `None` at construction and
   no code path ever loads them. Their backing types (`SentenceEmbedder`,
@@ -249,18 +251,25 @@ of the codebase (`ABIGAIL_DEFINITION.md` §3.1):
   `// PLACEHOLDER TYPES (To be implemented in Phase 2)`.
 - `GovMemMode` defaults to `V1` (`pipeline.rs`, reads `GOVMEM_MODE`, not
   set anywhere in `docker-compose.yml`/`.abigail.env`), so even the V2
-  code path these fields exist for is not exercised in the real
-  deployment today.
+  code path `embedding_model`/`mpa` exist for is still not exercised in
+  the real deployment today.
 
-This is left as a **tracked, intentionally unsuppressed** compiler
-signal, not silenced — see the field-level `#[allow(dead_code)]`
-annotations in `govmem.rs`, each with a comment pointing back to this
-entry. A blanket module- or struct-level allow was deliberately rejected:
-it would make the compiler stop corroborating this gap, and the gap
-itself (GovMem V2 as inert scaffolding rather than live capability) is
-real, documented, unresolved architecture — not lint noise to be cleaned
-up. Closing this finding means either wiring these fields to something
-real or removing them outright, not suppressing the warning.
+**Gate 3 update:** `v1_sessions` is no longer dead. Renamed
+`session_memories`, it's now the same `Arc` `GovernancePipeline` holds
+(shared, not duplicated — see `DEPARTMENT_LIST_DIVERGENCE`-adjacent Tier 1
+convergence work below), and `should_block()` reads it directly,
+unconditional on `GovMemMode` — so this part of the scaffolding is live
+regardless of whether `GOVMEM_MODE=v2` is ever set. Its `#[allow(dead_code)]`
+annotation is removed accordingly.
+
+`embedding_model` and `mpa` remain exactly as described above — hardcoded
+`None`, backing placeholder types, gated behind `GovMemMode::V2` which
+nothing sets. This is left as a **tracked, intentionally unsuppressed**
+compiler signal, not silenced — see the remaining field-level
+`#[allow(dead_code)]` annotations in `govmem.rs`, each with a comment
+pointing back to this entry. Closing the rest of this finding means either
+wiring these two fields to something real or removing them outright, not
+suppressing the warning.
 
 ## DEPARTMENT_LIST_DIVERGENCE
 
@@ -372,6 +381,73 @@ Do not pass these into should_block(); threshold behavior must not change."
 This comment was correct at the time it was written. Gate 2 intentionally
 supersedes it. The comment is removed as part of Gate 2's implementation;
 its constraint no longer holds and leaving it would mislead future readers.
+
+## GOVMEM_TIER1_CONVERGENCE
+
+**Status:** Resolved — Gate 3
+
+**Root cause:** Two independent, disconnected per-session threat trackers
+existed in `governance-spine`. `GovernancePipeline.session_memories`
+(`SessionMemory`, `session_memory.rs`) is the real accumulator —
+`ingest_to_memory` populates it every turn, and it drives the arbiter's
+`threshold_modifier`. `GovMem.v2_sessions`' `semantic_drift_score`/
+`mpa_anomaly_score` is what `should_block()` actually read — but those
+fields are permanent `0.0` placeholders (`embedding_model`/`mpa` are never
+wired, see `GOVMEM_V2_SCAFFOLDING_NOT_WIRED`), and the whole check was
+gated behind `GovMemMode::V2`, which nothing in any compose/env file ever
+sets. Net effect: `should_block()` always returned `false` in every real
+deployment, regardless of actual accumulated threat.
+
+**Resolution:** `GovMem` now holds `session_memories` — the *same* `Arc`
+`GovernancePipeline` constructs and shares at `GovernancePipeline::new()`
+(hoisted before `GovMem::new_with_sessions()` is called, cloned into both,
+never a second independent map). `should_block()` reads it directly and
+unconditionally (no more `mode != V2` gate) — this is what
+`GovMemMode::V1`'s own doc comment ("Rule-based only — existing
+session_memory.rs") always claimed to be.
+
+**Threshold comparison formula (a design decision this gate had to make,
+not specified in advance):** the old check was `score > threshold` where
+`score` was a semantic-drift float. Tier 1's `SessionMemory` doesn't
+expose a comparable raw float — its native output is `MemoryState`
+(`Clear`/`Watching`/`Elevated`/`Escalated`/`Locked`) and
+`threshold_modifier()` (1.0 down to 0.0, *tightening* as severity rises).
+To preserve the same comparison direction and department semantics
+(`DEPT_THRESHOLD_CLIENT_SELECTABLE` — lower `drift_threshold` = stricter
+department = blocks sooner), this gate defines `block_score = 1.0 -
+threshold_modifier()`: `Clear`=0.0, `Watching`=0.15, `Elevated`=0.35,
+`Escalated`=0.60, `Locked`=1.0. `should_block` is `block_score >
+department_threshold`. This is a reasonable mapping, not a specified one —
+worth operator review if the department threshold values in
+`departments/registry.json` are ever revisited, since they were tuned
+against the old (always-`false`) check and have no track record against
+this one.
+
+**Also fixed as part of the same instrumentation pass:**
+- `pipeline.rs::outbound()` labeled its own corridor evaluation
+  `"corridor_out"` — it was copy-pasted from `inbound()`'s L2 call and
+  still said `"corridor_in"`, making every outbound `LayerSignal`
+  indistinguishable from an inbound one in session history.
+- `pipeline.rs::outbound()` now calls `self.govmem.record_turn(...)` with
+  `MessageDirection::SystemToUser` — previously only `inbound()` called
+  `record_turn` at all, so outbound turns never appeared in
+  `GovMemSession.messages` history. `department_id`/`agent_id` are passed
+  as `None` here (metadata only, `record_turn` doesn't feed `should_block`)
+  since `outbound()` has no caller-supplied identity context today —
+  threading that through was out of this gate's scope.
+
+**Explicitly not done — Tier 2 stays inert (Q-08a, Option D):**
+`StrategicMemory` (`session_memory.rs`) is untouched. The two `actor_id` boundaries
+(`pipeline.rs::end_session` and `::init_session_memory`) already had
+`TODO(Q-08)` comments describing the bug (`actor_id` is always the
+constant `"abigail"` in production — see `SESSION_ID_CLIENT_CONTROLLED`).
+This gate adds `TODO(Q-08a)` at both, in the code itself, stating the
+decision explicitly: do not "fix" this by substituting `X-Session-ID` or
+any other client-provisioned value as `actor_id` — that trades one
+spoofable identity for another, and Tier 2 giving zero live advisory value
+today is a safer state than Tier 2 giving *wrong* advisory value keyed off
+a spoofable identity. Tier 2 stays inert until Abigail can supply a
+server-authenticated durable actor identifier.
 
 ## TAX2_REQUESTS_UNDECLARED
 

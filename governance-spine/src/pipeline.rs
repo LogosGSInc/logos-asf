@@ -154,7 +154,13 @@ impl GovernancePipeline {
             "v2" => GovMemMode::V2,
             _ => GovMemMode::V1,
         };
-        let govmem = Arc::new(GovMem::new(mode));
+        // Gate 3 (Tier 1 convergence): session_memories is constructed here,
+        // before GovMem, and the SAME Arc is cloned into both this struct's
+        // own field and GovMem — not two independent stores. GovMem's
+        // should_block() reads whatever Pipeline::ingest_to_memory writes.
+        let session_memories: Arc<RwLock<HashMap<String, SessionMemory>>> =
+            Arc::new(RwLock::new(HashMap::new()));
+        let govmem = Arc::new(GovMem::new_with_sessions(Arc::clone(&session_memories), mode));
 
         Ok(Self {
             sentinel,
@@ -165,7 +171,7 @@ impl GovernancePipeline {
             crypto,
             constitutional_evaluator,
             haap,
-            session_memories: Arc::new(RwLock::new(HashMap::new())),
+            session_memories,
             // GS-BUILD-01: back cross-session actor memory with disk when
             // SENTOW_MEMORY_PATH is set (it previously was only printed, never
             // used). Absent the env var this stays in-memory-only, preserving
@@ -379,7 +385,11 @@ impl GovernancePipeline {
         let c_signal = self.corridor.evaluate(
             model_output, Direction::Outbound, session_id, evaluator_ref,
         );
-        self.govmem.record_layer_signal(session_id, "corridor_in", &c_signal);
+        // Gate 3: this is the outbound corridor pass — was mislabeled
+        // "corridor_in" (copy-paste from inbound()'s L2 call), which made
+        // every LayerSignal from this path indistinguishable from an
+        // inbound one in session history.
+        self.govmem.record_layer_signal(session_id, "corridor_out", &c_signal);
         let state = self.arbiter.process_with_modifier(&c_signal, threshold_modifier);
         if let Some(result) = self.check_hard_block(&state, "L2-Corridor-Out", session_id) {
             return result;
@@ -409,7 +419,26 @@ impl GovernancePipeline {
         let s_signal = self.sentinel.inspect(model_output, Direction::Outbound, session_id);
         let state = self.arbiter.process_with_modifier(&s_signal, threshold_modifier);
 
-        self.enforcement_result(state, model_output, session_id)
+        let result = self.enforcement_result(state, model_output, session_id);
+        // Gate 3: outbound turns were never recorded via record_turn at all
+        // (only inbound() called it) — GovMemSession.messages/layer_signals
+        // history was inbound-only. department_id/agent_id aren't threaded
+        // to outbound() (out of Gate 3 scope — no caller currently has that
+        // context here), so both are None; this is metadata only, same as
+        // before Gate 2 threaded them into inbound().
+        let blocked = matches!(
+            result,
+            EnforcementResult::Quarantined(_) | EnforcementResult::HardLocked(_)
+        );
+        self.govmem.record_turn(
+            session_id,
+            model_output,
+            MessageDirection::SystemToUser,
+            blocked,
+            None,
+            None,
+        );
+        result
     }
 
     /// End a session and export fingerprint to Abigail strategic memory.
@@ -433,6 +462,12 @@ impl GovernancePipeline {
             // _sentinel_session_end default). Every user's strategic profile
             // is currently ingested under one shared key. See FINDINGS.md
             // SESSION_ID_CLIENT_CONTROLLED — not fixed here, design question.
+            // TODO(Q-08a): Gate 3 deliberately leaves Tier 2 (StrategicMemory)
+            // inert rather than substitute X-Session-ID or any other
+            // client-provisioned value as actor_id here — that would trade
+            // one spoofable identity for another. This boundary stays as-is
+            // until Abigail can supply a server-authenticated durable actor
+            // identifier. See FINDINGS.md: Q-08a resolution (Option D).
             Some(fp) => self.strategic_memory.write().ingest_session(actor_id, fp),
             // No session state to persist this call — nothing was written, so we
             // must NOT claim persistence (the store may still be disk-backed; that
@@ -518,6 +553,12 @@ impl GovernancePipeline {
         // (see the TODO at end_session() above), this lookup structurally
         // never hits — StrategicMemory currently gives zero live advisory
         // value on the inbound path. See FINDINGS.md SESSION_ID_CLIENT_CONTROLLED.
+        // TODO(Q-08a): do not "fix" this by passing session_id (or any other
+        // client-provisioned value) through as actor_id — that's a durable
+        // spoofable identity, not a real one, and Tier 2 must stay inert
+        // rather than launder a bad actor_id source. See FINDINGS.md: Q-08a
+        // resolution (Option D) — Gate 3 implements Tier 1 fully and leaves
+        // this boundary untouched pending a server-authenticated actor id.
         let advice = self.strategic_memory.read().advise_session_start(session_id);
 
         if let Some(advisory) = &advice.advisory {

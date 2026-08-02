@@ -23,10 +23,13 @@ use chrono::{DateTime, Utc};
 // ═══════════════════════════════════════════════════════════════════════════
 
 pub struct GovMem {
-    // V1 compatibility layer
-    #[allow(dead_code)] // Tracked gap — see FINDINGS.md:
-                         // GOVMEM_V2_SCAFFOLDING_NOT_WIRED
-    v1_sessions: Arc<RwLock<HashMap<String, SessionMemory>>>,
+    // Tier 1: the shared per-session tactical accumulator (session_memory.rs).
+    // Gate 3: this is the SAME Arc that GovernancePipeline.session_memories
+    // holds — cloned, never a second independent store — so writes from
+    // Pipeline::ingest_to_memory are immediately visible here. should_block()
+    // reads this directly; it is what GovMemMode::V1's doc comment ("Rule-based
+    // only — existing session_memory.rs") always meant to be, now actually wired.
+    session_memories: Arc<RwLock<HashMap<String, SessionMemory>>>,
 
     // V2 enhancements
     v2_sessions: Arc<RwLock<HashMap<String, GovMemSession>>>,
@@ -216,18 +219,28 @@ fn load_dept_configs_from_registry() -> HashMap<String, DepartmentConfig> {
 
 impl GovMem {
     pub fn new(mode: GovMemMode) -> Self {
-        let department_configs = load_dept_configs_from_registry();
+        Self::new_with_sessions(Arc::new(RwLock::new(HashMap::new())), mode)
+    }
 
+    /// Gate 3 (Tier 1 convergence): construct a GovMem that shares the
+    /// caller's own session_memories Arc — the same map GovernancePipeline
+    /// updates on every turn — instead of an independent, never-populated
+    /// one. See the `session_memories` field doc for why this must be a
+    /// clone of the same Arc, not a fresh store.
+    pub fn new_with_sessions(
+        session_memories: Arc<RwLock<HashMap<String, SessionMemory>>>,
+        mode: GovMemMode,
+    ) -> Self {
         Self {
-            v1_sessions: Arc::new(RwLock::new(HashMap::new())),
+            session_memories,
             v2_sessions: Arc::new(RwLock::new(HashMap::new())),
-            department_configs,
+            department_configs: load_dept_configs_from_registry(),
             mode,
             embedding_model: None,
             mpa: None,
         }
     }
-    
+
     /// Record a turn in the session
     pub fn record_turn(
         &self,
@@ -240,8 +253,10 @@ impl GovMem {
     ) {
         match self.mode {
             GovMemMode::V1 => {
-                // V1: Use existing SessionMemory
-                // (Delegate to session_memory.rs - not implemented here)
+                // Gate 3: Tier 1 accumulation (session_memory.rs's SessionMemory)
+                // happens directly against the shared session_memories map via
+                // GovernancePipeline::ingest_to_memory, not through this method —
+                // should_block() reads that map directly. Nothing to do here for V1.
             }
             GovMemMode::V2 => {
                 self.record_turn_v2(session_id, message, direction, blocked, department_id, agent_id);
@@ -334,22 +349,40 @@ impl GovMem {
         }
     }
     
-    /// Check if session should be blocked based on GovMem analysis
+    /// Check if session should be blocked based on Tier 1 (SessionMemory)
+    /// accumulated threat state, thresholded per department.
+    ///
+    /// Gate 3 (Tier 1 convergence): previously read `v2_sessions`'
+    /// `semantic_drift_score`/`mpa_anomaly_score`, which are permanently
+    /// 0.0 placeholders (embedding_model/mpa are never wired — see
+    /// FINDINGS.md: GOVMEM_V2_SCAFFOLDING_NOT_WIRED) gated behind
+    /// `mode == V2`, which nothing in this deployment ever sets — so this
+    /// always returned `false` in production. Now reads the real,
+    /// already-live Tier 1 accumulator (the same SessionMemory map
+    /// GovernancePipeline populates on every turn via `ingest_to_memory`),
+    /// unconditionally — GovMemMode no longer gates this path, matching
+    /// `GovMemMode::V1`'s own doc comment ("Rule-based only — existing
+    /// session_memory.rs").
+    ///
+    /// `block_score` is `1.0 - threshold_modifier()`: Clear=0.0,
+    /// Watching=0.15, Elevated=0.35, Escalated=0.60, Locked=1.0 — rising
+    /// with severity so the `score > threshold` comparison keeps the same
+    /// direction as the pre-Gate-3 logic (client-supplied `department_id`
+    /// still selects the threshold — see FINDINGS.md:
+    /// DEPT_THRESHOLD_CLIENT_SELECTABLE, unchanged by this gate).
     pub fn should_block(&self, session_id: &str, department_id: Option<&str>) -> bool {
-        if self.mode != GovMemMode::V2 {
-            return false;
-        }
-        
-        let sessions = self.v2_sessions.read();
-        if let Some(session) = sessions.get(session_id) {
-            let threshold = department_id
-                .and_then(|dept| self.department_configs.get(dept))
-                .map(|cfg| cfg.drift_threshold)
-                .unwrap_or(0.7);
-            
-            session.semantic_drift_score > threshold || session.mpa_anomaly_score > threshold
-        } else {
-            false
+        let threshold = department_id
+            .and_then(|dept| self.department_configs.get(dept))
+            .map(|cfg| cfg.drift_threshold)
+            .unwrap_or(0.7);
+
+        let sessions = self.session_memories.read();
+        match sessions.get(session_id) {
+            Some(mem) => {
+                let block_score = 1.0 - mem.threshold_modifier();
+                block_score > threshold
+            }
+            None => false,
         }
     }
 }
@@ -383,6 +416,7 @@ impl MemoryPolicyAgent {
 #[cfg(test)]
 mod registry_tests {
     use super::*;
+    use crate::session_memory::MemoryState;
     use std::collections::HashSet;
 
     fn active_registry_codes() -> HashSet<String> {
@@ -424,45 +458,38 @@ mod registry_tests {
     /// actually select a real per-department threshold — see FINDINGS.md:
     /// DEPT_THRESHOLD_CLIENT_SELECTABLE for why this is deliberately a new
     /// bypass surface, not an oversight.
+    ///
+    /// Gate 3: updated to seed the real Tier 1 accumulator (session_memories)
+    /// instead of the now-removed v2_sessions/semantic_drift_score path —
+    /// same intent (department_id selects the threshold), real data source.
     #[test]
     fn should_block_threshold_is_department_selectable() {
-        let govmem = GovMem::new(GovMemMode::V2);
+        let session_memories: Arc<RwLock<HashMap<String, SessionMemory>>> =
+            Arc::new(RwLock::new(HashMap::new()));
         let session_id = "dept-threshold-test";
 
-        // LGL's threshold is 0.8 (most lenient); SEC's is 0.5 (most strict).
-        // Seed a drift score in between so the two departments disagree.
+        // Escalated state -> threshold_modifier 0.40 -> block_score 0.60.
+        // LGL's threshold is 0.8 (most lenient, 0.60 does not exceed it);
+        // SEC's is 0.5 (most strict, 0.60 exceeds it) — the two disagree.
         {
-            let mut sessions = govmem.v2_sessions.write();
-            sessions.insert(
-                session_id.to_string(),
-                GovMemSession {
-                    session_id: session_id.to_string(),
-                    created_at: Utc::now(),
-                    department_id: None,
-                    agent_id: None,
-                    messages: vec![],
-                    embedding_trajectory: vec![],
-                    layer_signals: vec![],
-                    v1_session: SessionMemory::new(session_id),
-                    semantic_drift_score: 0.65,
-                    mpa_anomaly_score: 0.0,
-                    flagged_for_review: false,
-                    human_label: None,
-                },
-            );
+            let mut mem = SessionMemory::new(session_id);
+            mem.memory_state = MemoryState::Escalated;
+            session_memories.write().insert(session_id.to_string(), mem);
         }
+
+        let govmem = GovMem::new_with_sessions(Arc::clone(&session_memories), GovMemMode::V1);
 
         assert!(
             !govmem.should_block(session_id, Some("LGL")),
-            "0.65 is below LGL's 0.8 threshold — must not block"
+            "block_score 0.60 is below LGL's 0.8 threshold — must not block"
         );
         assert!(
             govmem.should_block(session_id, Some("SEC")),
-            "0.65 is above SEC's 0.5 threshold — must block"
+            "block_score 0.60 is above SEC's 0.5 threshold — must block"
         );
         assert!(
             !govmem.should_block(session_id, None),
-            "absent department_id falls back to the 0.7 default — 0.65 must not block"
+            "absent department_id falls back to the 0.7 default — 0.60 must not block"
         );
     }
 }
