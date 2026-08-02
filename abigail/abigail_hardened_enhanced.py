@@ -197,7 +197,7 @@ def _scrub(obj):
     return obj
 
 def log_event(event_type, data):
-    entry = {"ts": datetime.datetime.utcnow().isoformat()+"Z",
+    entry = {"ts": datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat()+"Z",
               "event_type": event_type, "data": _scrub(data)}
     try:
         with _secure_open(LOG_FILE, "a") as fh:
@@ -684,7 +684,7 @@ Style: concise, plain language, reference HAAP layer numbers only when directly 
 class KillSwitch:
     def __init__(self): self.is_active=False; self._at=None
     def activate(self,principal="OPERATOR"):
-        self.is_active=True; self._at=datetime.datetime.utcnow().isoformat()+"Z"
+        self.is_active=True; self._at=datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat()+"Z"
         log_event("KILL_SWITCH_ACTIVATED",{"activated_by":principal,"at":self._at})
     def clear(self,principal="OPERATOR"):
         self.is_active=False; log_event("KILL_SWITCH_CLEARED",{"cleared_by":principal})
@@ -1339,7 +1339,7 @@ def _build_constitution(dept_id, agency_level, permitted, drs_ceiling):
     return {
         "_type":"agent_constitution_v1",
         "_issued_by":"abigail.cp00",
-        "_issued_at":datetime.datetime.utcnow().isoformat()+"Z",
+        "_issued_at":datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat()+"Z",
         "dept_id":dept_id, "agency_level":agency_level, "drs_ceiling":drs_ceiling,
         "authority_chain":{"human_principal":"david.smith","meta_agent":"abigail.cp00",
                            "security_spine":"sentinel.overwatch","this_agent":dept_id},
@@ -3003,7 +3003,7 @@ def build_web_app(session, kill_switch, active_backend):
         principal = (body.get("principal") or "operator").strip()
         reason    = (body.get("reason")    or "operator-issued").strip()
         with _DEPT_LOCK:
-            _DEPT_STATE[d] = {"status":"killed","since":_dt.utcnow().isoformat()+"Z","by":principal,"reason":reason}
+            _DEPT_STATE[d] = {"status":"killed","since":_dt.now(datetime.UTC).replace(tzinfo=None).isoformat()+"Z","by":principal,"reason":reason}
         log_event("DEPT_KILL", {"dept":d,"by":principal,"reason":reason})
         return jsonify({"ok":True,"dept":d,"status":"killed","by":principal,"reason":reason,"scope":"department"})
 
@@ -3018,7 +3018,7 @@ def build_web_app(session, kill_switch, active_backend):
         principal = (body.get("principal") or "operator").strip()
         with _DEPT_LOCK:
             prev = _DEPT_STATE.get(d,{"status":"active"}).get("status")
-            _DEPT_STATE[d] = {"status":"active","since":_dt.utcnow().isoformat()+"Z","by":principal,"previous_status":prev}
+            _DEPT_STATE[d] = {"status":"active","since":_dt.now(datetime.UTC).replace(tzinfo=None).isoformat()+"Z","by":principal,"previous_status":prev}
         log_event("DEPT_RESTART", {"dept":d,"by":principal,"previous":prev})
         return jsonify({"ok":True,"dept":d,"status":"active","by":principal,"previous":prev})
 

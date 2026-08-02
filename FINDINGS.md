@@ -451,33 +451,49 @@ server-authenticated durable actor identifier.
 
 ## TAX2_REQUESTS_UNDECLARED
 
-**Status:** Open — follow-on, not fixed here
-**Severity:** Low (works today; breaks on a clean environment)
+**Status:** Resolved — Gate 4
 
 `redteam/tax2/harness/fasdtest_dark_psych_v2_1.py` imports `requests`
 (lines 27, 371, 375, 467) but no installable dependency manifest in the
-repo declares it — it isn't in any `requirements*.txt`. The harness works
-in any environment that happens to already have `requests` installed
-(true of every environment this has been run in so far), but a genuinely
-clean environment would fail with `ModuleNotFoundError` at import time.
+repo declared it — it worked only because every environment this ran in
+happened to already have `requests` installed; a genuinely clean
+environment would have failed with `ModuleNotFoundError` at import time.
+`redteam/tax2/RUNBOOK.md` even had a manual checklist line acknowledging
+this (`pip install requests`) rather than a declared dependency.
 
-**Fix (not done here):** add `requests` to whichever manifest governs the
-TAX2 harness's dependencies (a `requirements.txt` alongside the harness,
-or the repo-root one if TAX2 is meant to share it).
+**Fix:** added `redteam/tax2/requirements.txt` (`requests==2.34.2`,
+pinned to match what was already installed in every environment this
+harness has run in) — scoped to the harness rather than added to
+`abigail/requirements.txt`, since TAX2 is a standalone red-team client
+that POSTs to Abigail/Sentinel endpoints, not a runtime dependency of the
+app itself. `RUNBOOK.md`'s checklist line now points at the manifest
+(`pip install -r redteam/tax2/requirements.txt`) instead of a one-off
+manual step. `tests/test_tax2_harness_importable.py` (new, 2 tests)
+proves both halves: the manifest declares `requests`, and the harness
+module actually imports cleanly.
 
 ## UTC_TIMESTAMP_DEPRECATED
 
-**Status:** Open — follow-on, not fixed here
-**Severity:** Low (non-blocking deprecation warning, not a correctness bug)
+**Status:** Resolved — Gate 4
 
-`datetime.datetime.utcnow()` is deprecated as of Python 3.12 (confirmed
+`datetime.datetime.utcnow()` was deprecated as of Python 3.12 (confirmed
 via `DeprecationWarning` in the pytest run). Five call sites in
 `abigail/abigail_hardened_enhanced.py`: lines 200, 687, 1342, 3006, 3021 —
 all audit/state-timestamp writes (`log_event`, kill-switch state,
-provider-execution issuance, department kill/restart state).
+provider-execution issuance, department kill/restart state). Two of the
+five (3006, 3021) called it via a local alias (`_dt.utcnow()`, from
+`from datetime import datetime as _dt`), not the literal
+`datetime.datetime.utcnow()` string — both forms fixed.
 
-**Fix (not done here):** replace each with
-`datetime.datetime.now(datetime.UTC).isoformat()`. Track as one cleanup
-pass across all audit-writing boundaries rather than fixing piecemeal —
-only touch these lines incidentally if a future gate already has a reason
-to edit the same boundary.
+**Fix:** each site is now
+`datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat()+"Z"`
+(or the `_dt` equivalent) — not the more obvious
+`datetime.datetime.now(datetime.UTC).isoformat()`, because that produces
+a `+00:00`-suffixed string, changing the on-disk/audit-log timestamp
+format from what every existing consumer of these fields expects (a
+naive ISO string with a literal trailing `Z`). `.replace(tzinfo=None)`
+strips the awareness before formatting, so the output byte-for-byte
+matches the pre-fix format — confirmed via `KillSwitch.activate()` during
+implementation. `DeprecationWarning` no longer appears in the pytest run
+(previously 169 warnings across the suite, all this same warning
+repeated per call site per test).
