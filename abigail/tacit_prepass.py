@@ -245,6 +245,42 @@ def build_tacit_context_card(raw: str, score: int, signals: list, session) -> Op
         }
 
 
+def run_tkr_prepass(raw: str, route, session) -> dict:
+    """RESEARCH_SYNTHESIS research pass (router-wrapper-realignment D2).
+
+    A function, not an agent — wraps the existing, already-wired local Tacit
+    Pre-Pass. TKR-01/TKR-02 (live web/OSINT reconnaissance) are an
+    inactive_stub department (see departments/registry.json: TKR) and are not
+    runtime-activated in this build, so `sources` is always empty rather than
+    fabricated: this is read-only local context, not live web grounding.
+    Escalation-flagged content (security/redteam framing, elevated DRS) is
+    denied at the research stage instead of silently proceeding. Never raises;
+    failure returns a minimal denied bundle so a broken pre-pass fails closed,
+    not open.
+    """
+    try:
+        card = build_tacit_context_card(raw, 0, [], session)
+        denied = bool(card and card.get("escalation_required"))
+        return {
+            "card": card,
+            "sources": [],
+            "web_research_available": False,
+            "denied": denied,
+            "note": (
+                "no live web/TKR reconnaissance agent is wired in this build; "
+                "only local Tacit Pre-Pass context is available"
+            ),
+        }
+    except Exception:
+        return {
+            "card": None,
+            "sources": [],
+            "web_research_available": False,
+            "denied": True,
+            "note": "tkr_prepass_error",
+        }
+
+
 def _prior_context(session) -> str:
     if session.turn_count == 0:
         return "first_turn"

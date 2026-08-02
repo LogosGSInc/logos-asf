@@ -344,6 +344,26 @@
       };
     }
 
+    // router-wrapper-realignment: LOCAL_STATUS / LOCAL_TESTING_GUIDANCE (and
+    // any future lane classified local_no_provider) never call a provider,
+    // so they must never be judged against provider execution evidence —
+    // that's a different lane's contract, not this one's.
+    var localRouterLane =
+      resp.ok === true &&
+      gov.execution_path === "local_no_provider" &&
+      gov.provider_execution_required === false &&
+      gov.execution_status === "completed";
+
+    if (localRouterLane) {
+      return {
+        state: "LOCAL_GOVERNED",
+        icon: "✓",
+        label: "Local governed response",
+        detail: "Provider not required · No tools used · No execution authority " +
+          "requested · Outbound provider evidence not applicable"
+      };
+    }
+
     var localGoverned =
       resp.ok === true &&
       mode === "PUBLIC_ASSIST" &&
