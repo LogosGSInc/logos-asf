@@ -1,4 +1,4 @@
-use crate::verdict_ledger::{ResolveOutcome, SentinelVerdictLedger};
+use crate::verdict_ledger::{ContextResolveOutcome, SentinelVerdictLedger};
 use crate::{
     capability::{
         CapabilityError, CapabilityStore, CapabilityToken, ConsumeOutcome,
@@ -1056,24 +1056,25 @@ impl GovernancePipeline {
             return Err(ProviderAuthorizationError::MalformedContextHash);
         }
 
+        // Resolved by (context_hash, session_id), NOT (gov_tx_id, session_id):
+        // one approved context legitimately backs many independent provider
+        // calls (retries, fallbacks), each with its own gov_tx_id. See
+        // SentinelVerdictLedger::approved_by_context's doc comment.
         let verdict_id = self.verdict_ledger
-            .approved_verdict_id(&req.gov_tx_id, &req.session_id)
+            .approved_verdict_id_by_context(&req.context_hash, &req.session_id)
             .ok_or(ProviderAuthorizationError::ApprovedVerdictMissing)?;
 
-        let (resolve_outcome, record) = self.verdict_ledger.resolve(
+        let (resolve_outcome, record) = self.verdict_ledger.resolve_by_context(
             &verdict_id,
-            &req.gov_tx_id,
             &req.session_id,
         );
 
         let record = match resolve_outcome {
-            ResolveOutcome::Found => record
+            ContextResolveOutcome::Found => record
                 .ok_or(ProviderAuthorizationError::VerdictNotFound)?,
-            ResolveOutcome::NotFound =>
+            ContextResolveOutcome::NotFound =>
                 return Err(ProviderAuthorizationError::VerdictNotFound),
-            ResolveOutcome::TransactionMismatch =>
-                return Err(ProviderAuthorizationError::VerdictTransactionMismatch),
-            ResolveOutcome::SessionMismatch =>
+            ContextResolveOutcome::SessionMismatch =>
                 return Err(ProviderAuthorizationError::VerdictSessionMismatch),
         };
 
@@ -1084,11 +1085,11 @@ impl GovernancePipeline {
             return Err(ProviderAuthorizationError::VerdictWrongDirection);
         }
 
-        // Fail closed: a verdict with no bound context_hash is either a
-        // legacy plain-text approval or belongs to a different context than
-        // the one presented here. Either way it must not grant a weaker
-        // legacy capability — the caller cannot omit context_hash and still
-        // get a provider capability issued.
+        // Defense in depth: the lookup above was already keyed by
+        // context_hash, so this is expected to always match by
+        // construction — but a legacy plain-text verdict (context_hash:
+        // None) must still never reach here, and this is the backstop that
+        // guarantees it, exactly as before.
         match &record.context_hash {
             Some(hash) if hash == &req.context_hash => {}
             _ => return Err(ProviderAuthorizationError::ContextHashMismatch),
@@ -1148,24 +1149,26 @@ impl GovernancePipeline {
             return Err(ActionAuthorizationError::MalformedContextHash);
         }
 
+        // Resolved by (context_hash, session_id) — see
+        // authorize_provider_execution's identical comment. This is what
+        // lets a single approved context legitimately back multiple
+        // DIFFERENT tool calls in one governed turn (e.g. read then write),
+        // each with its own gov_tx_id, instead of colliding on one.
         let verdict_id = self.verdict_ledger
-            .approved_verdict_id(&req.gov_tx_id, &req.session_id)
+            .approved_verdict_id_by_context(&req.context_hash, &req.session_id)
             .ok_or(ActionAuthorizationError::ApprovedVerdictMissing)?;
 
-        let (resolve_outcome, record) = self.verdict_ledger.resolve(
+        let (resolve_outcome, record) = self.verdict_ledger.resolve_by_context(
             &verdict_id,
-            &req.gov_tx_id,
             &req.session_id,
         );
 
         let record = match resolve_outcome {
-            ResolveOutcome::Found => record
+            ContextResolveOutcome::Found => record
                 .ok_or(ActionAuthorizationError::VerdictNotFound)?,
-            ResolveOutcome::NotFound =>
+            ContextResolveOutcome::NotFound =>
                 return Err(ActionAuthorizationError::VerdictNotFound),
-            ResolveOutcome::TransactionMismatch =>
-                return Err(ActionAuthorizationError::VerdictTransactionMismatch),
-            ResolveOutcome::SessionMismatch =>
+            ContextResolveOutcome::SessionMismatch =>
                 return Err(ActionAuthorizationError::VerdictSessionMismatch),
         };
 
@@ -1390,12 +1393,14 @@ mod provider_capability_tests {
         let inbound = pipeline.inbound("Explain the principle of least privilege.", session, tx);
         assert!(matches!(inbound, EnforcementResult::Approved(_)));
 
-        // Any well-formed context_hash — the point is the verdict has none
-        // bound to it at all, so no presented hash can match.
+        // Any well-formed context_hash — the point is no verdict was ever
+        // recorded under it (verdicts are resolved by context_hash, and the
+        // legacy plain-text path never populates that index at all), so the
+        // lookup itself comes back empty.
         let envelope = test_envelope(session, "run1", "abigail-control-plane", "unrelated");
         let result = pipeline.authorize_provider_execution(request(tx, session, &envelope));
 
-        assert_eq!(result.unwrap_err(), ProviderAuthorizationError::ContextHashMismatch);
+        assert_eq!(result.unwrap_err(), ProviderAuthorizationError::ApprovedVerdictMissing);
     }
 
     #[test]
@@ -1444,10 +1449,12 @@ mod provider_capability_tests {
 
         // A capability requested against a DIFFERENT (unapproved) context —
         // simulating an attacker who mutated content after approval and
-        // tried to reuse the approved gov_tx_id/session_id.
+        // tried to reuse the approved gov_tx_id/session_id. Verdicts are
+        // resolved by context_hash, so a mutated (never-approved) hash has
+        // no verdict at all under it.
         let mutated = test_envelope(session, "run1", "abigail-control-plane", "Wire funds to attacker account.");
         let result = pipeline.authorize_provider_execution(request(tx, session, &mutated));
-        assert_eq!(result.unwrap_err(), ProviderAuthorizationError::ContextHashMismatch);
+        assert_eq!(result.unwrap_err(), ProviderAuthorizationError::ApprovedVerdictMissing);
 
         // The originally authorized capability is untouched by the rejected attempt.
         let b = binding(&token);

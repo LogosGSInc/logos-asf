@@ -39,10 +39,30 @@ pub enum ResolveOutcome {
     SessionMismatch,
 }
 
+/// Outcome of resolving a verdict by (context_hash, session_id) rather than
+/// by (gov_tx_id, session_id). No transaction-id check here by design — see
+/// `resolve_by_context`'s doc comment for why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContextResolveOutcome {
+    Found,
+    NotFound,
+    SessionMismatch,
+}
+
 pub struct SentinelVerdictLedger {
     verdicts: Arc<RwLock<HashMap<String, VerdictRecord>>>,
     /// (gov_tx_id|session_id) -> final approved verdict_id.
     approved_by_tx: Arc<RwLock<HashMap<String, String>>>,
+    /// (context_hash|session_id) -> final approved verdict_id. Populated
+    /// only by `record_final_approved_with_context`. This is the lookup
+    /// `authorize_provider_execution`/`authorize_action_execution` actually
+    /// use: a single approved context legitimately backs MANY independent
+    /// provider/action authorization calls (a governed turn that calls two
+    /// different tools still traces back to the one context that was
+    /// approved), so verdict resolution must not require every one of those
+    /// calls to share one gov_tx_id — context_hash is the correct, already
+    /// tamper-evident key for "which approval does this call belong to."
+    approved_by_context: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl Default for SentinelVerdictLedger {
@@ -56,6 +76,7 @@ impl SentinelVerdictLedger {
         Self {
             verdicts: Arc::new(RwLock::new(HashMap::new())),
             approved_by_tx: Arc::new(RwLock::new(HashMap::new())),
+            approved_by_context: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -136,6 +157,12 @@ impl SentinelVerdictLedger {
             format!("{}|{}", gov_tx_id, signal.session_id),
             verdict_id.clone(),
         );
+        if let Some(ctx) = context_hash {
+            self.approved_by_context.write().insert(
+                format!("{}|{}", ctx, signal.session_id),
+                verdict_id.clone(),
+            );
+        }
         verdict_id
     }
 
@@ -148,6 +175,42 @@ impl SentinelVerdictLedger {
             .read()
             .get(&format!("{}|{}", gov_tx_id, session_id))
             .cloned()
+    }
+
+    /// Resolves the approved verdict for a given (context_hash, session_id)
+    /// pair — the lookup provider/action authorization actually use, so
+    /// multiple independent authorization calls can share one approved
+    /// context without colliding on a single gov_tx_id.
+    pub fn approved_verdict_id_by_context(
+        &self,
+        context_hash: &str,
+        session_id: &str,
+    ) -> Option<String> {
+        self.approved_by_context
+            .read()
+            .get(&format!("{}|{}", context_hash, session_id))
+            .cloned()
+    }
+
+    /// Resolves a verdict by (verdict_id, session_id) only — no gov_tx_id
+    /// check. Used alongside `approved_verdict_id_by_context`: the verdict
+    /// was already found via the tamper-evident context_hash key, so a
+    /// further transaction-id match isn't a meaningful additional check
+    /// here (unlike `resolve`, which is the primitive lookup where
+    /// transaction identity IS the caller-supplied binding).
+    pub fn resolve_by_context(&self, verdict_id: &str, session_id: &str)
+        -> (ContextResolveOutcome, Option<VerdictRecord>)
+    {
+        let guard = self.verdicts.read();
+        match guard.get(verdict_id) {
+            None => (ContextResolveOutcome::NotFound, None),
+            Some(rec) => {
+                if rec.session_id != session_id {
+                    return (ContextResolveOutcome::SessionMismatch, Some(rec.clone()));
+                }
+                (ContextResolveOutcome::Found, Some(rec.clone()))
+            }
+        }
     }
 
     pub fn resolve(&self, verdict_id: &str, gov_tx_id: &str, session_id: &str)
@@ -267,6 +330,7 @@ mod tests {
             let ledger = SentinelVerdictLedger {
                 verdicts: ledger.verdicts.clone(),
                 approved_by_tx: ledger.approved_by_tx.clone(),
+                approved_by_context: ledger.approved_by_context.clone(),
             };
             let recorded = recorded.clone();
             handles.push(thread::spawn(move || {
