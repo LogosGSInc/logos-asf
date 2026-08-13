@@ -65,6 +65,14 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+/// True iff `value` is a well-formed lowercase SHA-256 hex digest. Exposed so
+/// callers outside this module (capability issuance, decision recording) can
+/// reject malformed hashes with the same rule the envelope contracts use,
+/// rather than re-implementing or loosening the check.
+pub fn is_sha256_hex(value: &str) -> bool {
+    validate_sha256("external", value).is_ok()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextRole {

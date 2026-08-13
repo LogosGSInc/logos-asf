@@ -25,8 +25,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::crypto::CryptoEngine;
+use crate::envelope::is_sha256_hex;
 
 pub const AUTHORITY_PROVIDER_EXECUTE: &str = "provider.execute";
+/// Consequential tool-call authority, bound to a model-context capability by
+/// `context_hash` and to an exact proposed tool call by `action_hash`.
+pub const AUTHORITY_ACTION_EXECUTE: &str = "action.execute";
 
 // ═══ ERRORS ════════════════════════════════════════════════════════════════
 
@@ -34,11 +38,13 @@ pub const AUTHORITY_PROVIDER_EXECUTE: &str = "provider.execute";
 pub enum CapabilityError {
     /// A required field was empty. Carries the field name.
     EmptyField(&'static str),
+    /// A field that must be a SHA-256 hex digest was not one. Carries the field name.
+    MalformedDigest(&'static str),
     /// TTL configured <= 0.
     InvalidTtl,
     /// Same gov_tx_id + authority already has a decision with DIFFERENT scope.
     TransactionScopeConflict,
-    /// Authority string was not the expected provider.execute.
+    /// Authority string was neither provider.execute nor action.execute.
     WrongAuthority,
 }
 
@@ -63,6 +69,29 @@ pub struct DecisionRequest {
     pub authorization_basis: String,
     pub agency: String,
     pub drs: u8,
+    /// Run identifier this decision is scoped to. Required for both
+    /// authorities — a provider or action capability must not be usable
+    /// under a different run than the one GovSec actually evaluated.
+    pub run_id: String,
+    /// The approved `ModelContextEnvelope.context_hash` this decision traces
+    /// back to. Required for both authorities — closes the gap where a
+    /// caller could request a capability for content GovSec never inspected.
+    pub context_hash: String,
+    /// Signed policy identity active at decision time. Required for both
+    /// authorities so a policy rollback/rotation invalidates outstanding
+    /// capabilities rather than silently carrying the old authorization.
+    pub policy_version: String,
+    /// `AUTHORITY_ACTION_EXECUTE` only: the sealed `ActionEnvelope.action_hash`.
+    /// Empty for `AUTHORITY_PROVIDER_EXECUTE`.
+    pub action_hash: String,
+    /// `AUTHORITY_ACTION_EXECUTE` only: exact tool name. Empty otherwise.
+    pub tool_name: String,
+    /// `AUTHORITY_ACTION_EXECUTE` only: normalized resource kind. Empty otherwise.
+    pub resource_kind: String,
+    /// `AUTHORITY_ACTION_EXECUTE` only: normalized resource locator. Empty otherwise.
+    pub resource_locator: String,
+    /// `AUTHORITY_ACTION_EXECUTE` only: the originating model tool-call id. Empty otherwise.
+    pub tool_call_id: String,
 }
 
 impl DecisionRequest {
@@ -75,13 +104,35 @@ impl DecisionRequest {
         nonempty!(self.gov_tx_id, "gov_tx_id");
         nonempty!(self.session_id, "session_id");
         nonempty!(self.principal_fingerprint, "principal_fingerprint");
-        nonempty!(self.backend, "backend");
-        nonempty!(self.model, "model");
-        nonempty!(self.action_class, "action_class");
         nonempty!(self.sentinel_verdict_id, "sentinel_verdict_id");
         nonempty!(self.policy_hash, "policy_hash");
-        if self.authority != AUTHORITY_PROVIDER_EXECUTE {
-            return Err(CapabilityError::WrongAuthority);
+        nonempty!(self.run_id, "run_id");
+        nonempty!(self.context_hash, "context_hash");
+        nonempty!(self.policy_version, "policy_version");
+        if !is_sha256_hex(&self.context_hash) {
+            return Err(CapabilityError::MalformedDigest("context_hash"));
+        }
+        if !is_sha256_hex(&self.policy_hash) {
+            return Err(CapabilityError::MalformedDigest("policy_hash"));
+        }
+
+        match self.authority.as_str() {
+            AUTHORITY_PROVIDER_EXECUTE => {
+                nonempty!(self.backend, "backend");
+                nonempty!(self.model, "model");
+                nonempty!(self.action_class, "action_class");
+            }
+            AUTHORITY_ACTION_EXECUTE => {
+                nonempty!(self.action_hash, "action_hash");
+                nonempty!(self.tool_name, "tool_name");
+                nonempty!(self.resource_kind, "resource_kind");
+                nonempty!(self.resource_locator, "resource_locator");
+                nonempty!(self.tool_call_id, "tool_call_id");
+                if !is_sha256_hex(&self.action_hash) {
+                    return Err(CapabilityError::MalformedDigest("action_hash"));
+                }
+            }
+            _ => return Err(CapabilityError::WrongAuthority),
         }
         Ok(())
     }
@@ -92,6 +143,14 @@ impl DecisionRequest {
             && d.backend == self.backend
             && d.model == self.model
             && d.action_class == self.action_class
+            && d.run_id == self.run_id
+            && d.context_hash == self.context_hash
+            && d.policy_version == self.policy_version
+            && d.action_hash == self.action_hash
+            && d.tool_name == self.tool_name
+            && d.resource_kind == self.resource_kind
+            && d.resource_locator == self.resource_locator
+            && d.tool_call_id == self.tool_call_id
     }
 }
 
@@ -112,6 +171,14 @@ pub struct Decision {
     pub drs: u8,
     pub authorized_at: DateTime<Utc>,
     pub issued: bool,
+    pub run_id: String,
+    pub context_hash: String,
+    pub policy_version: String,
+    pub action_hash: String,
+    pub tool_name: String,
+    pub resource_kind: String,
+    pub resource_locator: String,
+    pub tool_call_id: String,
 }
 
 // Boxing Issued(CapabilityToken) would shave the enum's stack size but
@@ -147,6 +214,14 @@ pub struct CapabilityToken {
     pub max_uses: u32,
     pub use_count: u32,
     pub signature: String,
+    pub run_id: String,
+    pub context_hash: String,
+    pub policy_version: String,
+    pub action_hash: String,
+    pub tool_name: String,
+    pub resource_kind: String,
+    pub resource_locator: String,
+    pub tool_call_id: String,
 }
 
 impl CapabilityToken {
@@ -155,7 +230,7 @@ impl CapabilityToken {
     /// only mutable field and is deliberately excluded.
     pub fn canonical(&self) -> String {
         format!(
-            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             self.token_id,
             self.haap_decision_id,
             self.gov_tx_id,
@@ -170,6 +245,14 @@ impl CapabilityToken {
             self.issued_at.timestamp(),
             self.expires_at.timestamp(),
             self.max_uses,
+            self.run_id,
+            self.context_hash,
+            self.policy_version,
+            self.action_hash,
+            self.tool_name,
+            self.resource_kind,
+            self.resource_locator,
+            self.tool_call_id,
         )
     }
 }
@@ -187,6 +270,14 @@ pub enum ConsumeOutcome {
     AuthorityMismatch,
     BackendMismatch,
     ModelMismatch,
+    RunMismatch,
+    ContextHashMismatch,
+    PolicyVersionMismatch,
+    PolicyHashMismatch,
+    ActionHashMismatch,
+    ToolMismatch,
+    ResourceMismatch,
+    ToolCallIdMismatch,
 }
 
 impl ConsumeOutcome {
@@ -204,12 +295,23 @@ impl ConsumeOutcome {
             ConsumeOutcome::AuthorityMismatch   => "CAPABILITY_AUTHORITY_MISMATCH",
             ConsumeOutcome::BackendMismatch     => "CAPABILITY_BACKEND_MISMATCH",
             ConsumeOutcome::ModelMismatch       => "CAPABILITY_MODEL_MISMATCH",
+            ConsumeOutcome::RunMismatch            => "CAPABILITY_RUN_MISMATCH",
+            ConsumeOutcome::ContextHashMismatch     => "CAPABILITY_CONTEXT_HASH_MISMATCH",
+            ConsumeOutcome::PolicyVersionMismatch   => "CAPABILITY_POLICY_VERSION_MISMATCH",
+            ConsumeOutcome::PolicyHashMismatch      => "CAPABILITY_POLICY_HASH_MISMATCH",
+            ConsumeOutcome::ActionHashMismatch      => "CAPABILITY_ACTION_HASH_MISMATCH",
+            ConsumeOutcome::ToolMismatch            => "CAPABILITY_TOOL_MISMATCH",
+            ConsumeOutcome::ResourceMismatch        => "CAPABILITY_RESOURCE_MISMATCH",
+            ConsumeOutcome::ToolCallIdMismatch      => "CAPABILITY_TOOL_CALL_ID_MISMATCH",
         }
     }
 }
 
-/// What the adapter presents at consume. Now includes principal + authority so
+/// What the adapter presents at consume. Includes principal + authority so
 /// consume verifies WHO is presenting, not just what scope is claimed.
+/// `action_hash`/`tool_name`/`resource_kind`/`resource_locator`/`tool_call_id`
+/// are only compared when the token's authority is `AUTHORITY_ACTION_EXECUTE`;
+/// provider-execute callers pass empty strings for them.
 pub struct PresentedBinding<'a> {
     pub token_id: &'a str,
     pub gov_tx_id: &'a str,
@@ -218,6 +320,15 @@ pub struct PresentedBinding<'a> {
     pub authority: &'a str,
     pub backend: &'a str,
     pub model: &'a str,
+    pub run_id: &'a str,
+    pub context_hash: &'a str,
+    pub policy_version: &'a str,
+    pub policy_hash: &'a str,
+    pub action_hash: &'a str,
+    pub tool_name: &'a str,
+    pub resource_kind: &'a str,
+    pub resource_locator: &'a str,
+    pub tool_call_id: &'a str,
 }
 
 // ═══ STORE — one lock over all three maps ══════════════════════════════════
@@ -300,6 +411,14 @@ impl CapabilityStore {
             drs: req.drs,
             authorized_at: Utc::now(),
             issued: false,
+            run_id: req.run_id,
+            context_hash: req.context_hash,
+            policy_version: req.policy_version,
+            action_hash: req.action_hash,
+            tool_name: req.tool_name,
+            resource_kind: req.resource_kind,
+            resource_locator: req.resource_locator,
+            tool_call_id: req.tool_call_id,
         };
         st.decisions.insert(decision_id.clone(), decision);
         st.decision_by_tx.insert(key, decision_id.clone());
@@ -340,6 +459,14 @@ impl CapabilityStore {
             max_uses: 1,
             use_count: 0,
             signature: String::new(),
+            run_id: decision.run_id.clone(),
+            context_hash: decision.context_hash.clone(),
+            policy_version: decision.policy_version.clone(),
+            action_hash: decision.action_hash.clone(),
+            tool_name: decision.tool_name.clone(),
+            resource_kind: decision.resource_kind.clone(),
+            resource_locator: decision.resource_locator.clone(),
+            tool_call_id: decision.tool_call_id.clone(),
         };
         token.signature = self.crypto.sign(token.canonical().as_bytes());
 
@@ -369,8 +496,11 @@ impl CapabilityStore {
         if Utc::now() >= token.expires_at { return ConsumeOutcome::Expired; }
 
         // Authority + WHO, then scope.
-        if token.authority != AUTHORITY_PROVIDER_EXECUTE
-            || token.authority != p.authority {
+        let known_authority = matches!(
+            token.authority.as_str(),
+            AUTHORITY_PROVIDER_EXECUTE | AUTHORITY_ACTION_EXECUTE
+        );
+        if !known_authority || token.authority != p.authority {
             return ConsumeOutcome::AuthorityMismatch;
         }
         if token.principal_fingerprint != p.principal_fingerprint {
@@ -378,8 +508,20 @@ impl CapabilityStore {
         }
         if token.gov_tx_id  != p.gov_tx_id  { return ConsumeOutcome::TransactionMismatch; }
         if token.session_id != p.session_id { return ConsumeOutcome::SessionMismatch; }
+        if token.run_id     != p.run_id     { return ConsumeOutcome::RunMismatch; }
+        if token.context_hash != p.context_hash { return ConsumeOutcome::ContextHashMismatch; }
+        if token.policy_version != p.policy_version { return ConsumeOutcome::PolicyVersionMismatch; }
+        if token.policy_hash != p.policy_hash { return ConsumeOutcome::PolicyHashMismatch; }
         if token.backend    != p.backend    { return ConsumeOutcome::BackendMismatch; }
         if token.model      != p.model      { return ConsumeOutcome::ModelMismatch; }
+        if token.authority == AUTHORITY_ACTION_EXECUTE {
+            if token.action_hash != p.action_hash { return ConsumeOutcome::ActionHashMismatch; }
+            if token.tool_name   != p.tool_name   { return ConsumeOutcome::ToolMismatch; }
+            if token.resource_kind != p.resource_kind || token.resource_locator != p.resource_locator {
+                return ConsumeOutcome::ResourceMismatch;
+            }
+            if token.tool_call_id != p.tool_call_id { return ConsumeOutcome::ToolCallIdMismatch; }
+        }
 
         token.use_count += 1;
         ConsumeOutcome::Authorized
@@ -422,10 +564,43 @@ mod tests {
             model: "llama-3.3-70b-versatile".into(),
             action_class: "chat".into(),
             sentinel_verdict_id: "sv1".into(),
-            policy_hash: "policy_v1".into(),
+            policy_hash: "d".repeat(64),
             authorization_basis: "BelowRiskThreshold".into(),
             agency: "L2".into(),
             drs: 20,
+            run_id: "run1".into(),
+            context_hash: "c".repeat(64),
+            policy_version: "policy-v1".into(),
+            action_hash: String::new(),
+            tool_name: String::new(),
+            resource_kind: String::new(),
+            resource_locator: String::new(),
+            tool_call_id: String::new(),
+        }
+    }
+
+    fn action_req(tx: &str) -> DecisionRequest {
+        DecisionRequest {
+            gov_tx_id: tx.into(),
+            session_id: "sess1".into(),
+            principal_fingerprint: "fpADMIN00000000".into(),
+            authority: AUTHORITY_ACTION_EXECUTE.into(),
+            backend: String::new(),
+            model: String::new(),
+            action_class: "tool:bash".into(),
+            sentinel_verdict_id: "sv1".into(),
+            policy_hash: "d".repeat(64),
+            authorization_basis: "RequireAuthorization".into(),
+            agency: "L2".into(),
+            drs: 20,
+            run_id: "run1".into(),
+            context_hash: "c".repeat(64),
+            policy_version: "policy-v1".into(),
+            action_hash: "a".repeat(64),
+            tool_name: "bash".into(),
+            resource_kind: "shell".into(),
+            resource_locator: "echo hi".into(),
+            tool_call_id: "call1".into(),
         }
     }
 
@@ -437,11 +612,24 @@ mod tests {
         }
     }
 
+    fn action_cap(s: &CapabilityStore) -> CapabilityToken {
+        let did = s.record_decision(action_req("tx-action-1")).expect("record");
+        match s.issue_after_authorization(&did) {
+            IssueOutcome::Issued(c) => c,
+            o => panic!("expected Issued, got {:?}", o),
+        }
+    }
+
     fn good_binding<'a>(t: &'a CapabilityToken) -> PresentedBinding<'a> {
         PresentedBinding {
             token_id: &t.token_id, gov_tx_id: &t.gov_tx_id,
             session_id: &t.session_id, principal_fingerprint: &t.principal_fingerprint,
             authority: &t.authority, backend: &t.backend, model: &t.model,
+            run_id: &t.run_id, context_hash: &t.context_hash, policy_version: &t.policy_version,
+            policy_hash: &t.policy_hash,
+            action_hash: &t.action_hash, tool_name: &t.tool_name,
+            resource_kind: &t.resource_kind, resource_locator: &t.resource_locator,
+            tool_call_id: &t.tool_call_id,
         }
     }
 
@@ -530,6 +718,97 @@ mod tests {
         assert_eq!(s.consume(&b), ConsumeOutcome::AuthorityMismatch);
     }
 
+    // ── NEW: context/run/policy binding (model-context wiring) ──
+    #[test] fn run_mismatch_rejected() {
+        let s = store(); let c = cap(&s);
+        let mut b = good_binding(&c); b.run_id = "run-other";
+        assert_eq!(s.consume(&b), ConsumeOutcome::RunMismatch);
+    }
+    #[test] fn context_hash_mismatch_rejected() {
+        let s = store(); let c = cap(&s);
+        let other = "f".repeat(64);
+        let mut b = good_binding(&c); b.context_hash = &other;
+        assert_eq!(s.consume(&b), ConsumeOutcome::ContextHashMismatch);
+    }
+    #[test] fn policy_version_mismatch_rejected() {
+        let s = store(); let c = cap(&s);
+        let mut b = good_binding(&c); b.policy_version = "policy-v2";
+        assert_eq!(s.consume(&b), ConsumeOutcome::PolicyVersionMismatch);
+    }
+    #[test] fn policy_hash_mismatch_rejected() {
+        let s = store(); let c = cap(&s);
+        let other = "e".repeat(64);
+        let mut b = good_binding(&c); b.policy_hash = &other;
+        assert_eq!(s.consume(&b), ConsumeOutcome::PolicyHashMismatch);
+    }
+    #[test] fn missing_context_hash_rejected() {
+        let s = store();
+        let mut r = req("tx1"); r.context_hash = "".into();
+        assert_eq!(s.record_decision(r).err(), Some(CapabilityError::EmptyField("context_hash")));
+    }
+    #[test] fn malformed_context_hash_rejected() {
+        let s = store();
+        let mut r = req("tx1"); r.context_hash = "not-a-hash".into();
+        assert_eq!(s.record_decision(r).err(), Some(CapabilityError::MalformedDigest("context_hash")));
+    }
+
+    // ── NEW: action-authority binding (tool-call wiring) ──
+    #[test] fn action_capability_binds_action_hash_tool_and_resource() {
+        let s = store(); let c = action_cap(&s);
+        assert_eq!(c.authority, AUTHORITY_ACTION_EXECUTE);
+        assert_eq!(s.consume(&good_binding(&c)), ConsumeOutcome::Authorized);
+    }
+    #[test] fn action_hash_mismatch_rejected() {
+        let s = store(); let c = action_cap(&s);
+        let other = "b".repeat(64);
+        let mut b = good_binding(&c); b.action_hash = &other;
+        assert_eq!(s.consume(&b), ConsumeOutcome::ActionHashMismatch);
+    }
+    #[test] fn tool_mismatch_rejected() {
+        let s = store(); let c = action_cap(&s);
+        let mut b = good_binding(&c); b.tool_name = "write";
+        assert_eq!(s.consume(&b), ConsumeOutcome::ToolMismatch);
+    }
+    #[test] fn resource_mismatch_rejected() {
+        let s = store(); let c = action_cap(&s);
+        let mut b = good_binding(&c); b.resource_locator = "rm -rf /";
+        assert_eq!(s.consume(&b), ConsumeOutcome::ResourceMismatch);
+    }
+    #[test] fn tool_call_id_mismatch_rejected() {
+        let s = store(); let c = action_cap(&s);
+        let mut b = good_binding(&c); b.tool_call_id = "call-other";
+        assert_eq!(s.consume(&b), ConsumeOutcome::ToolCallIdMismatch);
+    }
+    #[test] fn action_replay_rejected() {
+        let s = store(); let c = action_cap(&s);
+        assert_eq!(s.consume(&good_binding(&c)), ConsumeOutcome::Authorized);
+        assert_eq!(s.consume(&good_binding(&c)), ConsumeOutcome::AlreadyConsumed);
+    }
+    #[test] fn action_requires_action_fields() {
+        let s = store();
+        let mut r = action_req("tx-a1"); r.tool_name = "".into();
+        assert_eq!(s.record_decision(r).err(), Some(CapabilityError::EmptyField("tool_name")));
+        let mut r2 = action_req("tx-a1"); r2.action_hash = "not-a-hash".into();
+        assert_eq!(s.record_decision(r2).err(), Some(CapabilityError::MalformedDigest("action_hash")));
+    }
+    #[test] fn provider_and_action_decisions_coexist_under_same_gov_tx_id() {
+        // tx_key is (gov_tx_id, authority) — the same transaction may carry
+        // both a provider-execute and an action-execute decision.
+        let s = store();
+        let provider_id = s.record_decision(req("tx-shared")).unwrap();
+        let mut a = action_req("tx-shared");
+        a.gov_tx_id = "tx-shared".into();
+        let action_id = s.record_decision(a).unwrap();
+        assert_ne!(provider_id, action_id);
+    }
+    #[test] fn action_conflicting_tool_same_tx_errors() {
+        let s = store();
+        s.record_decision(action_req("tx-a2")).unwrap();
+        let mut r = action_req("tx-a2"); r.tool_name = "write".into();
+        assert_eq!(s.record_decision(r).err(),
+                   Some(CapabilityError::TransactionScopeConflict));
+    }
+
     // ── NEW: signature corruption ──
     #[test] fn corrupted_signature_rejected() {
         let s = store(); let c = cap(&s);
@@ -612,11 +891,7 @@ mod tests {
         for _ in 0..N {
             let (s, c, ok, rej) = (s.clone(), c.clone(), ok.clone(), rej.clone());
             h.push(thread::spawn(move || {
-                let b = PresentedBinding {
-                    token_id: &c.token_id, gov_tx_id: &c.gov_tx_id,
-                    session_id: &c.session_id, principal_fingerprint: &c.principal_fingerprint,
-                    authority: &c.authority, backend: &c.backend, model: &c.model,
-                };
+                let b = good_binding(&c);
                 match s.consume(&b) {
                     ConsumeOutcome::Authorized => { ok.fetch_add(1, Ordering::SeqCst); }
                     _ => { rej.fetch_add(1, Ordering::SeqCst); }

@@ -19,6 +19,16 @@ pub struct VerdictRecord {
     pub payload_hash: String,
     pub signal_signature: String,
     pub recorded_at: DateTime<Utc>,
+    /// The approved `ModelContextEnvelope.context_hash`, present only when
+    /// this verdict was produced by the context-aware inbound path
+    /// (`inbound_context_with_identity`). `None` for the legacy plain-text
+    /// path (`inbound_with_identity`) — deliberately, so a provider or
+    /// action authorization request that requires a matching context_hash
+    /// can never be satisfied by a legacy text-only approval.
+    pub context_hash: Option<String>,
+    /// The `ModelContextEnvelope.run_id` this approval covers. Same
+    /// legacy-path caveat as `context_hash`.
+    pub run_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,17 +73,46 @@ impl SentinelVerdictLedger {
             payload_hash: signal.payload_hash.clone(),
             signal_signature: signal.signature.clone().unwrap_or_default(),
             recorded_at: Utc::now(),
+            context_hash: None,
+            run_id: None,
         };
         self.verdicts.write().insert(verdict_id.clone(), record);
         verdict_id
     }
 
     /// Record execution authority only after every inbound layer has
-    /// produced a final APPROVED result.
+    /// produced a final APPROVED result. Legacy plain-text path — leaves
+    /// `context_hash`/`run_id` unset, so this verdict can authorize neither
+    /// a provider capability nor an action capability that require them.
     pub fn record_final_approved(
         &self,
         gov_tx_id: &str,
         signal: &GovernanceSignal,
+    ) -> String {
+        self.record_final_approved_inner(gov_tx_id, signal, None, None)
+    }
+
+    /// Record execution authority for the context-aware inbound path.
+    /// `context_hash` is the sealed `ModelContextEnvelope.context_hash` that
+    /// every inspected segment and the full pipeline pass approved;
+    /// `run_id` is the envelope's run identifier. Both are required here —
+    /// this is the only way a verdict acquires them.
+    pub fn record_final_approved_with_context(
+        &self,
+        gov_tx_id: &str,
+        signal: &GovernanceSignal,
+        context_hash: &str,
+        run_id: &str,
+    ) -> String {
+        self.record_final_approved_inner(gov_tx_id, signal, Some(context_hash), Some(run_id))
+    }
+
+    fn record_final_approved_inner(
+        &self,
+        gov_tx_id: &str,
+        signal: &GovernanceSignal,
+        context_hash: Option<&str>,
+        run_id: Option<&str>,
     ) -> String {
         let verdict_id = format!("SV-{}", uuid::Uuid::new_v4().simple());
         let record = VerdictRecord {
@@ -88,6 +127,8 @@ impl SentinelVerdictLedger {
             payload_hash: signal.payload_hash.clone(),
             signal_signature: signal.signature.clone().unwrap_or_default(),
             recorded_at: Utc::now(),
+            context_hash: context_hash.map(str::to_string),
+            run_id: run_id.map(str::to_string),
         };
 
         self.verdicts.write().insert(verdict_id.clone(), record);

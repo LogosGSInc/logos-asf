@@ -1,7 +1,8 @@
 # GovSec canonical envelope contracts
 
-Status: contract implementation and adversarial tests. Pipeline and capability
-wiring intentionally follow in a separate change.
+Status: contracts, pipeline admission, and capability wiring are implemented
+and tested. OpenClaw-side integration (Phase 2/3 of the reconciliation) is
+tracked separately — see the integration evidence report.
 
 ## Trust boundary
 
@@ -79,14 +80,52 @@ mutation, reordering, context rebinding, malformed digests, attachment binding,
 unknown tools, destructive shell, downloaded-code piping, protected writes,
 credential reads, path traversal and browser script execution.
 
-## Next wiring step
+## Pipeline and capability wiring (implemented)
 
-1. Store `context_hash` in the final approved verdict.
-2. Add `context_hash` to `ProviderAuthorizationRequest`, `Decision`,
-   `CapabilityToken` and presented capability binding.
-3. Evaluate `ActionEnvelope` at the OpenClaw `before_tool_call` boundary.
-4. Bind both `context_hash` and `action_hash` into a single-use tool capability.
-5. Write terminal outcomes to an immutable append-only audit sink.
+`GovernancePipeline::inbound_context`/`inbound_context_with_identity`
+(`src/pipeline.rs`) is the context-aware sibling of `inbound`/
+`inbound_with_identity`: it verifies a `ModelContextEnvelope` structurally,
+runs Sentinel over every segment `ContextSource::requires_content_inspection`
+selects (not only the newest turn), then runs Corridor/OverWatch/GovMem/HAAP/
+OIM over the concatenated inspectable content exactly as the plain-text path
+does. On approval it calls `SentinelVerdictLedger::record_final_approved_with_context`,
+which is the *only* way a verdict acquires a bound `context_hash`/`run_id` —
+the legacy plain-text path (`record_final_approved`) never sets them, so it
+can never satisfy a provider or action authorization request.
 
-Hashes prove binding and tamper detection. They do not make an in-memory or
-ordinary file log immutable.
+`GovernancePipeline::authorize_provider_execution` now requires
+`context_hash`/`run_id`/`policy_version` on `ProviderAuthorizationRequest` and
+rejects (fails closed) unless they match the resolved verdict's bound values.
+`GovernancePipeline::authorize_action_execution` resolves the same verdict,
+requires a matching `context_hash`, builds and independently seals an
+`ActionEnvelope` from server-trusted fields, evaluates it with
+`evaluate_strict()`, and denies outright on `ActionDisposition::Deny`.
+
+Both authorities share one generic capability shape in `src/capability.rs`
+(`AUTHORITY_PROVIDER_EXECUTE` / `AUTHORITY_ACTION_EXECUTE`). `CapabilityToken`
+carries `run_id`, `context_hash`, `policy_version`, `policy_hash`, and —
+action-only — `action_hash`, `tool_name`, `resource_kind`, `resource_locator`,
+`tool_call_id`. Every one of these fields is part of the signed
+`canonical()` string, so a capability is unusable if any of them are tampered
+with in storage, and `consume()` compares the *presenter's* claimed values
+against the stored, signature-verified token field-by-field before marking it
+used exactly once.
+
+HTTP surface (`src/server.rs`): `POST /context/inspect` (submit a
+`ModelContextEnvelope`, get back `context_hash`/`run_id`/`verdict_id` on
+approval), `POST /provider/authorize` and `POST /provider/consume` (now
+require `context_hash`/`run_id` in the request body), `POST /action/authorize`
+and `POST /action/consume` (new, mirroring the `/provider/*` pattern rather
+than reviving `/openclaw/*`). Trusted fields — `principal_fingerprint`,
+`policy_hash`, `policy_version` — are always derived server-side from the
+authenticated service token and the running signed configuration; a client
+can request evaluation of untrusted facts (tool name, arguments, resource,
+context content) but cannot assert authority.
+
+## Remaining hardening unit
+
+Write terminal outcomes to an immutable append-only audit sink. The
+`SentinelVerdictLedger`/`CryptoEngine` hash chain here is tamper-evident
+(detects retroactive edits) — it is not immutable storage; nothing in this
+change claims otherwise. See the integration evidence report's "known
+limitations" section.

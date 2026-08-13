@@ -4,9 +4,12 @@
 //! Endpoints:
 //!   GET  /health
 //!   POST /inspect
+//!   POST /context/inspect      (logos.model-context.v1 — full-context admission)
 //!   POST /outbound
-//!   POST /provider/authorize
-//!   POST /provider/consume
+//!   POST /provider/authorize   (requires context_hash + run_id)
+//!   POST /provider/consume     (requires context_hash + run_id)
+//!   POST /action/authorize     (logos.action.v1 — tool-call authorization)
+//!   POST /action/consume
 //!   GET  /session/{id}/state
 //!   POST /session/reset
 //!   POST /session/start
@@ -26,9 +29,11 @@ use serde_json::{json, Value};
 
 use governance_spine::capability::{
     PresentedBinding,
+    AUTHORITY_ACTION_EXECUTE,
     AUTHORITY_PROVIDER_EXECUTE,
 };
-use governance_spine::pipeline::ProviderAuthorizationRequest;
+use governance_spine::pipeline::{ActionAuthorizationRequest, ProviderAuthorizationRequest};
+use governance_spine::envelope::ModelContextEnvelope;
 use governance_spine::{
     GovernancePipeline,
     EnforcementResult,
@@ -62,6 +67,29 @@ fn json_response(status: u16, body: Value) -> String {
         "HTTP/1.1 {} Response\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: http://localhost:7070\r\nX-Content-Type-Options: nosniff\r\n\r\n{}",
         status, body.len(), body
     )
+}
+
+struct ProviderConsumeRequest {
+    capability_id: String,
+    gov_tx_id: String,
+    session_id: String,
+    backend: String,
+    model: String,
+    context_hash: String,
+    run_id: String,
+}
+
+struct ActionConsumeRequest {
+    capability_id: String,
+    gov_tx_id: String,
+    session_id: String,
+    run_id: String,
+    context_hash: String,
+    action_hash: String,
+    tool_name: String,
+    resource_kind: String,
+    resource_locator: String,
+    tool_call_id: String,
 }
 
 pub(crate) fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
@@ -383,6 +411,74 @@ fn handle(
             }
         }
 
+        ("POST", "/context/inspect") => {
+            let envelope: ModelContextEnvelope = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(e) => return write_response(
+                    reader,
+                    json_response(400, json!({
+                        "ok": false,
+                        "error": format!("invalid model context envelope: {e}")
+                    }))
+                ),
+            };
+
+            let body_value: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+            let department_id = optional_json_string(&body_value, "department_id");
+            let agent_id = optional_json_string(&body_value, "agent_id");
+
+            let session_id = envelope.session_id.clone();
+            let gov_tx_id = format!("GTX-{}", uuid::Uuid::new_v4().simple());
+
+            match pipeline.inbound_context_with_identity(
+                &envelope, &gov_tx_id, department_id.as_deref(), agent_id.as_deref(),
+            ) {
+                Err(envelope_error) => json_response(400, json!({
+                    "ok": false,
+                    "error": format!("envelope validation failed: {envelope_error}")
+                })),
+                Ok(result) => match &result {
+                    EnforcementResult::Approved(_) => {
+                        match pipeline.approved_verdict_id(&gov_tx_id, &session_id) {
+                            Some(verdict_id) => json_response(200, json!({
+                                "ok": true,
+                                "verdict": "APPROVED",
+                                "session_id": session_id,
+                                "gov_tx_id": gov_tx_id,
+                                "verdict_id": verdict_id,
+                                "context_hash": envelope.context_hash,
+                                "run_id": envelope.run_id,
+                                "provider_authorizable": true,
+                                "action_authorizable": true
+                            })),
+                            None => json_response(500, json!({
+                                "ok": false,
+                                "verdict": "INTERNAL_AUTHORITY_ERROR",
+                                "session_id": session_id,
+                                "gov_tx_id": gov_tx_id,
+                                "provider_authorizable": false,
+                                "action_authorizable": false,
+                                "error": "final approval receipt missing"
+                            })),
+                        }
+                    }
+                    _ => {
+                        let mut value: Value = serde_json::from_str(
+                            &verdict_json(&result, &session_id)
+                        ).unwrap_or_else(|_| json!({
+                            "ok": false,
+                            "verdict": "SERIALIZATION_ERROR",
+                            "session_id": session_id
+                        }));
+                        value["gov_tx_id"] = json!(gov_tx_id);
+                        value["provider_authorizable"] = json!(false);
+                        value["action_authorizable"] = json!(false);
+                        json_response(200, value)
+                    }
+                }
+            }
+        }
+
         ("POST", "/provider/authorize") => {
             let value: Value = match serde_json::from_str(&body) {
                 Ok(value) => value,
@@ -412,6 +508,13 @@ fn handle(
                     authorization_basis: "FinalPipelineApproved".to_string(),
                     agency: "ExecuteActions".to_string(),
                     drs: pipeline.session_drs(&session_id),
+                    // context_hash/run_id are the values the caller received
+                    // back from a prior /context/inspect APPROVED response —
+                    // never trusted as an assertion of approval, only
+                    // compared against what the pipeline itself recorded.
+                    context_hash: required_json_string(&value, "context_hash")?,
+                    run_id: required_json_string(&value, "run_id")?,
+                    policy_version: pipeline.active_policy_version(),
                 })
             })();
 
@@ -435,6 +538,9 @@ fn handle(
                             "action_class": token.action_class,
                             "verdict_id": token.sentinel_verdict_id,
                             "policy_hash": token.policy_hash,
+                            "run_id": token.run_id,
+                            "context_hash": token.context_hash,
+                            "policy_version": token.policy_version,
                             "expires_at": token.expires_at,
                             "max_uses": token.max_uses
                         })),
@@ -460,17 +566,16 @@ fn handle(
                 ),
             };
 
-            let parsed = (|| -> Result<
-                (String, String, String, String, String),
-                String
-            > {
-                Ok((
-                    required_json_string(&value, "capability_id")?,
-                    required_json_string(&value, "gov_tx_id")?,
-                    required_json_string(&value, "session_id")?,
-                    required_json_string(&value, "backend")?,
-                    required_json_string(&value, "model")?,
-                ))
+            let parsed = (|| -> Result<ProviderConsumeRequest, String> {
+                Ok(ProviderConsumeRequest {
+                    capability_id: required_json_string(&value, "capability_id")?,
+                    gov_tx_id: required_json_string(&value, "gov_tx_id")?,
+                    session_id: required_json_string(&value, "session_id")?,
+                    backend: required_json_string(&value, "backend")?,
+                    model: required_json_string(&value, "model")?,
+                    context_hash: required_json_string(&value, "context_hash")?,
+                    run_id: required_json_string(&value, "run_id")?,
+                })
             })();
 
             match parsed {
@@ -478,23 +583,28 @@ fn handle(
                     "ok": false,
                     "error": error
                 })),
-                Ok((
-                    capability_id,
-                    gov_tx_id,
-                    session_id,
-                    backend,
-                    model,
-                )) => {
+                Ok(req) => {
+                    let policy_version = pipeline.active_policy_version();
+                    let policy_hash = runtime_policy_hash();
                     let binding = PresentedBinding {
-                        token_id: &capability_id,
-                        gov_tx_id: &gov_tx_id,
-                        session_id: &session_id,
+                        token_id: &req.capability_id,
+                        gov_tx_id: &req.gov_tx_id,
+                        session_id: &req.session_id,
                         principal_fingerprint: &service_principal_fingerprint(
                             service_token.as_str()
                         ),
                         authority: AUTHORITY_PROVIDER_EXECUTE,
-                        backend: &backend,
-                        model: &model,
+                        backend: &req.backend,
+                        model: &req.model,
+                        run_id: &req.run_id,
+                        context_hash: &req.context_hash,
+                        policy_version: &policy_version,
+                        policy_hash: &policy_hash,
+                        action_hash: "",
+                        tool_name: "",
+                        resource_kind: "",
+                        resource_locator: "",
+                        tool_call_id: "",
                     };
 
                     let outcome = pipeline.consume_provider_capability(&binding);
@@ -505,9 +615,159 @@ fn handle(
                         "ok": authorized,
                         "authorized": authorized,
                         "outcome": outcome.as_audit_str(),
-                        "capability_id": capability_id,
-                        "gov_tx_id": gov_tx_id,
-                        "session_id": session_id
+                        "capability_id": req.capability_id,
+                        "gov_tx_id": req.gov_tx_id,
+                        "session_id": req.session_id
+                    }))
+                }
+            }
+        }
+
+        ("POST", "/action/authorize") => {
+            let value: Value = match serde_json::from_str(&body) {
+                Ok(value) => value,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({
+                        "ok": false,
+                        "error": "valid JSON body required"
+                    }))
+                ),
+            };
+
+            let parsed = (|| -> Result<ActionAuthorizationRequest, String> {
+                let gov_tx_id = required_json_string(&value, "gov_tx_id")?;
+                let session_id = required_json_string(&value, "session_id")?;
+                let arguments = value.get("arguments").cloned().unwrap_or(Value::Null);
+
+                Ok(ActionAuthorizationRequest {
+                    gov_tx_id,
+                    session_id,
+                    run_id: required_json_string(&value, "run_id")?,
+                    // Trusted principal — derived from the authenticated
+                    // service identity, never a client-asserted value.
+                    principal_fingerprint: service_principal_fingerprint(
+                        service_token.as_str()
+                    ),
+                    tool_name: required_json_string(&value, "tool_name")?,
+                    arguments,
+                    resource_kind: required_json_string(&value, "resource_kind")?,
+                    resource_locator: required_json_string(&value, "resource_locator")?,
+                    tool_call_id: required_json_string(&value, "tool_call_id")?,
+                    context_hash: required_json_string(&value, "context_hash")?,
+                    // Trusted policy identity — derived server-side from the
+                    // running, signature-verified configuration, never taken
+                    // from the request body.
+                    policy_version: pipeline.active_policy_version(),
+                    policy_hash: runtime_policy_hash(),
+                })
+            })();
+
+            match parsed {
+                Err(error) => json_response(400, json!({ "ok": false, "error": error })),
+                Ok(request) => match pipeline.authorize_action_execution(request) {
+                    Ok(token) => json_response(200, json!({
+                        "ok": true,
+                        "decision_id": token.haap_decision_id,
+                        "capability_id": token.token_id,
+                        "gov_tx_id": token.gov_tx_id,
+                        "session_id": token.session_id,
+                        "run_id": token.run_id,
+                        "principal_fingerprint": token.principal_fingerprint,
+                        "authority": token.authority,
+                        "tool_name": token.tool_name,
+                        "resource_kind": token.resource_kind,
+                        "resource_locator": token.resource_locator,
+                        "tool_call_id": token.tool_call_id,
+                        "verdict_id": token.sentinel_verdict_id,
+                        "context_hash": token.context_hash,
+                        "action_hash": token.action_hash,
+                        "policy_hash": token.policy_hash,
+                        "policy_version": token.policy_version,
+                        "expires_at": token.expires_at,
+                        "max_uses": token.max_uses
+                    })),
+                    Err(error @ (
+                        governance_spine::pipeline::ActionAuthorizationError::MalformedContextHash
+                        | governance_spine::pipeline::ActionAuthorizationError::Envelope(_)
+                    )) => json_response(400, json!({
+                        "ok": false,
+                        "authorized": false,
+                        "error": format!("{:?}", error)
+                    })),
+                    Err(error) => json_response(403, json!({
+                        "ok": false,
+                        "authorized": false,
+                        "error": format!("{:?}", error)
+                    })),
+                }
+            }
+        }
+
+        ("POST", "/action/consume") => {
+            let value: Value = match serde_json::from_str(&body) {
+                Ok(value) => value,
+                Err(_) => return write_response(
+                    reader,
+                    json_response(400, json!({
+                        "ok": false,
+                        "error": "valid JSON body required"
+                    }))
+                ),
+            };
+
+            let parsed = (|| -> Result<ActionConsumeRequest, String> {
+                Ok(ActionConsumeRequest {
+                    capability_id: required_json_string(&value, "capability_id")?,
+                    gov_tx_id: required_json_string(&value, "gov_tx_id")?,
+                    session_id: required_json_string(&value, "session_id")?,
+                    run_id: required_json_string(&value, "run_id")?,
+                    context_hash: required_json_string(&value, "context_hash")?,
+                    action_hash: required_json_string(&value, "action_hash")?,
+                    tool_name: required_json_string(&value, "tool_name")?,
+                    resource_kind: required_json_string(&value, "resource_kind")?,
+                    resource_locator: required_json_string(&value, "resource_locator")?,
+                    tool_call_id: optional_json_string(&value, "tool_call_id").unwrap_or_default(),
+                })
+            })();
+
+            match parsed {
+                Err(error) => json_response(400, json!({ "ok": false, "error": error })),
+                Ok(req) => {
+                    let policy_version = pipeline.active_policy_version();
+                    let policy_hash = runtime_policy_hash();
+                    let binding = PresentedBinding {
+                        token_id: &req.capability_id,
+                        gov_tx_id: &req.gov_tx_id,
+                        session_id: &req.session_id,
+                        principal_fingerprint: &service_principal_fingerprint(
+                            service_token.as_str()
+                        ),
+                        authority: AUTHORITY_ACTION_EXECUTE,
+                        backend: "",
+                        model: "",
+                        run_id: &req.run_id,
+                        context_hash: &req.context_hash,
+                        policy_version: &policy_version,
+                        policy_hash: &policy_hash,
+                        action_hash: &req.action_hash,
+                        tool_name: &req.tool_name,
+                        resource_kind: &req.resource_kind,
+                        resource_locator: &req.resource_locator,
+                        tool_call_id: &req.tool_call_id,
+                    };
+
+                    let outcome = pipeline.consume_provider_capability(&binding);
+                    let authorized = outcome.authorized();
+                    let status = if authorized { 200 } else { 403 };
+
+                    json_response(status, json!({
+                        "ok": authorized,
+                        "authorized": authorized,
+                        "outcome": outcome.as_audit_str(),
+                        "capability_id": req.capability_id,
+                        "gov_tx_id": req.gov_tx_id,
+                        "session_id": req.session_id
                     }))
                 }
             }
