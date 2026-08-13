@@ -1,4 +1,5 @@
 pub mod verdict_ledger;
+pub mod envelope;
 pub mod capability;
 pub mod governance_signal;
 pub mod crypto;
@@ -29,4 +30,10 @@ pub use session_memory::{SessionMemory, StrategicMemory, MemoryConfig, MemoryVer
 pub use haap::{HaapGate, HaapConfig, HaapVerdict, AgencyLevel, IntentToken, IntentTokenBuilder};
 pub use operator_reset::{OperatorResetAuthority, OperatorResetConfigError};
 pub use pipeline::{GovernancePipeline, EnforcementResult, RestrictionsApplied};
+pub use envelope::{
+    sha256_hex, ActionDisposition, ActionEnvelope, ActionPolicyDecision, ActionResource,
+    ActionRiskClass, ContextAttachment, ContextRole, ContextSegment, ContextSource,
+    EnvelopeError, ModelContextEnvelope, ACTION_ENVELOPE_SCHEMA_VERSION,
+    MODEL_CONTEXT_SCHEMA_VERSION,
+};
 pub mod govmem;
