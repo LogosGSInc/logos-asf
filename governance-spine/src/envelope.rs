@@ -383,7 +383,7 @@ impl ActionEnvelope {
         {
             risks.push(ActionRiskClass::ProtectedResourceMutation);
         }
-        if matches!(tool, KnownTool::Exec | KnownTool::Bash) {
+        if matches!(tool, KnownTool::Exec | KnownTool::Bash | KnownTool::Heartbeat) {
             if contains_destructive_shell(&searchable) {
                 risks.push(ActionRiskClass::DestructiveShell);
             }
@@ -396,6 +396,9 @@ impl ActionEnvelope {
         }
         if tool == KnownTool::Browser && contains_browser_script_execution(&searchable) {
             risks.push(ActionRiskClass::BrowserScriptExecution);
+        }
+        if tool == KnownTool::Heartbeat && !validate_heartbeat_schema(&self.arguments) {
+            risks.push(ActionRiskClass::ControlSchemaViolation);
         }
         deduplicate_risks(&mut risks);
 
@@ -415,6 +418,15 @@ impl ActionEnvelope {
             }
             KnownTool::Browser => {
                 risks.push(ActionRiskClass::ExternalInteraction);
+                Ok(ActionPolicyDecision::requires_authorization(risks))
+            }
+            KnownTool::Heartbeat => {
+                // Schema was already validated above (a violation is a deny
+                // class and would have returned already), so reaching here
+                // means this is a legitimate, well-formed heartbeat. It
+                // still requires authorization — recognized-and-valid is
+                // never an unconditional bypass.
+                risks.push(ActionRiskClass::ControlAction);
                 Ok(ActionPolicyDecision::requires_authorization(risks))
             }
             KnownTool::Unknown => unreachable!("unknown tool returned above"),
@@ -465,6 +477,13 @@ enum KnownTool {
     Exec,
     Bash,
     Browser,
+    /// Control-plane telemetry tool. See `evaluate_strict`'s heartbeat arm
+    /// and `validate_heartbeat_schema` for the strict contract this must
+    /// satisfy before it is even eligible for `RequireAuthorization` —
+    /// unlike the other consequential tools above, this one is only
+    /// recognized (never auto-denied as `UnknownTool`) after its exact
+    /// argument shape has already been checked.
+    Heartbeat,
     Unknown,
 }
 
@@ -478,9 +497,92 @@ impl KnownTool {
             "exec" => Self::Exec,
             "bash" => Self::Bash,
             "browser" => Self::Browser,
+            "heartbeat_respond" => Self::Heartbeat,
             _ => Self::Unknown,
         }
     }
+}
+
+/// Exact permitted `heartbeat_respond` argument shape, mirrored from
+/// OpenClaw's own tool schema (src/agents/tools/heartbeat-response-tool.ts,
+/// src/auto-reply/heartbeat-tool-response.ts — `HeartbeatResponseToolSchema`
+/// / `normalizeHeartbeatToolResponse`), not inferred from the tool name.
+/// GovSec re-validates this independently rather than trusting that
+/// OpenClaw's own client-side schema was actually enforced.
+const HEARTBEAT_ALLOWED_KEYS: [&str; 8] = [
+    "outcome",
+    "notify",
+    "summary",
+    "notificationText",
+    "reason",
+    "priority",
+    "nextCheck",
+    "scratch",
+];
+const HEARTBEAT_REQUIRED_KEYS: [&str; 3] = ["outcome", "notify", "summary"];
+const HEARTBEAT_OUTCOMES: [&str; 5] = ["no_change", "progress", "done", "blocked", "needs_attention"];
+const HEARTBEAT_PRIORITIES: [&str; 3] = ["low", "normal", "high"];
+/// Bound for each free-text field (summary/notificationText/reason/nextCheck).
+/// Well above any legitimate heartbeat note, far below the generic
+/// MAX_ACTION_ARGUMENT_BYTES ceiling that already caps the whole payload.
+const MAX_HEARTBEAT_TEXT_BYTES: usize = 4_096;
+/// Mirrors OpenClaw's own `CRON_JOB_SCRATCH_MAX_BYTES`
+/// (src/cron/scratch-contract.ts) so GovSec's ceiling is never looser than
+/// the producer's own contract for this field.
+const MAX_HEARTBEAT_SCRATCH_BYTES: usize = 262_144;
+
+/// Strict structural validation of a `heartbeat_respond` argument payload.
+/// Rejects: unknown keys (`additionalProperties: false`), missing required
+/// keys, wrong value types, out-of-enum values, and oversized strings. A
+/// nested object/array under any allowed key is rejected by the type check
+/// alone (every allowed key is bool/string), so no separate "no nested
+/// executable structure" pass is needed.
+fn validate_heartbeat_schema(arguments: &Value) -> bool {
+    let Value::Object(map) = arguments else {
+        return false;
+    };
+    if map.keys().any(|key| !HEARTBEAT_ALLOWED_KEYS.contains(&key.as_str())) {
+        return false;
+    }
+    if HEARTBEAT_REQUIRED_KEYS
+        .iter()
+        .any(|key| !map.contains_key(*key))
+    {
+        return false;
+    }
+    match map.get("outcome") {
+        Some(Value::String(value)) if HEARTBEAT_OUTCOMES.contains(&value.as_str()) => {}
+        _ => return false,
+    }
+    if !matches!(map.get("notify"), Some(Value::Bool(_))) {
+        return false;
+    }
+    match map.get("summary") {
+        Some(Value::String(value))
+            if !value.trim().is_empty() && value.len() <= MAX_HEARTBEAT_TEXT_BYTES => {}
+        _ => return false,
+    }
+    for key in ["notificationText", "reason", "nextCheck"] {
+        if let Some(value) = map.get(key) {
+            match value {
+                Value::String(value) if value.len() <= MAX_HEARTBEAT_TEXT_BYTES => {}
+                _ => return false,
+            }
+        }
+    }
+    if let Some(value) = map.get("priority") {
+        match value {
+            Value::String(value) if HEARTBEAT_PRIORITIES.contains(&value.as_str()) => {}
+            _ => return false,
+        }
+    }
+    if let Some(value) = map.get("scratch") {
+        match value {
+            Value::String(value) if value.len() <= MAX_HEARTBEAT_SCRATCH_BYTES => {}
+            _ => return false,
+        }
+    }
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -505,6 +607,19 @@ pub enum ActionRiskClass {
     FilesystemMutation,
     ShellExecution,
     ExternalInteraction,
+    /// The tool call named `heartbeat_respond` (or any other control-plane
+    /// tool GovSec recognizes) but its argument payload did not satisfy the
+    /// exact schema GovSec enforces for that tool — extra/unknown keys,
+    /// missing required keys, wrong types, out-of-enum values, or an
+    /// oversized field. Deterministic deny; distinct from `UnknownTool` so
+    /// diagnostics can tell "not a recognized tool" apart from "recognized
+    /// control tool, invalid payload."
+    ControlSchemaViolation,
+    /// Recognized, schema-valid control-plane action (currently only
+    /// `heartbeat_respond`). Not a deny class — mirrors `FilesystemMutation`
+    /// / `ShellExecution` / `ExternalInteraction` as the reason authorization
+    /// is required for an otherwise-allowed tool.
+    ControlAction,
 }
 
 impl ActionRiskClass {
@@ -519,6 +634,7 @@ impl ActionRiskClass {
                 | Self::PrivilegeEscalation
                 | Self::RemoteCodeExecution
                 | Self::BrowserScriptExecution
+                | Self::ControlSchemaViolation
         )
     }
 }

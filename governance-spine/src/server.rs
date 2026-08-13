@@ -605,6 +605,7 @@ fn handle(
                         resource_kind: "",
                         resource_locator: "",
                         tool_call_id: "",
+                        plane: "",
                     };
 
                     let outcome = pipeline.consume_provider_capability(&binding);
@@ -665,7 +666,17 @@ fn handle(
 
             match parsed {
                 Err(error) => json_response(400, json!({ "ok": false, "error": error })),
-                Ok(request) => match pipeline.authorize_action_execution(request) {
+                Ok(request) => {
+                    // Captured before the request is moved/consumed below,
+                    // purely for bounded diagnostics on the denial path —
+                    // never used to grant anything (authorization already
+                    // happened, or didn't, inside authorize_action_execution).
+                    let diag_tool_name = request.tool_name.clone();
+                    let diag_semantics =
+                        governance_spine::action_semantics::derive_action_semantics_for_tool(
+                            &diag_tool_name,
+                        );
+                    match pipeline.authorize_action_execution(request) {
                     Ok(token) => json_response(200, json!({
                         "ok": true,
                         "decision_id": token.haap_decision_id,
@@ -685,7 +696,10 @@ fn handle(
                         "policy_hash": token.policy_hash,
                         "policy_version": token.policy_version,
                         "expires_at": token.expires_at,
-                        "max_uses": token.max_uses
+                        "max_uses": token.max_uses,
+                        "plane": token.action_plane.as_str(),
+                        "normalized_action": token.normalized_action,
+                        "required_for_safe_completion": token.required_for_safe_completion
                     })),
                     Err(error @ (
                         governance_spine::pipeline::ActionAuthorizationError::MalformedContextHash
@@ -693,13 +707,43 @@ fn handle(
                     )) => json_response(400, json!({
                         "ok": false,
                         "authorized": false,
-                        "error": format!("{:?}", error)
+                        "error": format!("{:?}", error),
+                        "diagnostics": {
+                            "decision_type": "structural_validation_failed",
+                            "plane": diag_semantics.plane.as_str(),
+                            "native_tool": diag_tool_name,
+                            "normalized_action": diag_semantics.normalized_action,
+                            "required_for_safe_completion": diag_semantics.required_for_safe_completion(),
+                            "denial_stage": "action_envelope_validation"
+                        }
                     })),
-                    Err(error) => json_response(403, json!({
-                        "ok": false,
-                        "authorized": false,
-                        "error": format!("{:?}", error)
-                    })),
+                    Err(error) => {
+                        // A denied classification is action-authorization
+                        // territory, distinct from Boundary E's outbound
+                        // content review — never described as "content
+                        // review" here.
+                        let risk_classes = match &error {
+                            governance_spine::pipeline::ActionAuthorizationError::Denied(risks) => {
+                                json!(risks)
+                            }
+                            _ => Value::Null,
+                        };
+                        json_response(403, json!({
+                            "ok": false,
+                            "authorized": false,
+                            "error": format!("{:?}", error),
+                            "diagnostics": {
+                                "decision_type": "action_authorization_denied",
+                                "plane": diag_semantics.plane.as_str(),
+                                "native_tool": diag_tool_name,
+                                "normalized_action": diag_semantics.normalized_action,
+                                "required_for_safe_completion": diag_semantics.required_for_safe_completion(),
+                                "denial_stage": "action_gate",
+                                "risk_classes": risk_classes
+                            }
+                        }))
+                    }
+                }
                 }
             }
         }
@@ -736,6 +780,14 @@ fn handle(
                 Ok(req) => {
                     let policy_version = pipeline.active_policy_version();
                     let policy_hash = runtime_policy_hash();
+                    // Re-derived fresh from the presented (trusted-at-this-
+                    // point-because-it-must-match-the-token) tool_name —
+                    // never accepted as a standalone field from the request
+                    // body. See action_semantics.rs's module doc.
+                    let presented_semantics =
+                        governance_spine::action_semantics::derive_action_semantics_for_tool(
+                            &req.tool_name,
+                        );
                     let binding = PresentedBinding {
                         token_id: &req.capability_id,
                         gov_tx_id: &req.gov_tx_id,
@@ -755,6 +807,7 @@ fn handle(
                         resource_kind: &req.resource_kind,
                         resource_locator: &req.resource_locator,
                         tool_call_id: &req.tool_call_id,
+                        plane: presented_semantics.plane.as_str(),
                     };
 
                     let outcome = pipeline.consume_provider_capability(&binding);
@@ -767,7 +820,18 @@ fn handle(
                         "outcome": outcome.as_audit_str(),
                         "capability_id": req.capability_id,
                         "gov_tx_id": req.gov_tx_id,
-                        "session_id": req.session_id
+                        "session_id": req.session_id,
+                        // Bounded, non-secret diagnostics — never labeled as
+                        // "content review" (that is Boundary E / outbound
+                        // gate territory, a completely separate check). See
+                        // docs/govsec-openclaw-integration.md's
+                        // "action-authorization vs outbound content" section.
+                        "diagnostics": {
+                            "plane": presented_semantics.plane.as_str(),
+                            "normalized_action": presented_semantics.normalized_action,
+                            "required_for_safe_completion": presented_semantics.required_for_safe_completion(),
+                            "denial_stage": if authorized { Value::Null } else { json!("action_capability_consume") }
+                        }
                     }))
                 }
             }

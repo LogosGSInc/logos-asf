@@ -1120,6 +1120,13 @@ impl GovernancePipeline {
             resource_kind: String::new(),
             resource_locator: String::new(),
             tool_call_id: String::new(),
+            // No tool call for AUTHORITY_PROVIDER_EXECUTE — these three are
+            // meaningless/unused here, same as the empty action_hash/tool_name
+            // above. Tool/required=true is the historical default that
+            // applied implicitly before action-plane semantics existed.
+            action_plane: crate::action_semantics::ActionPlane::Tool,
+            normalized_action: String::new(),
+            required_for_safe_completion: true,
         }).map_err(ProviderAuthorizationError::Decision)?;
 
         match self.capability_store.issue_after_authorization(&decision_id) {
@@ -1217,6 +1224,13 @@ impl GovernancePipeline {
             return Err(ActionAuthorizationError::Denied(decision.risk_classes));
         }
 
+        // Trusted, server-owned action-plane/criticality derivation — keyed
+        // only on the sealed (hash-bound) envelope's tool_name, never on
+        // anything the caller could have asserted directly. See
+        // action_semantics.rs's module doc for why this cannot become a
+        // self-granted CONTROL/noncritical bypass.
+        let semantics = crate::action_semantics::derive_action_semantics(&envelope);
+
         let decision_id = self.capability_store.record_decision(DecisionRequest {
             gov_tx_id: req.gov_tx_id,
             session_id: envelope.session_id.clone(),
@@ -1238,6 +1252,9 @@ impl GovernancePipeline {
             resource_kind: envelope.resource.kind.clone(),
             resource_locator: envelope.resource.locator.clone(),
             tool_call_id: envelope.tool_call_id.clone(),
+            action_plane: semantics.plane,
+            normalized_action: semantics.normalized_action.clone(),
+            required_for_safe_completion: semantics.required_for_safe_completion(),
         }).map_err(ActionAuthorizationError::Decision)?;
 
         match self.capability_store.issue_after_authorization(&decision_id) {
@@ -1360,6 +1377,7 @@ mod provider_capability_tests {
             resource_kind: &token.resource_kind,
             resource_locator: &token.resource_locator,
             tool_call_id: &token.tool_call_id,
+            plane: token.action_plane.as_str(),
         }
     }
 

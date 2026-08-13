@@ -1,5 +1,6 @@
 pub mod verdict_ledger;
 pub mod envelope;
+pub mod action_semantics;
 pub mod capability;
 pub mod governance_signal;
 pub mod crypto;
@@ -35,5 +36,9 @@ pub use envelope::{
     ActionRiskClass, ContextAttachment, ContextRole, ContextSegment, ContextSource,
     EnvelopeError, ModelContextEnvelope, ACTION_ENVELOPE_SCHEMA_VERSION,
     MODEL_CONTEXT_SCHEMA_VERSION,
+};
+pub use action_semantics::{
+    derive_action_semantics, derive_action_semantics_for_tool, ActionPlane, ActionSemantics,
+    CompletionCriticality,
 };
 pub mod govmem;

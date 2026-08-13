@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::action_semantics::ActionPlane;
 use crate::crypto::CryptoEngine;
 use crate::envelope::is_sha256_hex;
 
@@ -92,6 +93,22 @@ pub struct DecisionRequest {
     pub resource_locator: String,
     /// `AUTHORITY_ACTION_EXECUTE` only: the originating model tool-call id. Empty otherwise.
     pub tool_call_id: String,
+    /// `AUTHORITY_ACTION_EXECUTE` only: server-derived action plane (see
+    /// `action_semantics::derive_action_semantics`). Never caller-supplied —
+    /// callers of `record_decision` (in-crate only; see the module doc)
+    /// must derive this from the same sealed envelope that produced
+    /// `action_hash`/`tool_name`, never accept it from a request body.
+    /// `ActionPlane::Tool` for `AUTHORITY_PROVIDER_EXECUTE` (unused there).
+    pub action_plane: ActionPlane,
+    /// `AUTHORITY_ACTION_EXECUTE` only: server-derived normalized action
+    /// name (e.g. `system.telemetry.heartbeat`). Empty for
+    /// `AUTHORITY_PROVIDER_EXECUTE`.
+    pub normalized_action: String,
+    /// `AUTHORITY_ACTION_EXECUTE` only: server-derived completion
+    /// criticality. `true` for `AUTHORITY_PROVIDER_EXECUTE` (unused there;
+    /// `true` is the historical, always-required default every non-action
+    /// authority has implicitly had).
+    pub required_for_safe_completion: bool,
 }
 
 impl DecisionRequest {
@@ -128,6 +145,7 @@ impl DecisionRequest {
                 nonempty!(self.resource_kind, "resource_kind");
                 nonempty!(self.resource_locator, "resource_locator");
                 nonempty!(self.tool_call_id, "tool_call_id");
+                nonempty!(self.normalized_action, "normalized_action");
                 if !is_sha256_hex(&self.action_hash) {
                     return Err(CapabilityError::MalformedDigest("action_hash"));
                 }
@@ -151,6 +169,9 @@ impl DecisionRequest {
             && d.resource_kind == self.resource_kind
             && d.resource_locator == self.resource_locator
             && d.tool_call_id == self.tool_call_id
+            && d.action_plane == self.action_plane
+            && d.normalized_action == self.normalized_action
+            && d.required_for_safe_completion == self.required_for_safe_completion
     }
 }
 
@@ -179,6 +200,9 @@ pub struct Decision {
     pub resource_kind: String,
     pub resource_locator: String,
     pub tool_call_id: String,
+    pub action_plane: ActionPlane,
+    pub normalized_action: String,
+    pub required_for_safe_completion: bool,
 }
 
 // Boxing Issued(CapabilityToken) would shave the enum's stack size but
@@ -222,6 +246,13 @@ pub struct CapabilityToken {
     pub resource_kind: String,
     pub resource_locator: String,
     pub tool_call_id: String,
+    /// Server-derived, never caller-supplied (see `DecisionRequest::action_plane`).
+    /// Included in `canonical()` so post-issuance tampering with any of
+    /// these three fields invalidates the signature exactly like tampering
+    /// with `max_uses` already does.
+    pub action_plane: ActionPlane,
+    pub normalized_action: String,
+    pub required_for_safe_completion: bool,
 }
 
 impl CapabilityToken {
@@ -230,7 +261,7 @@ impl CapabilityToken {
     /// only mutable field and is deliberately excluded.
     pub fn canonical(&self) -> String {
         format!(
-            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             self.token_id,
             self.haap_decision_id,
             self.gov_tx_id,
@@ -253,6 +284,9 @@ impl CapabilityToken {
             self.resource_kind,
             self.resource_locator,
             self.tool_call_id,
+            self.action_plane.as_str(),
+            self.normalized_action,
+            self.required_for_safe_completion,
         )
     }
 }
@@ -278,6 +312,14 @@ pub enum ConsumeOutcome {
     ToolMismatch,
     ResourceMismatch,
     ToolCallIdMismatch,
+    /// The capability's server-derived `action_plane` does not match the
+    /// plane re-derived from the presented `tool_name` at consumption time.
+    /// By construction this cannot fire when `ToolMismatch` would not also
+    /// fire (plane is a pure function of `tool_name`) — it exists as an
+    /// explicit, independently-checked guarantee that a CONTROL capability
+    /// can never authorize a TOOL/USER/GOVERNANCE action or vice versa,
+    /// rather than relying solely on the tool-name check to imply it.
+    PlaneMismatch,
 }
 
 impl ConsumeOutcome {
@@ -303,6 +345,7 @@ impl ConsumeOutcome {
             ConsumeOutcome::ToolMismatch            => "CAPABILITY_TOOL_MISMATCH",
             ConsumeOutcome::ResourceMismatch        => "CAPABILITY_RESOURCE_MISMATCH",
             ConsumeOutcome::ToolCallIdMismatch      => "CAPABILITY_TOOL_CALL_ID_MISMATCH",
+            ConsumeOutcome::PlaneMismatch           => "CAPABILITY_PLANE_MISMATCH",
         }
     }
 }
@@ -329,6 +372,11 @@ pub struct PresentedBinding<'a> {
     pub resource_kind: &'a str,
     pub resource_locator: &'a str,
     pub tool_call_id: &'a str,
+    /// Only compared when the token's authority is `AUTHORITY_ACTION_EXECUTE`.
+    /// Callers must derive this the same way issuance did — from
+    /// `action_semantics::derive_action_semantics_for_tool(tool_name)` on the
+    /// presented `tool_name` — never accept it as a standalone client value.
+    pub plane: &'a str,
 }
 
 // ═══ STORE — one lock over all three maps ══════════════════════════════════
@@ -419,6 +467,9 @@ impl CapabilityStore {
             resource_kind: req.resource_kind,
             resource_locator: req.resource_locator,
             tool_call_id: req.tool_call_id,
+            action_plane: req.action_plane,
+            normalized_action: req.normalized_action,
+            required_for_safe_completion: req.required_for_safe_completion,
         };
         st.decisions.insert(decision_id.clone(), decision);
         st.decision_by_tx.insert(key, decision_id.clone());
@@ -467,6 +518,9 @@ impl CapabilityStore {
             resource_kind: decision.resource_kind.clone(),
             resource_locator: decision.resource_locator.clone(),
             tool_call_id: decision.tool_call_id.clone(),
+            action_plane: decision.action_plane,
+            normalized_action: decision.normalized_action.clone(),
+            required_for_safe_completion: decision.required_for_safe_completion,
         };
         token.signature = self.crypto.sign(token.canonical().as_bytes());
 
@@ -521,6 +575,7 @@ impl CapabilityStore {
                 return ConsumeOutcome::ResourceMismatch;
             }
             if token.tool_call_id != p.tool_call_id { return ConsumeOutcome::ToolCallIdMismatch; }
+            if token.action_plane.as_str() != p.plane { return ConsumeOutcome::PlaneMismatch; }
         }
 
         token.use_count += 1;
@@ -576,6 +631,9 @@ mod tests {
             resource_kind: String::new(),
             resource_locator: String::new(),
             tool_call_id: String::new(),
+            action_plane: ActionPlane::Tool,
+            normalized_action: String::new(),
+            required_for_safe_completion: true,
         }
     }
 
@@ -601,6 +659,37 @@ mod tests {
             resource_kind: "shell".into(),
             resource_locator: "echo hi".into(),
             tool_call_id: "call1".into(),
+            action_plane: ActionPlane::Tool,
+            normalized_action: "tool.bash".into(),
+            required_for_safe_completion: true,
+        }
+    }
+
+    fn heartbeat_req(tx: &str) -> DecisionRequest {
+        DecisionRequest {
+            gov_tx_id: tx.into(),
+            session_id: "sess1".into(),
+            principal_fingerprint: "fpADMIN00000000".into(),
+            authority: AUTHORITY_ACTION_EXECUTE.into(),
+            backend: String::new(),
+            model: String::new(),
+            action_class: "tool:heartbeat_respond".into(),
+            sentinel_verdict_id: "sv1".into(),
+            policy_hash: "d".repeat(64),
+            authorization_basis: "RequireAuthorization".into(),
+            agency: "L2".into(),
+            drs: 20,
+            run_id: "run1".into(),
+            context_hash: "c".repeat(64),
+            policy_version: "policy-v1".into(),
+            action_hash: "b".repeat(64),
+            tool_name: "heartbeat_respond".into(),
+            resource_kind: "unknown".into(),
+            resource_locator: "heartbeat_respond".into(),
+            tool_call_id: "call-hb-1".into(),
+            action_plane: ActionPlane::Control,
+            normalized_action: "system.telemetry.heartbeat".into(),
+            required_for_safe_completion: false,
         }
     }
 
@@ -620,6 +709,14 @@ mod tests {
         }
     }
 
+    fn heartbeat_cap(s: &CapabilityStore) -> CapabilityToken {
+        let did = s.record_decision(heartbeat_req("tx-heartbeat-1")).expect("record");
+        match s.issue_after_authorization(&did) {
+            IssueOutcome::Issued(c) => c,
+            o => panic!("expected Issued, got {:?}", o),
+        }
+    }
+
     fn good_binding<'a>(t: &'a CapabilityToken) -> PresentedBinding<'a> {
         PresentedBinding {
             token_id: &t.token_id, gov_tx_id: &t.gov_tx_id,
@@ -630,6 +727,7 @@ mod tests {
             action_hash: &t.action_hash, tool_name: &t.tool_name,
             resource_kind: &t.resource_kind, resource_locator: &t.resource_locator,
             tool_call_id: &t.tool_call_id,
+            plane: t.action_plane.as_str(),
         }
     }
 
@@ -791,6 +889,50 @@ mod tests {
         let mut r2 = action_req("tx-a1"); r2.action_hash = "not-a-hash".into();
         assert_eq!(s.record_decision(r2).err(), Some(CapabilityError::MalformedDigest("action_hash")));
     }
+    // ── NEW: action-plane / completion-criticality binding ──
+    #[test] fn heartbeat_capability_binds_control_plane_and_noncritical() {
+        let s = store(); let c = heartbeat_cap(&s);
+        assert_eq!(c.authority, AUTHORITY_ACTION_EXECUTE);
+        assert_eq!(c.action_plane, ActionPlane::Control);
+        assert_eq!(c.normalized_action, "system.telemetry.heartbeat");
+        assert!(!c.required_for_safe_completion);
+        assert_eq!(s.consume(&good_binding(&c)), ConsumeOutcome::Authorized);
+    }
+    #[test] fn ordinary_action_capability_binds_tool_plane_and_required() {
+        let s = store(); let c = action_cap(&s);
+        assert_eq!(c.action_plane, ActionPlane::Tool);
+        assert!(c.required_for_safe_completion);
+    }
+    #[test] fn plane_mismatch_rejected() {
+        let s = store(); let c = heartbeat_cap(&s);
+        let mut b = good_binding(&c); b.plane = "tool";
+        assert_eq!(s.consume(&b), ConsumeOutcome::PlaneMismatch);
+    }
+    #[test] fn control_capability_cannot_be_presented_as_tool_plane_for_a_different_tool() {
+        // A CONTROL (heartbeat) capability presented against a different
+        // tool's identity (tool_name AND plane both changed, simulating an
+        // attacker trying to launder it as an ordinary tool capability)
+        // must fail — and specifically on ToolMismatch first, since tool
+        // identity is checked before plane.
+        let s = store(); let c = heartbeat_cap(&s);
+        let mut b = good_binding(&c);
+        b.tool_name = "bash";
+        b.plane = "tool";
+        assert_eq!(s.consume(&b), ConsumeOutcome::ToolMismatch);
+    }
+    #[test] fn semantics_tampering_invalidates_signature() {
+        let s = store(); let c = heartbeat_cap(&s);
+        // Flip required_for_safe_completion without re-signing: canonical()
+        // now differs from what was signed, exactly like max_uses tampering.
+        s.mutate_stored_token(&c.token_id, |t| t.required_for_safe_completion = true);
+        assert_eq!(s.consume(&good_binding(&c)), ConsumeOutcome::SignatureInvalid);
+    }
+    #[test] fn plane_tampering_invalidates_signature() {
+        let s = store(); let c = heartbeat_cap(&s);
+        s.mutate_stored_token(&c.token_id, |t| t.action_plane = ActionPlane::Tool);
+        assert_eq!(s.consume(&good_binding(&c)), ConsumeOutcome::SignatureInvalid);
+    }
+
     #[test] fn provider_and_action_decisions_coexist_under_same_gov_tx_id() {
         // tx_key is (gov_tx_id, authority) — the same transaction may carry
         // both a provider-execute and an action-execute decision.
