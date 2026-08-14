@@ -112,6 +112,6 @@ GET  /api/audit/tail?n=50     — last N audit events (admin token required)
 ## Enterprise Pilot
 
 LOGOS offers governed agent deployments for compliance-sensitive environments.  
-Contact: @Legacy.io on Venmo | LOGOS Governance Systems Inc.
+Contact:logosgs@proton.me | LOGOS Governance Systems Inc.
 
 *"By wisdom a house is built, and through understanding it is established." — Proverbs 24:3*
